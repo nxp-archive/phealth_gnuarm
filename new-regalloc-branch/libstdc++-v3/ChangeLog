@@ -1,0 +1,389 @@
+2001-01-26  Benjamin Kosnik  <bkoz@kredhat.com>
+
+	* libsupc++/pure.cc (writestr): Just use cstdio and std::fputs.
+
+2001-01-25  Loren J. Rittle  <ljrittle@acm.org>
+
+        * testsuite/21_strings/inserters_extractors.cc: Remove
+        explicit reference to 'testsuite/'.
+
+2001-01-25  Richard Henderson  <rth@redhat.com>
+
+	* config/cpu/alpha/bits/atomicity.h: Remove tricky .subsetion
+	bits. Fixes Tru64 build issues.
+	
+2001-01-25  Michael Sokolov  <msokolov@ivan.Harhan.ORG>
+
+	* acinclude.m4 (GLIBCPP_CHECK_GNU_MAKE): Bourne shell portability bug
+	(use ${MAKE-make}, not ${MAKE:-make}).
+	* aclocal.m4, configure: Regenerate.
+
+2001-01-25  Mark Mitchell  <mark@codesourcery.com>
+
+	* src/ios.cc: Remove accidental inclusion of <stdio.h> in last
+	checkin.
+
+	* src/Makefile.am (sources): Add globals.cc.
+	* src/Makefile.in: Regenerated.
+	* src/globals.cc: New file.
+	* src/ios.cc (cin): Don't define here, just declare extern.
+	(cout): Likewise.
+	(cerr): Likewise.
+	(clog): Likewise.
+	(wcin): Likewise.
+	(wcout): Likewise.
+	(wcerr): Likewise.
+	(wclog): Likewise.
+
+2001-01-25  Phil Edwards  <pme@sources.redhat.com>
+
+	* include/bits/std_iterator.h:  Do not include stl_relops.h.
+	* include/bits/std_numeric.h:  Ditto.
+	* include/bits/stl_algobase.h:  Ditto.
+	* include/bits/stl_relops.h:  Add comment warning about problems.
+
+2001-01-25  Gabriel Dos Reis  <gdr@codesourcery.com>
+
+	* testsuite/27_io/*.cc: Remove explicit reference to 'testsuite/'
+	in testcases.  Prepare for the DejaGnu based framework.
+	* mkcheck.in: Adjust call to tests_flags.  Don't mmkdir testsuite
+	directory -- it is now mkcheck working directory.
+	* tests_flags.in: Remove reference to $(top_srcdir).  Use
+	${SRC_DIR} instead.
+	* Makefile.am (check, check-install): Change mkcheck invocation
+	logic. 
+	* Makefile.in: Regenerate.
+
+2001-01-24  Mark Mitchell  <mark@codesourcery.com>
+
+	* config/os/aix/bits/atomicity.h (__compare_and_swap): Remove.
+	(__always_swap): Likewise.
+
+2001-01-23  Chris Demetriou  <cgd@broadcom.com>
+
+	* libsupc++/exception_support.cc (__terminate_func): Remove
+	declaration.
+	(__terminate_func_ptr): New typedef.
+	(__terminate, __terminate_set_func): New extern function
+	prototypes.
+	(std::terminate): Use __terminate function.
+	(std::set_terminate): Use __terminate_set_func function.
+
+2001-01-23  Benjamin Kosnik  <bkoz@redhat.com>
+
+	* configure.target: Just use os_include_dir always.
+	* configure.in: Remove calls to GLIBCPP_CHECK_CTYPE_SUPPORT.
+	Link atomicity files and ctype files here.
+	* configure: Regenerate.
+	* acinclude.m4 (GLIBCPP_CHECK_CTYPE_SUPPORT): Remove.
+	(GLIBCPP_ENABLE_ATOMICITY): Remove.
+	* aclocal.m4: Regenerate.
+	
+2001-01-23  Chris Demetriou  <cgd@broadcom.com>
+
+	* configure.in: Place definition of MULTISUBDIR in
+	libsupc++/Makefile as is done for src/Makefile.
+	* configure: Regenerate.
+
+2001-01-23  Phil Edwards  <pme@sources.redhat.com>
+
+	* acinclude.m4:  Cosmetic changes only.
+	* aclocal.m4:  Regenerated.
+	* configure:  Regenerated.
+	* configure.target:  Update documented list of changed variables.
+	* docs/html/install.html:  Fix typo.
+	* docs/html/20_util/howto.html:  More notes on auto_ptr.
+	* docs/html/27_io/howto.html:  More notes on streabufs.
+	* docs/html/faq/index.html:  Add rel_ops problem and mention the
+	  DEC as(1) .subsection difficulty.
+	* docs/html/faq/index.txt:  Regenerated.
+
+2001-01-23  Mark Mitchell  <mark@codesourcery.com>
+
+        * ainclude.m4 (GLIBCPP_CHEC_MATH_DECLS_AND_LINKAGE_1): New macro.
+        (GLIBCPP_CHECK_MATH_SUPPORT): Use it.
+        (GLIBCPP_CHECK_TYPE_SUPPORT): Don't autoconf ctype information if
+        its already provided in config.target.
+        * aclocal.m4: Regenerated.
+        * configure: Likewise.
+        * configure.target: Set ctype_include_dir for lots of systems.
+        * libsupc++/Makefile.am: Explicitly include --tag disable-shared.
+        * libsupc++/Makefile.in: Regenerated.
+
+2001-01-23  Gabriel Dos Reis  <gdr@codesourcery.com>
+
+	* testsuite/lib/libstdc++.exp: Improve.  Add support for @xxx#
+	keyword capability.
+
+	* testsuite/README: Add comment.
+
+2001-01-21  Phil Edwards  <pme@sources.redhat.com>
+
+	* docs/html/configopts.html:  Update for current status.  Fix HTML.
+	* docs/html/install.html:  Update for current status.
+
+2001-01-20  Gabriel Dos Reis  <gdr@merlin.codesourcery.com>
+
+	* testsuite/libstdc++.tests/tests.exp: New file.
+	* testsuite/lib/libstdc++.exp: Itou.
+	* testsuite/README: Itou.
+
+2001-01-20  Gabriel Dos Reis  <gdr@codesourcery.com>
+
+	* tests_flags.in: Just output the bare minimum to run tests.
+	Let's the caller do its own arrangement.
+
+	* mkcheck.in: Rename INC_PATH to INCLUDES.  Adjust flags
+	computations.
+
+2001-01-19  Gabriel Dos Reis  <gdr@codesourcery.com>
+
+	* testsuite/17_intro: Prepare testcases for new style DejaGnu
+	framework. 
+
+2001-01-18  Gabriel Dos Reis  <gdr@codesourcery.com>
+
+	* testsuite/libstdc++.tests, testsuite/lib: New directories.
+
+2001-01-17  Loren J. Rittle  <ljrittle@acm.org>
+
+        * mkcheck.in: Construct file names that match $objdir structure.
+        * testsuite/27_io/filebuf_members-1.txt: New file.
+        * testsuite/27_io/ifstream_members-1.txt: New file.
+        * testsuite/27_io/ostream_inserter_char-1.txt: New file.
+
+	* testsuite/27_io/ios_base_members_static.cc (test02): Add test.
+	* testsuite/27_io/ios_base_members_static-1.tst: Add expected output.
+
+2001-01-17  Peter Schmid  <schmid@snake.iap.physik.tu-darmstadt.de>
+
+	* testsuite/27_io/istream_sentry.cc (test02): Fix.
+
+2001-01-17  Benjamin Kosnik  <bkoz@redhat.com>
+
+	libstdc++/1605
+	* include/bits/ios_base.h (ios_base::failure): Tighten up throw specs.
+	* src/ios.cc (ios_base::failure): Make definitions match.
+        * libsupc++/typeinfo (class bad_typeid): Add throw specs.
+        (class bad_cast): Same.
+        * libsupc++/exception (class exception): Add throw specs.
+        * libsupc++/exception_support.cc (set_terminate): Add throw specs.
+        (set_unexpected): Same.
+        (uncaught_exception): Same.
+        (what): Same.
+
+	* docs/html/17_intro/C++STYLE (classname): Fix.
+	
+2001-01-16  Mark Mitchell  <mark@codesourcery.com>
+
+	* src/gen-num-limits.cc (INSTANTIATIONS): New macro.
+	Use it do explicitly instantiate predicate<T> and value<T> for
+	all the builtin Ts.
+
+2001-01-16  Nathan Sidwell  <nathan@codesourcery.com>
+
+	* libsupc++/exception_support.cc (__cp_pop_exception): Fix
+	uninitialized thinko in last change.
+
+2001-01-16  Mark Mitchell  <mark@codesourcery.com>
+
+	* libsupc++/exception_support.cc (__cp_pop_exception): Change
+	prototype.
+
+2001-01-16  Benjamin Kosnik  <bkoz@redhat.com>
+
+	* docs/html/17_intro/C++STYLE (classname): Add more existing
+	and stylish patterns.
+
+	libstdc++/944
+	* include/bits/istream.tcc (istream::sentry::sentry()): Set
+	failbit if the state of the stream is not good.
+	* testsuite/27_io/istream_sentry.cc (test02): Add test.
+	* testsuite/27_io/istream_manip.cc (test01): Modify.
+
+	libstdc++/1019
+	reported by Paolo Carlini <pcarlini@unitus.it>
+	* include/bits/istream.tcc (operator>>(istream&, string&)): Fix. 
+	* testsuite/21_strings/inserters_extractors.cc (test08): Add test.
+
+	libstdc++/1057
+	* include/bits/std_streambuf.h (setp): Set _M_buf_size correctly.
+	* include/bits/streambuf.tcc (xsputn): Remove outside if clause.
+	(xsgetn): Same. Simplify.
+	* testsuite/27_io/streambuf.cc (test04): Add testcases.
+
+	reported by Larry Evans <jcampbell3@prodigy.net> 
+	* include/bits/streambuf.tcc (streambuf::xsputn): Just check for
+	equality with eof on returned value from overflow.
+
+2001-01-14  Andreas Jaeger  <aj@suse.de>
+
+	* libio/libio.h: Add test for glibc 2.0.
+
+2001-01-12  Benjamin Kosnik  <bkoz@redhat.com>
+
+	* config/os/djgpp/bits/*: Fix dates.
+
+	* include/bits/basic_string.h (_S_find(const _CharT* __beg, const
+	_CharT* __end, _CharT __c): Remove.
+	* include/bits/basic_string.tcc: Substitute traits::find for _S_find.
+	* include/bits/char_traits.h: Tweak.
+
+2001-01-12  Laurynas Biveinis  <lauras@softhome.net>
+
+	* acinclude.m4 (GLIBCPP_CHECK_CTYPE_SUPPORT): check for DJGPP <ctype.h>
+	(LIB_AC_PROG_CXX): replace [/\\] with [\\/] to work around older
+	bash bug.
+	* aclocal.m4: regenerated.
+	* configure.target: set os_include_dir to config/os/djgpp under DJGPP.
+	* configure: regenerated.
+	* config/os/djgpp, config/os/djgpp/bits: new directories.
+	* config/os/djgpp/bits/ctype_base.h,
+	config/os/djgpp/bits/ctype_inline.h,
+	config/os/djgpp/bits/ctype_noninline.h,
+	config/os/djgpp/bits/os_defines.h: new files.
+
+2001-01-11   Joseph S. Myers  <jsm28@cam.ac.uk>
+
+	* include/c_std/bits/std_cstdio.h: Undef printf.
+
+2001-01-10  Benjamin Kosnik  <bkoz@redhat.com>
+
+	* src/ios.cc: Fix typo: change cout->wcout.
+
+	* src/Makefile.am (targetincludep): Fix for version-specific-libs.
+	* src/Makefile.in: Regenerate.
+
+2001-01-10  Peter Schmid  <schmid@snake.iap.physik.tu-darmstadt.de>
+
+         * include/bits/std_complex.h: Fix a typo.
+
+2001-01-09  Benjamin Kosnik  <bkoz@redhat.com>
+	                     <kainz@ilm.com>
+
+	Fixes for libstdc++/1576
+	* src/stdstreams.cc: Initialize with NULL filebuf. Delete
+	file, move contents into....
+	* src/ios.cc: ...Here. Put defines for iostreams objects and
+	initialization routines into one file to simplify DSO interaction.
+	* include/bits/std_iostream.h: Touch.
+	* include/bits/ios_base.h (_S_synched_with_stdio): Make static.
+	* src/Makefile.am (sources): Remove stdstreams.cc.
+	* src/Makefile.in: Regenerate.
+
+2001-01-10  Gabriel Dos Reis  <gdr@merlin.codesourcery.com>
+
+	* tests_flags.in (check_directory): Fix typo.
+
+2001-01-09  Peter Schmid  <schmid@snake.iap.physik.tu-darmstadt.de>
+
+         * include/bits/std_complex.h: Fix a typo.
+
+2001-01-09  Loren J. Rittle  <ljrittle@acm.org>
+
+	* config/os/bsd/freebsd/bits/ctype_inline.h (is): (Make right
+	code path:) Remove magic constants and restructure to handle
+	ctype.h bit mask layout changes more gracefully.  (Make fast
+	code path:) Use __maskrune (), if available.
+	(is): Remove special case for digit and xdigit masks.
+
+2001-01-09  Robert Lipe <robertlipe@usa.net>
+
+	* include/c_std/bits/std_ctime.h: Undefine difftime.
+
+2001-01-09  Alexandre Oliva  <aoliva@redhat.com>
+
+	* src/gen-num-limits.cc (signal_adapter): New template function.
+	(signal_handler): Use it, instead of signal.
+	(traps<T>): Likewise.  Install SIGTRAP handler too.  Don't
+	require both tests to trap to set trap_flag.
+
+2001-01-08  Benjamin Kosnik  <bkoz@redhat.com>
+
+	* include/bits/fpos.h (fpos:::fpos(streamoff __pos)): Explicitly
+	initialize mbstate_t member, name offset data members *off, not pos.
+	* include/bits/fstream.tcc (filebuf::filebuf): Same.
+
+2001-01-08  Benjamin Kosnik  <bkoz@redhat.com>
+
+	reported by Chris G. Demetriou <cgd@sibyte.com>
+	* configure.in: Change -linux-* to -linux*.
+	* configure: Regenerate.
+
+2001-01-05  Benjamin Kosnik  <bkoz@redhat.com>
+
+	Fix 27_io/filebuf_members.cc
+	* src/localename.cc (locale::_Impl::_Impl(const _Impl& __imp,
+	const string& __name, category __cat, size_t __refs): Set
+	_M_has_name with _M_name.
+	* include/bits/localefwd.h (locale::operator!=): Protect member
+	function call with this->.
+	* src/locale.cc (locale::operator==): Make fast checks first.
+	* include/bits/basic_ios.tcc (basic_ios::init): Simplify.
+
+	* include/bits/ios_base.h (_M_synced_with_stdio): Add data member
+	to ios_base::Init.
+	* src/ios.cc (ios_base::Init::Init): Initialize here.
+	(ios_base::sync_with_stdio): Set here.
+
+2001-01-04  Loren J. Rittle  <ljrittle@acm.org>
+
+        * config/c_io_stdio.cc (__basic_file<_CharT>::sys_open()): On
+        systems that support it, call dup() before fdopen().
+
+2001-01-03  Benjamin Kosnik  <bkoz@redhat.com>
+
+	* include/c_std/bits/std_cwctype.h: Include std_cwchar.h for wint_t.
+	* testsuite/17_intro/header_cwctype.cc (main): New file.
+
+	* src/Makefile.am (base_headers): Change.
+	* include/bits/std_string.h: And here.
+	* include/bits/string.tcc: Tweaks, move to...
+	* include/bits/basic_string.tcc: ...Here.
+	* src/string-inst.cc: Simplify, just instantiate the whole class,
+	not member-by-member.
+
+2001-01-02  Benjamin Kosnik  <bkoz@redhat.com>
+
+	* acinclude.m4 (GLIBCPP_ENABLD_CSTDIO): Add in default value.
+	* aclocal.m4: Regenerate.
+	* configure: Regenerate.
+
+	* include/bits/c++config (__GLIBCPP__): Bump version number.
+
+	* ChangeLog: Start new log for year 2001
+	* ChangeLog-2000: New file.
+
+	* docs/html/configopts.html: Make sure default values are current,
+	add commentary.
+
+2001-01-01  Benjamin Kosnik  <bkoz@fillmore.redhat.com>
+
+	* include/c_std/bits/std_cwchar.h: Same.
+	* testsuite/17_intro/header_cwchar.cc: Same.
+	* include/c_std/bits/std_ctime.h: Same.
+	* testsuite/17_intro/header_ctime.cc: Same.
+	* include/c_std/bits/std_cstdlib.h: Same.
+	Clean up undefs, make consistent with cwchar and cmath, etc.
+	* testsuite/17_intro/header_cstdlib.cc: Same.
+	* include/c_std/bits/std_cstdio.h: Same here.
+	* testsuite/17_intro/header_cstring.cc: Same.
+	* include/c_std/bits/std_cstring.h: Include std_cstddef.h for size_t.
+	* testsuite/17_intro/header_cstring.cc: New file. Check for
+	size_t in namespace std.
+
+	* include/c_std/bits/std_cwchar.h: Explicit checks for mbstate_t.
+	* acconfig.h (HAVE_MBSTATE_T): Add.
+	* config.h.in: Regenerate.
+	* acinclude.m4(GLIBCPP_CHECK_WCHAR_T_SUPPORT): Always test for
+	mbstate_t.
+	* aclocal.m4: Regenerate.
+	* configure: Regenerate.
+	* testsuite/17_intro/headers_c++.cc: New file.
+	* testsuite/17_intro/headers_c.cc: Small changes.
+
+2001-01-01  David Billinghurst <David.Billinghurst@riotinto.com>
+
+	* tests_flags.in: Fix typo in usage.
+
+	* tests_flags.in: Set target specific LIBS for cygwin.
