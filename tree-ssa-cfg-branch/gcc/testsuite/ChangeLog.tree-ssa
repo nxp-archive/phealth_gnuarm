@@ -1,0 +1,210 @@
+2003-08-12  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/execute/builtins/string-4.x: Remove.
+
+2003-08-12  Paul Brook  <paul@nowt.org>
+
+	* gfortran.fortran-torture/execute/forall_4.f90: Fix illegal code.
+
+2003-08-12  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/*.c: Add missing close braces to various tests.
+
+	* gcc.dg/tree-ssa/20030807-6.c: New test.
+	* gcc.dg/tree-ssa/20030807-7.c: New test.
+	* gcc.dg/tree-ssa/20030807-9.c: New test.
+	* gcc.dg/tree-ssa/20030807-11.c: New test.
+
+2003-08-11  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/20030807-1.c: New test.
+	* gcc.dg/tree-ssa/20030807-2.c: New test.
+	* gcc.dg/tree-ssa/20030807-3.c: New test.
+	* gcc.dg/tree-ssa/20030807-4.c: New test.
+	* gcc.dg/tree-ssa/20030807-5.c: New test.
+	* gcc.dg/tree-ssa/20030807-10.c: New test.
+
+2003-08-10  Paul Brook  <paul@nowt.org>
+
+	* gfortran.fortran-torture/compile/allocate.f90: Also test memebers of
+	derived types.
+
+2003-08-05  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/20030731-2.c: New test.
+	* gcc.c-torture/execute/builtins/string-5.x: Kill.
+
+2003-07-30  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/20030730-1.c: New test.
+	* gcc.dg/tree-ssa/20030730-2.c: New test.
+	* gcc.dg/tree-ssa/20030729-1.c: Fix comment typo.
+
+2003-07-29  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/20030729-1.c: New test.
+
+	* gcc.dg/tree-ssa/20030709-1.c: Look at the .optimized output.
+
+	* gcc.dg/tree-ssa/20030711-2.c: There should only be one load
+	of rtmem after rewriting into SSA form.
+
+2003-07-28  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/20030728-1.c: New test.
+
+2003-07-26  Paul Brook  <paul@nowt.org>
+
+	* gfortran.fortran-torture: New testsuite.
+	* lib/fortran-torture.exp: New file.
+	* lib/gfortran.exp: New file.
+
+2003-07-16  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/20030709-2.c: Also test that we eliminate
+	the redundant load of ->fld[1].rtmem.
+
+	* gcc.c-torture/compile/20030716-1.c: New test.
+
+2003-07-16  Dan Nicolaescu  <dann@ics.uci.edu>
+
+	* gcc.dg/tree-ssa/ssa-ccp-1.c: New test.
+	* gcc.dg/tree-ssa/ssa-ccp-2.c: New test.
+	* gcc.dg/tree-ssa/ssa-ccp-3.c: New test.
+	* gcc.dg/tree-ssa/ssa-ccp-4.c: New test.
+	* gcc.dg/tree-ssa/ssa-ccp-5.c: New test.
+	* gcc.dg/tree-ssa/ssa-ccp-6.c: New test.
+	* gcc.dg/tree-ssa/ssa-ccp-7.c: New test.
+	* gcc.dg/tree-ssa/ssa-ccp-8.c: New test.	
+	* gcc.dg/tree-ssa/ssa-ccp-9.c: New test.	
+
+2003-07-10  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/20030703-1.c: New test.
+	* gcc.dg/tree-ssa/20030703-2.c: New test.
+	* gcc.dg/tree-ssa/20030708-1.c: New test.
+	* gcc.dg/tree-ssa/20030709-1.c: New test.
+	* gcc.dg/tree-ssa/20030709-2.c: New test.
+	* gcc.dg/tree-ssa/20030709-3.c: New test.
+	* gcc.dg/tree-ssa/20030710-1.c: New test.
+	* gcc.dg/tree-ssa/20030711-1.c: New test.
+	* gcc.dg/tree-ssa/20030711-2.c: New test.
+	* gcc.dg/tree-ssa/20030711-3.c: New test.
+	* gcc.dg/tree-ssa/20030714-1.c: New test.
+
+2003-07-10  Jeff Law  <law@redhat.com>
+
+	* lib/scantree.exp: Always glob the output file.
+:
+2003-06-27  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.dg/20030612-1.c: New test.
+
+2003-06-25  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/noncompile/920507-1.c: Return a value so that the
+	variable "a" is always used.
+
+2003-06-11  Jeff Law  <law@redhat.com>
+
+	* gcc.c-torture/gcc.dg/tree-ssa/20030611-1.c: New test.
+
+	* gcc.c-torture/compile/20030530-2.c: Move to...
+	* gcc.c-torture/gcc.dg/tree-ssa/20030530-2.c: Here.  Use dg
+	and scan-tree-output framework.  Verify that redundant expressions
+	are removed.
+	* gcc.c-torture/gcc.dg/tree-ssa/tree-ssa.exp: New driver.
+	* lib/gcc.dg.exp: Load scantree.exp.
+	* lib/scantree.exp: New library of routines to scan tree dumps.
+
+2003-06-03  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/execute/builtins/string-4.x: Expect
+	execution failures.
+	* gcc.c-torture/execute/builtins/string-5.x: Likewise.
+
+2003-05-30  Jeff Law  <law@redhat.com>
+
+	* gcc.c-torture/compile/20030530-1.c: New test.
+	* gcc.c-torture/compile/20030530-2.c: New test.
+	* gcc.c-torture/compile/20030530-3.c: New test.
+
+2003-05-12  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/execute/string-opt-19.x: Expect execution
+	failures.
+
+2003-05-06  Jeff Law  <law@redhat.com>
+
+	* gcc.c-torture/execute/string-opt-18.x: Expect execution
+	failures.
+
+2003-05-01  Jeff Law  <law@redhat.com>
+
+	* gcc.c-torture/execute/20030501-1.c: New test for tree-ssa bug.
+
+2003-04-16  Jeff Law  <law@redhat.com>
+
+	* gcc.c-torture/compile/20030416-1.c: New test from Diego.
+
+	* gcc.c-torture/execute/20030120-3.c: Updates suggested by Kaveh.
+
+2003-04-05  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/compile/20030405-1.[cx]: New test.
+
+2003-04-05  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/execute/20030404-1.c: New test.
+
+2003-04-03  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/execute/20030403-1.c: New test.
+
+2003-03-10  Steven Bosscher  <s.bosscher@student.tudelft.nl>
+
+	* gcc.c-torture/compile/20030310-1.c: New test.
+
+2003-02-12  Jeff Law  <law@redhat.com>
+
+	* gcc.c-torture/execute/20030120-3.c: New test.
+
+2003-02-08  Diego Novillo  <dnovillo@redhat.com>
+
+	* lib/c-torture.exp: Remove -ftree-dce from compiler flags.
+
+2003-02-06  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/compile/20001226-1.c: Remove deliberate syntax
+	error.
+
+2003-02-02  Diego Novillo  <dnovillo@redhat.com>
+
+	* lib/c-torture.exp (TORTURE_OPTIONS): Add -ftree-dce.
+
+2003-01-28  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/execute/builtin-constant.x: Remove.
+
+2003-01-05  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/compile/20001226-1.c: Add clarifying
+	remarks about why we introduced a deliberate syntax
+	error.
+
+2002-11-24  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/compile/20001226-1.c: Introduce a
+	deliberate syntax error.
+
+2002-11-13  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/execute/20021113-1.c: New test.
+
+2002-08-19  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/execute/20020819-1.c: New test. 
+
+2002-08-21  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.c-torture/execute/20020819-1.c: Add exit(0).
