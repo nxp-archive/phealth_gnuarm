@@ -1,0 +1,628 @@
+; Options for the language- and target-independent parts of the compiler.
+; Copyright (C) 2003 Free Software Foundation, Inc.
+;
+; This file is part of GCC.
+;
+; GCC is free software; you can redistribute it and/or modify it under
+; the terms of the GNU General Public License as published by the Free
+; Software Foundation; either version 2, or (at your option) any later
+; version.
+; 
+; GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+; WARRANTY; without even the implied warranty of MERCHANTABILITY or
+; FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+; for more details.
+; 
+; You should have received a copy of the GNU General Public License
+; along with GCC; see the file COPYING.  If not, write to the Free
+; Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+; 02111-1307, USA.
+
+; See c.opt for a description of this file's format.
+
+; Please try to keep this file in ASCII collating order.
+
+-help
+Common
+Display this information
+
+-param
+Common Separate
+
+-target-help
+Common
+
+-version
+Common
+
+G
+Common Joined Separate UInteger
+-G<number>	Put global and static data smaller than <number> bytes into a special section (on some targets)
+
+O
+Common JoinedOrMissing
+-O<number>	Set optimization level to <number>
+
+Os
+Common
+Optimize for space rather than speed
+
+W
+Common RejectNegative
+This switch is deprecated; use -Wextra instead
+
+Waggregate-return
+Common
+Warn about returning structures, unions or arrays
+
+Wcast-align
+Common
+Warn about pointer casts which increase alignment
+
+Wdeprecated-declarations
+Common
+Warn about uses of __attribute__((deprecated)) declarations
+
+Wdisabled-optimization
+Common
+Warn when an optimization pass is disabled
+
+Werror
+Common
+Treat all warnings as errors
+
+Wextra
+Common
+Print extra (possibly unwanted) warnings
+
+Winline
+Common
+Warn when an inlined function cannot be inlined
+
+Wlarger-than-
+Common RejectNegative Joined UInteger
+-Wlarger-than-<number>	Warn if an object is larger than <number> bytes
+
+Wmissing-noreturn
+Common
+Warn about functions which might be candidates for __attribute__((noreturn))
+
+Wpacked
+Common
+Warn when the packed attribute has no effect on struct layout
+
+Wpadded
+Common
+Warn when padding is required to align structure members
+
+Wshadow
+Common
+Warn when one local variable shadows another
+
+Wstrict-aliasing
+Common
+Warn about code which might break strict aliasing rules
+
+Wswitch
+Common
+Warn about enumerated switches, with no default, missing a case
+
+Wswitch-default
+Common
+Warn about enumerated switches missing a \"default:\" statement
+
+Wswitch-enum
+Common
+Warn about all enumerated switches missing a specific case
+
+Wsystem-headers
+Common
+Suppress warnings from system headers
+
+Wuninitialized
+Common
+Warn about uninitialized automatic variables
+
+Wunreachable-code
+Common
+Warn about code that will never be executed
+
+Wunused
+Common
+Enable all -Wunused- warnings
+
+Wunused-function
+Common
+Warn when a function is unused
+
+Wunused-label
+Common
+Warn when a label is unused
+
+Wunused-parameter
+Common
+Warn when a function parameter is unused
+
+Wunused-value
+Common
+Warn when an expression value is unused
+
+Wunused-variable
+Common
+Warn when a variable is unused
+
+aux-info
+Common Separate
+-aux-info <file>	Emit declaration information into <file>
+
+aux-info=
+Common Joined
+
+auxbase
+Common Separate
+
+auxbase-strip
+Common Separate
+
+d
+Common Joined
+-d<letters>	Enable dumps from specific passes of the compiler
+
+dumpbase
+Common Separate
+-dumpbase <file>	Set the file basename to be used for dumps
+
+fPIC
+Common
+
+fPIE
+Common
+
+falign-functions
+Common
+
+falign-functions=
+Common RejectNegative Joined UInteger
+
+falign-jumps
+Common
+
+falign-jumps=
+Common RejectNegative Joined UInteger
+
+falign-labels
+Common
+
+falign-labels=
+Common RejectNegative Joined UInteger
+
+falign-loops
+Common
+
+falign-loops=
+Common RejectNegative Joined UInteger
+
+fargument-alias
+Common
+
+fargument-noalias
+Common
+
+fargument-noalias-global
+Common
+
+fasynchronous-unwind-tables
+Common
+
+fbounds-check
+Common
+
+fbranch-count-reg
+Common
+
+fbranch-probabilities
+Common
+
+fbranch-target-load-optimize
+Common
+
+fbranch-target-load-optimize2
+Common
+
+fcall-saved-
+Common Joined RejectNegative
+-fcall-saved-<register>	Mark <register> as being preserved across functions
+
+fcall-used-
+Common Joined RejectNegative
+-fcall-used-<register>	Mark <register> as being corrupted by function calls
+
+fcaller-saves
+Common
+
+fcommon
+Common
+
+fcprop-registers
+Common
+
+fcrossjumping
+Common
+
+fcse-follow-jumps
+Common
+
+fcse-skip-blocks
+Common
+
+fdata-sections
+Common
+
+fdefer-pop
+Common
+
+fdelayed-branch
+Common
+
+fdelete-null-pointer-checks
+Common
+
+fdiagnostics-show-location=
+Common Joined RejectNegative
+-fdiagnostics-show-location=[once|every-line]	How often to emit source location at the beginning of line-wrapped diagnostics
+
+fdump-unnumbered
+Common
+
+feliminate-dwarf2-dups
+Common
+
+feliminate-unused-debug-symbols
+Common
+
+feliminate-unused-debug-types
+Common
+
+fexceptions
+Common
+
+fexpensive-optimizations
+Common
+
+ffast-math
+Common
+
+ffinite-math-only
+Common
+
+ffixed-
+Common Joined RejectNegative
+-ffixed-<register>	Mark <register> as being unavailable to the compiler
+
+ffloat-store
+Common
+
+fforce-addr
+Common
+
+fforce-mem
+Common
+
+ffunction-cse
+Common
+
+ffunction-sections
+Common
+
+fgcse
+Common
+
+fgcse-lm
+Common
+
+fgcse-sm
+Common
+
+fgnu-linker
+Common
+
+fguess-branch-probability
+Common
+
+fident
+Common
+
+fif-conversion
+Common
+
+fif-conversion2
+Common
+
+finhibit-size-directive
+Common
+
+finline
+Common
+
+finline-functions
+Common
+
+finline-limit-
+Common RejectNegative Joined UInteger
+
+finline-limit=
+Common RejectNegative Joined UInteger
+-finline-limit=<number>	Limit the size of inlined functions to <number>
+
+finstrument-functions
+Common
+
+fkeep-inline-functions
+Common
+
+fkeep-static-consts
+Common
+
+fleading-underscore
+Common
+
+floop-optimize
+Common
+
+fmath-errno
+Common
+
+fmem-report
+Common
+
+fmerge-all-constants
+Common
+
+fmerge-constants
+Common
+
+fmessage-length=
+Common RejectNegative Joined UInteger
+-fmessage-length=<number>	Limit diagnostics to <number> characters per line.  0 suppresses line-wrapping
+
+fmove-all-movables
+Common
+
+fnew-ra
+Common
+
+fnon-call-exceptions
+Common
+
+fold-unroll-loops
+Common
+
+fold-unroll-all-loops
+Common
+
+fomit-frame-pointer
+Common
+
+foptimize-register-move
+Common
+
+foptimize-sibling-calls
+Common
+
+fpack-struct
+Common
+
+fpcc-struct-return
+Common
+
+fpeel-loops
+Common
+
+fpeephole
+Common
+
+fpeephole2
+Common
+
+fpic
+Common
+
+fpie
+Common
+
+fprefetch-loop-arrays
+Common
+
+fprofile
+Common
+
+fprofile-arcs
+Common
+
+frandom-seed
+Common
+
+frandom-seed=
+Common Joined RejectNegative
+-frandom-seed=<string>	Make compile reproducible using <string>
+
+freduce-all-givs
+Common
+
+freg-struct-return
+Common
+
+fregmove
+Common
+
+frename-registers
+Common
+
+freorder-blocks
+Common
+
+freorder-functions
+Common
+
+frerun-cse-after-loop
+Common
+
+frerun-loop-opt
+Common
+
+fsched-interblock
+Common
+
+fsched-spec
+Common
+
+fsched-spec-load
+Common
+
+fsched-spec-load-dangerous
+Common
+
+fsched-verbose=
+Common RejectNegative Joined
+-fsched-verbose=<number>	Set the verbosity level of the scheduler
+
+fsched2-use-superblocks
+Common
+
+fsched2-use-traces
+Common
+
+fschedule-insns
+Common
+
+fschedule-insns2
+Common
+
+fshared-data
+Common
+
+fsignaling-nans
+Common
+
+fsingle-precision-constant
+Common
+
+fssa
+Common
+
+fssa-ccp
+Common
+
+fssa-dce
+Common
+
+fstack-check
+Common
+
+fstack-limit
+Common
+
+fstack-limit-register=
+Common RejectNegative Joined
+-fstack-limit-register=<register>	Trap if the stack goes past <register>
+
+fstack-limit-symbol=
+Common RejectNegative Joined
+-fstack-limit-symbol=<name>	Trap if the stack goes past symbol <name>
+
+fstrength-reduce
+Common
+
+fstrict-aliasing
+Common
+
+fsyntax-only
+Common
+
+ftest-coverage
+Common
+
+fthread-jumps
+Common
+
+ftime-report
+Common
+
+ftls-model=
+Common Joined RejectNegative
+-ftls-model=[global-dynamic|local-dynamic|initial-exec|local-exec]	Set the default thread-local storage code generation model
+
+ftracer
+Common
+
+ftrapping-math
+Common
+
+ftrapv
+Common
+
+funit-at-a-time
+Common
+
+funroll-loops
+Common
+
+funroll-all-loops
+Common
+
+funsafe-math-optimizations
+Common
+
+funswitch-loops
+Common
+
+funwind-tables
+Common
+
+fverbose-asm
+Common
+
+fwrapv
+Common
+
+fwritable-strings
+Common
+
+fzero-initialized-in-bss
+Common
+
+g
+Common JoinedOrMissing
+
+m
+Common Joined
+
+o
+Common Joined Separate
+-o <file>	Place output into <file>
+
+p
+Common
+Enable function profiling
+
+pedantic
+Common
+Issue warnings needed for strict compliance to the standard
+
+pedantic-errors
+Common
+Like -pedantic but issue them as errors
+
+quiet
+Common
+Do not display functions compiled or elapsed time
+
+version
+Common
+Display the compiler's version
+
+w
+Common
+Suppress warnings
+
+; This comment is to ensure we retain the blank line above.
