@@ -1,0 +1,82 @@
+2002-02-01
+
+Release Notes   
+-------------
+The Standard C++ Library, or libstdc++-v3, is an ongoing project
+to fully implement the ISO 14882 Standard C++ library as described in
+chapters 17 through 27 and annex D.
+
+This is the thirteenth snapshot of the libstdc++ rewrite.  It is still
+has some incomplet and incorrekt parts, but it's a lot less incomplete
+and incorrect than some of the earlier snapshots, and quite usable.
+
+The Standard C++ Library, follows an open development model,
+attempting to be fully buzzword, bazaar, and GNU compliant. Full
+details on participating, including contributor guidelines, mailing
+list subscription, mailing list archives, up-to-date documentation,
+and various and sundry other details can be found at the following
+URL:
+
+  http://gcc.gnu.org/libstdc++/
+
+
+New: 
+--- 
+- more doxygen documentation.
+- extensions moved out of namespace std
+- HPUX long long support
+- more string optimizations
+- support for NetBSD cross compiles
+- concept_check merge from boost
+- header simplification
+- named locale bug shakeout
+- thread testsuite
+
+
+Bugs fixed:
+-----------
+5148, 3829, 2054, 5174, 2913, 4879, 3150, 5331, 5280, 5198, 5432
+- fix Darwin build issue with '~' in prefix
++ others.
+
+
+What doesn't:
+-------------
+- see BUGS.
+
+ 
+Build and Install
+-----------------
+Up to date build and install directions can be found at:
+http://gcc.gnu.org/libstdc++/install.html
+
+
+Contact:
+--------
+Places have changed from previous snapshots.  The web page, which has
+information about joining the mailing list and searching its archives,
+CVS access, and contribution information is now at:
+
+  http://gcc.gnu.org/libstdc++/
+
+Please note that the mailing list has moved, and is now hosted on
+gcc.gnu.org. (The web site above has the most up-to-date info.)
+   
+Obtain the library snapshot via ftp (including these release notes) from
+
+  ftp://gcc.gnu.org/pub/libstdc++/
+
+The library is maintained by Benjamin Kosnik, Gabriel
+Dos Reis, Phil Edwards, and Ulrich Drepper.  
+
+
+Development tools:
+------------------
+
+You will need a recent version of gcc to compile the snapshot of
+libstdc++. The use of CVS gcc, or gcc-3_0-branch is strongly
+recommended, which may introduce additional dependencies for
+up-to-date binutils. In addition, you may need up-to-date tools for
+modifying Makefiles and regenerating configure scripts: automake
+(version 1.4), autoconf (version 2.13 and higher), and libtool.
+
