@@ -1,0 +1,207 @@
+2004-01-14  Jan Hubicka  <jh@suse.cz>
+
+	Partial fix to PR c++/12850
+	* decl2.c (mark_used): Do not proactively instantiate templates
+	when compiling in unit-at-a-time or not optimizing.
+	* optimize.c (maybe_clone_body): Do not increase function depth.
+
+2004-01-13  Giovanni Bajo  <giovannibajo@gcc.gnu.org>
+
+	PR c++/13474
+	* pt.c (tsubst) <INTEGER_TYPE>: Remove obsolete array index tweaking.
+
+2003-01-12  Steven Bosscher  <stevenb@suse.de>
+
+	PR c++/13558
+	* parser.c (cp_parser_member_declaration): Any non-type is also
+	not a class or a function.
+
+2004-01-12  Jason Merrill  <jason@redhat.com>
+
+	PR c++/12815
+	* class.c (build_base_path): Do not mark vtable references as
+	TREE_CONSTANT.
+	(build_vtbl_ref_1): Likewise.
+
+2004-01-12  Richard Henderson  <rth@redhat.com>
+
+	PR opt/10776
+	* typeck2.c (split_nonconstant_init_1, split_nonconstant_init): New.
+	(store_init_value): Use it.
+	* decl.c (check_initializer): Expect full initialization code
+	from store_init_value.
+	* init.c (expand_aggr_init_1): Likewise.
+	* decl2.c (maybe_emit_vtables): Abort if runtime init needed.
+
+2004-01-12  Mark Mitchell  <mark@codesourcery.com>
+
+	* class.c (layout_class_type): For non-POD class types, also copy
+	the DECL_SIZE and DECL_MODE of fields to the base class type.
+
+2004-01-12  Kriang Lerdsuwanakij  <lerdsuwa@users.sourceforge.net>
+
+	PR c++/13289
+	* pt.c (instantiate_decl): Set DECL_TEMPLATE_INSTANTIATED before
+	calling regenerate_decl_from_template.
+
+2004-01-12  Scott Brumbaugh  <scottb.lists@verizon.net>
+
+	PR c++/4100
+	* parser.c (cp_parser_decl_specifier_seq): Add check for a friend
+	decl-specifier occurring along with a class definition.
+
+2004-01-12  Ian Lance Taylor  <ian@wasabisystems.com>
+
+	* parser.c (cp_parser_decl_specifier_seq): Add parenthetical
+	clauses to comments describing declares_class_or_enum.
+	(cp_parser_type_specifier): Set *declares_class_or_enum to 0, not
+	false.
+
+2004-01-12  Jan Hubicka  <jh@suse.cz>
+
+	* pt.c (for_each_template_parm): Do not check for duplicates.
+	(for_each_template_parm): Use walk_tree duplicate checking code.
+
+2004-01-11  Ian Lance Taylor  <ian@wasabisystems.com>
+
+	PR c++/3478
+	* parser.c (cp_parser_decl_specifier_seq): If the first decl_spec
+	is error_mark_node, don't add any more decl_specs.
+	(cp_parser_init_declarator): After committing to a declaration, if
+	the decl_specifiers start with error_mark_node, issue an error and
+	change the type to "int".
+
+2004-01-09  Nathanael Nerode  <neroden@gcc.gnu.org>
+
+	PR bootstrap/7817
+	* Make-lang.in: Copy gcc.1 to g++.1 rather than using .so.
+
+2004-01-10  Giovanni Bajo  <giovannibajo@gcc.gnu.org>
+
+	DR 337
+	PR c++/9256
+	* pt.c (tsubst): Substitution must fail if we are attempting to 
+	create an array with element type that is an abstract class type.
+	* decl.c (cp_finish_decl): Strip pointers and array types recursively
+	before calling abstract_virtuals_error.
+
+2004-01-09  Alexandre Oliva  <aoliva@redhat.com>
+
+	* name-lookup.c (qualified_lookup_using_namespace): Consider
+	strong using directives even if we've already found a binding.
+
+2004-01-09  Mark Mitchell  <mark@codesourcery.com>
+
+	* cp-tree.h (cxx_expand_expr): Change prototype.
+	* expr.c (cxx_expand_expr): Add alt_rtl parameter.
+
+2004-01-08  Giovanni Bajo  <giovannibajo@gcc.gnu.org>
+
+	PR c++/12573
+	* pt.c (value_dependent_expression_p): Handle COMPONENT_REFs by
+	looking into them recursively. They can be there because of the
+	new __offsetof__ extension.
+
+2004-01-07  Zack Weinberg  <zack@codesourcery.com>
+
+	* parser.c (cp_parser_save_member_function_body): Mark the
+	definition static.
+
+2004-01-05  Mark Mitchell  <mark@codesourcery.com>
+
+	PR c++/13057
+	* class.c (build_clone): Copy type attributes from the original
+	function to the clone.
+
+	PR c++/12815
+	* class.c (build_vtbl_ref_1): Do not unconditionally mark vtable
+	references as constant.
+
+	PR c++/12132
+	* parser.c (cp_parser_explicit_instantiation): Improve error
+	recovery.
+	(cp_parser_require): Improve indication of the error location.
+
+	PR c++/13451
+	* parser.c (cp_parser_class_head): Reorder logic to check for
+	invalid qualification.
+
+2004-01-04  Mark Mitchell  <mark@codesourcery.com>
+
+	PR c++/13157
+	* name-lookup.c (lookup_using_namespace): Remove spacesp
+	parameter.
+	(unqualified_namespace_lookup): Likewise.
+	(lookup_qualified_name): Adjust accordingly.
+	(lookup_name_real): Likewise.
+	(lookup_arg_dependent): Do not eliminate the namespace of the
+	functions found by unqualified name lookup unless that is the
+	current namespace.
+
+2004-01-04  Andrew Pinski  <pinskia@physics.uc.edu>
+
+	* semantics.c (push_deferring_access_checks): Fix format.
+	(resume_deferring_access_checks): Likewise.
+	(stop_deferring_access_checks): Likewise.
+	(pop_deferring_access_checks): Likewise.
+	(get_deferred_access_checks): Likewise.
+	(pop_to_parent_deferring_access_checks): Likewise.
+	(perform_deferred_access_checks): Likewise.
+	(perform_or_defer_access_check): Likewise.
+
+2004-01-04  Richard Henderson  <rth@redhat.com>
+
+	* call.c (build_over_call): Don't create a save_expr of an
+	aggregate, but rather its address.
+
+2004-01-04  Mark Mitchell  <mark@codesourcery.com>
+
+	PR c++/13529
+	* parser.c (cp_parser_postfix_expression): Allow "." to appear in
+	an offsetof expression.
+
+	* parser.c (cp_parser_parameter_declaration): Fix comment.
+
+	PR c++/12226
+	* call.c (CHECK_COPY_CONSTRUCTOR_P): New macro.
+	(reference_binding): Set it when appropriate.
+	(build_temp): New function, split out from ...
+	(convert_like_real): ... here.  Honor CHECK_COPY_CONSTRUCTOR_P.
+	(initialize_reference): Likewise.
+
+	PR c++/13536
+	* parser.c (cp_parser): Add in_type_id_in_expr_p.
+	(cp_parser_new): Initialize it.
+	(cp_parser_postfix_expression): Set it.
+	(cp_parser_sizeof_operand): Likewise.
+	(cp_parser_parameteR_declaration): Do not commit early to tenative
+	parsers when in_type_id_in_expr_p is set.
+
+2004-01-03  Kriang Lerdsuwanakij  <lerdsuwa@users.sourceforge.net>
+
+	PR c++/13094
+	* parser.c (cp_parser_template_argument): Don't call
+	make_unbound_class_template directly.
+	(cp_parser_lookup_name): Don't extract TEMPLATE_DECL from
+	UNBOUND_CLASS_TEMPLATE tree node.
+
+2004-01-02  Richard Sandiford  <rsandifo@redhat.com>
+
+	PR target/12729
+	* method.c (use_thunk): Pass the CALL_EXPR through force_target_expr.
+
+2004-01-02  Kriang Lerdsuwanakij  <lerdsuwa@users.sourceforge.net>
+
+	PR c++/13520
+	* cp-tree.h (DECL_UNBOUND_CLASS_TEMPLATE_P): New macro.
+	(DECL_FUNCTION_TEMPLATE_P): Use it.
+	(DECL_CLASS_TEMPLATE_P): Likewise.
+	* parser.c (cp_parser_lookup_name): Add is_template parameter.
+	(cp_parser_type_parameter): Adjust call to cp_parser_lookup_name.
+	(cp_parser_template_name): Likewise.
+	(cp_parser_elaborated_type_specifier): Likewise.
+	(cp_parser_namespace_name): Likewise.
+	(cp_parser_class_name): Likewise.
+	(cp_parser_lookup_name_simple): Likewise.
+
+See ChangeLog.3 for earlier changes.
