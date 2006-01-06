@@ -1,0 +1,291 @@
+2006-01-05  Richard Henderson  <rth@redhat.com>
+
+	* c-parser.c (c_parser_objc_methodprotolist): Handle CPP_PRAGMA.
+
+2006-01-05  Carlos O'Donell  <carlos@codesourcery.com>
+
+	* c-typeck.c: Update copyright date.
+
+2006-01-05  Carlos O'Donell  <carlos@codesourcery.com>
+
+	* c-typeck.c (build_c_cast): Always warn when casting
+	from a pointer to an integer of different size, even if
+	the node was constant.
+
+2006-01-05  Richard Guenther  <rguenther@suse.de>
+
+	PR tree-optimization/22555
+	* tree-ssa-alias.c (create_overlap_variables_for): Do not give up,
+	if one structure field is an array.
+	* tree-ssa-operands.c (get_expr_operands): Continue scanning
+	operands even if we found a subvar, but ignore VOPs in this
+	case.
+	* tree-ssa-loop-ivopts.c (rewrite_use): Mark new vars in stmt
+	for renaming.
+	* tree-ssa-loop.c (pass_iv_optimize): Schedule TODO_update_ssa.
+
+2006-01-05  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR middle-end/24998
+	* arm/t-netbsd (LIB2FUNCS_EXTRA): Define.
+
+2006-01-05  Richard Guenther  <rguenther@suse.de>
+	    Diego Novillo  <dnovillo@redhat.com>
+
+	* tree-pass.h (TODO_remove_unused_locals): Define.
+	* gimple-low.c (expand_var_p, remove_useless_vars,
+	pass_remove_useless_vars): Remove.  Update all users.
+	* tree-ssa-live.c (mark_all_vars_used_1): Handle SSA names.
+	(remove_unused_locals): New function.
+	* tree-flow.h (remove_unused_locals): Declare.
+	* passes.c (execute_todo): Call remove_unused_locals if
+	TODO_remove_unused_locals is set.
+	* tree-into-ssa.c (pass_build_ssa): Add TODO_remove_unused_locals.
+	* tree-ssa-dce.c (pass_dce): Likewise.
+	* tree-outof-ssa.c (pass_del_ssa): Likewise.
+
+2006-01-05  Richard Guenther  <rguenther@suse.de>
+
+	* tree-flow.h (struct fieldoff): Decompose field to
+	type, size and decl.
+	* tree-ssa-alias.c (create_sft): Take type as parameter.
+	(create_overlap_variables_for): Store type, size and decl
+	in the fieldoff structure.
+	* tree-ssa-structalias.c (fieldoff_compare): Adjust users
+	of struct fieldoff.
+	(push_fields_onto_fieldstack): Likewise.
+	(create_variable_info_for): Likewise.  Use offset for the
+	SFT name if the decl is not available.
+
+2006-01-04  Paul Brook  <paul@codesourcery.com>
+
+	* config/m68k/m68k.c (m68k_output_mi_thunk): Use jmp, not jsr.
+
+2006-01-04  Daniel Berlin  <dberlin@dberlin.org>
+
+	* lambda-code.c (can_put_in_inner_loop): Relax
+	restrictions.
+	(can_put_after_inner_loop): New function.
+	(can_convert_to_perfect_nest): Use can_put_after_inner_loop as well.
+	(perfect_nestify): Change to make copies and modify uses.
+
+2006-01-04  Richard Henderson  <rth@redhat.com>
+
+	Merge from gomp branch:
+	* c-lex.c (c_lex_with_flags) <CPP_PRAGMA>: Smuggle pragma id
+	via integer constant.
+	(pragma_lex): Remove.
+	* c-pch.c (c_common_pch_pragma): Accept the name as an argument,
+	rather than parsing it.
+	* c-pragma.c (handle_pragma_weak, handle_pragma_redefine_extname,
+	handle_pragma_extern_prefix): Add %< %> quotes.
+	(registered_pragmas): New.
+	(c_register_pragma_1): New.
+	(c_register_pragma): Use it.
+	(c_register_pragma_with_expansion): Likewise.
+	(c_invoke_pragma_handler): New.
+	(init_pragma): Use cpp_register_deferred_pragma directly for
+	pch_preprocess.
+	* c-pragma.h (enum pragma_kind): New.
+	(pragma_handler): New.
+	(c_invoke_pragma_handler): Declare.
+	* c-common.c (c_parse_error): Pretty print CPP_PRAGMA and
+	CPP_PRAGMA_EOL.
+	* c-common.h (c_common_pch_pragma): Update decl.
+	* Makefile.in (c-parser.o): Update dependencies.
+	(GTFILES): Add c-pragma.h.
+	* c-parser.c (struct c_token): Add pragma_kind.
+	(struct c_parser): Add in_pragma.
+	(c_lex_one_token): Always initialize keyword and pragma_kind.
+	Extract data for CPP_PRAGMA.
+	(c_parser_peek_2nd_token): Deny CPP_PRAGMA_EOL.
+	(c_parser_consume_token): Don't allow CPP_PRAGMA unless errors.
+	Don't allow CPP_PRAGMA_EOL if in_pragma.
+	(c_parser_consume_pragma): New.
+	(c_parser_skip_until_found): Stop on CPP_PRAGMA_EOL.
+	(c_parser_skip_to_end_of_parameter): Likewise.
+	(c_parser_skip_to_end_of_block_or_statement): Likewise.
+	(c_parser_skip_to_pragma_eol): New.
+	(c_parser_external_declaration): Handle CPP_PRAGMA.
+	(c_parser_compound_statement_nostart): Likewise.
+	(c_parser_statement_after_labels): Likewise.
+	(c_parser_pragma): New.
+	(pragma_lex): Likewise.
+	(c_parser_pragma_pch_preprocess): New.
+	(c_parser_new): Merge into ...
+	(c_parse_file): ... here.  Call c_parser_pragma_pch_preprocess.
+
+2005-01-04  Jeff Law  <law@redhat.com>
+
+	PR ada/24994
+	* tree-cfg.c (bsi_replace): Remove the original statement
+	from the EH throw statement table.
+
+2006-01-04  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/i386/pmm_malloc.h (posix_memalign): If __cplusplus,
+	make the prototype extern "C" and add throw ().
+
+	PR target/25554
+	* config/i386/i386.md (testqi_ext_3): Ensure len is positive
+	and pos non-negative and pos + len <= 32.
+	(testqi_ext_3_rex64): Ensure len is positive and pos non-negative,
+	drop pos + len < HOST_BITS_PER_WIDE_INT test.
+	(testqi_ext_3* splitter): Handle pos + len == HOST_BITS_PER_WIDE_INT.
+
+	PR c/25559
+	* c-common.c (handle_vector_size_attribute): Reject zero vector size
+	as well as sizes not multiple of component size.
+
+	PR debug/25562
+	* function.c (instantiate_expr): New function.
+	(instantiate_decls_1, instantiate_decls): If DECL_HAS_VALUE_EXPR_P,
+	walk its DECL_VALUE_EXPR with instantiate_expr.
+
+	* dwarf2out.c (loc_descriptor_from_tree_1): Don't add
+	DW_OP_deref{,_size} if address isn't going to be added.
+
+2006-01-04  Ben Elliston  <bje@au.ibm.com>
+
+	* config/fp-bit.h: Use top-of-file comment from libgcc2.c.
+	* config/fp-bit.c: Likewise.
+
+2006-01-03  Daniel Berlin  <dberlin@dberlin.org>
+
+	* dominance.c: Add comment about why we use DFS numbering
+	of dominance tree.
+
+2006-01-03  Jakub Jelinek  <jakub@redhat.com>
+	    Richard Henderson  <rth@redhat.com>
+
+	Merge from gomp-branch:
+        * varasm.c (assemble_variable): Handle thread-local COMMON data.
+        * defaults.h (ASM_OUTPUT_TLS_COMMON): Define.
+
+2006-01-03  Paolo Bonzini  <bonzini@gnu.org>
+
+	PR rtl-optimization/25578
+	* combine.c (combine_simplify_rtx, force_to_mode): Don't
+	pass a parameter to simplify_shift_const if changing ASHIFTRT
+	to LSHIFTRT.
+
+2006-01-03  Adrian Straetling  <straetling@de.ibm.com>
+
+	* gcc/builtins.c (get_builtin_sync_mem): New function.
+	(expand_builtin_sync_operation, expand_builtin_compare_and_swap,
+	expand_builtin_lock_test_and_set, expand_builtin_lock_release):
+	Call get_builtin_sync_mem to generate mem rtx.
+
+2006-01-03  Richard Guenther  <rguenther@suse.de>
+
+	PR c/25183
+	* stmt.c (add_case_node): Make sure to clear overflow flags
+	from ranges.
+
+2006-01-03  Jakub Jelinek  <jakub@redhat.com>
+
+	Merge from gomp-branch.
+	* config/sparc/sync.md: New file.
+	* config/sparc/sparc.md (UNSPECV_MEMBAR, UNSPECV_CAS, UNSPECV_SWAP,
+	UNSPECV_LDSTUB): New constants.
+	* config/sparc/sparc.c (sparc_expand_compare_and_swap_12): New function.
+	* config/sparc/predicates.md (memory_reg_operand): New predicate.
+	* config/sparc/sparc-protos.h (sparc_expand_compare_and_swap_12): New
+	prototype.
+
+2006-01-03  Roger Sayle  <roger@eyesopen.com>
+
+	* combine.c (reg_subword_p): New predicate to test whether the
+	destination of a set refers to a subword/piece of a register.
+	(try_combine): Generalize the code to merge the setting of a
+	pseudo to a constant followed by a set of a subword of that
+	register to a constant.
+
+2006-01-03  Kazu Hirata  <kazu@codesourcery.com>
+
+	* basic-block.h (control_flow_graph): Change the type of
+	x_label_to_block_map to VEC(basic_block,gc) *.
+	* tree-cfg.c (init_empty_tree_cfg, label_to_block_fn,
+	set_bb_for_stmt): Adjust the uses of x_label_to_block_map.
+
+	* tree-ssa-propagate.c (cfg_blocks): Change the type to
+	VEC(basic_block,heap) *.
+	(cfg_blocks_add, cfg_blocks_get, ssa_prop_init,
+	ssa_prop_fini): Adjust the uses of cfg_blocks.
+
+2006-01-03  Steven Bosscher  <stevenb.gcc@gmail.com>
+
+	* fold-const.c (operand_equal_p): Accept a NULL operand 0 for
+	COMPONENT_REFs.
+	* emit-rtl.c (mem_attrs_htab_eq): Use iterative_hash_expr for
+	hashing trees instead of a pointer hash.
+	(mem_attrs_htab_eq): Do a deep compare instead of a pointer
+	compare for MEM_EXPR.
+
+	PR rtl-optimization/25130
+	* cse.c (exp_equiv_p): Compare MEM_ATTRS instead of MEM_ALIAS_SET
+	when comparing MEMs for GCSE
+
+2006-01-03  Ben Elliston  <bje@au.ibm.com>
+
+	* targhooks.h (default_decimal_float_supported_p): Declare.
+	* targhooks.c (default_decimal_float_supported_p): Define.
+	* target-def.h (TARGET_DECIMAL_FLOAT_SUPPORTED_P): Redefine to
+	`default_decimal_float_supported_p'.
+	* doc/tm.texi (TARGET_DECIMAL_FLOAT_SUPPORTED_P): Update.
+
+2006-01-02  Adam Nemet  <anemet@caviumnetworks.com>
+
+	* combine.c (apply_distributive_law <SUBREG>): Check
+	TRULY_NOOP_TRUNCATION.
+
+2006-01-02  Geoffrey Keating  <geoffk@apple.com>
+
+	* dwarf2out.c (have_switched_text_section): Delete.
+	(have_multiple_function_sections): New.
+	(have_location_lists): Make 'bool'.
+	(add_AT_loc_list): Use 'true' not '1'.
+	(dwarf2out_switch_text_section): Set have_multiple_function_sections.
+	(output_loc_list): Use have_multiple_function_sections.
+	(output_ranges): Likewise.
+	(dwarf2out_begin_function): Set have_multiple_function_sections if
+	necessary.
+	(dwarf2out_source_line): Don't fake separate_line_info_table_in_use.
+	Check function_section rather than DECL_SECTION_NAME.
+	(dwarf2out_finish): Use have_multiple_function_sections.
+	Don't clear have_location_lists.
+
+2006-01-02  Eric Botcazou  <ebotcazou@adacore.com>
+            Jan Hubicka  <jh@suse.cz>
+
+	* cfglayout.c (fixup_reorder_chain): Remove kludge for the
+	case of conditional jump jumping to the next instruction.
+	* cfgrtl.c (force_nonfallthru_and_redirect): Accept all
+	cases of conditional jump jumping to the next instruction.
+
+2006-01-02  Jan Hubicka  <jh@suse.cz>
+
+	* i386.c (*_cost): Add COSTS_N_INSNS.
+	(ix86_rtx_costs): Do not use COSTS_N_INSNS.
+
+2006-01-02  Paolo Bonzini  <bonzini@gnu.org>
+
+        PR target/25259
+        * Makefile.in (DECNUMINC): Include libdecnumber's build directory.
+
+2006-01-02  Volker Reichelt  <reichelt@igpm.rwth-aachen.de>
+
+	* config/arm/arm.c (all_fpus): Fix comment typo.
+	* config/darwin.c: Likewise.
+	* config/frv/frv.h (FRV_STRUCT_VALUE_REGNUM): Likewise.
+	* config/h8300/h8300.md (extendqisi2_h8300hs): Likewise.
+	* config/m68hc11/m68hc11.c (m68hc11_reload_operands): Likewise.
+
+2006-01-01  David Edelsohn  <edelsohn@gnu.org>
+
+	* config/rs6000/rs6000.c (rs6000_expand_compare_and_swapqhi): New.
+	(rs6000_split_compare_and_swapqhi): New.
+	* config/rs6000/sync.md (sync_compare_and_swap{hi,qi}): New.
+	(sync_compare_and_swapqhi_internal): New.
+	* config/rs6000/rs6000-protos.h: Declare.
+
