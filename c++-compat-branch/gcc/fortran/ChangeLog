@@ -1,0 +1,44 @@
+2006-01-05  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
+
+	PR libgfortran/25598
+	* io/file_pos.c (unformatted_backspace): Assure the new file position
+	to seek is not less than zero.
+	(st_backspace): Set unit bytes_left to zero.
+	* io/transfer.c (next_record_r): Fix line lengths, no functional change.
+
+2006-01-05  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
+
+	PR fortran/24268
+	* io.c (next_char_not_space): New function that returns the next
+	character that is not white space.
+	(format_lex): Use the new function to skip whitespace within
+	a format string.
+
+2006-01-05  Erik Edelmann  <eedelman@gcc.gnu.org>
+
+	PR fortran/23675
+	* expr.c (gfc_expr_set_symbols_referenced): New function.
+	* gfortran.h: Add a function prototype for it.
+	* resolve.c (resolve_function): Use it for
+	use associated character functions lengths.
+	* expr.c, gfortran.h, resolve.c: Updated copyright years.
+
+2006-01-03  Steven G. Kargl  <kargls@comcast.net>
+
+	PR fortran/25101
+	* resolve.c (resolve_forall_iterators):  Check for scalar variables;
+	Check stride is nonzero.
+
+2006-01-02  Steven G. Kargl  <kargls@comcast.net>
+
+	PR fortran/24640
+	* parse.c (next_free): Check for whitespace after the label.
+	* match.c (gfc_match_small_literal_int): Initialize cnt variable.
+
+2006-01-01  Steven G. Kargl  <kargls@comcast.net>
+
+	* ChangeLog: Split previous years into ...
+	* ChangeLog-2002: here.
+	* ChangeLog-2003: here.
+	* ChangeLog-2004: here.
+	* ChangeLog-2005: here.
