@@ -1,0 +1,31 @@
+2006-10-18  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.dg/tree-ssa/pr28410.c: Remove --param global-var-threshold.
+
+2006-07-06  Diego Novillo  <dnovillo@redhat.com>
+
+	* gcc.dg/tree-ssa/pr23382.c: Update for mem-ssa
+	patterns.
+	* gcc.dg/tree-ssa/20040302-1.c: Remove use of --param 
+	global-var-threshold.
+
+2006-05-22  Aldy Hernandez  <aldyh@redhat.com>
+
+	* gcc.dg/tree-ssa/complex-5.c: New.
+	* gcc.dg/tree-ssa/ssa-dse-9.c: New.
+
+2006-03-17  Aldy Hernandez  <aldyh@redhat.com>
+
+	* gcc.dg/tree-ssa/20040517-1.c: Expect 2 V_MAY_DEFs.
+
+	* gcc.dg/tree-ssa/pr26421.c: Same.
+
+2006-03-28  Aldy Hernandez  <aldyh@redhat.com>
+
+	* gcc.dg/tree-ssa/20040517-1.c: Rename V_MAY_DEF to VDEF.
+	* gcc.dg/tree-ssa/pr26421.c: Same.
+	* gcc.dg/tree-ssa/inline_asm-1.c: Same.
+	* gcc.dg/tree-ssa/pr23382.c: Same.
+	* gcc.dg/tree-ssa/inline_asm-2.c: Same.
+	* gcc.dg/tree-ssa/20031015-1.c: Same.
+	* gcc.dg/tree-ssa/alias-12.c: Same.
