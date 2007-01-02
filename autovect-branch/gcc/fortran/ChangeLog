@@ -1,0 +1,18 @@
+2007-01-02  Tobias Burnus  <burnus@net-b.de>
+
+	PR fortran/30276
+	* scanner.c (open_included_file): Support full-path filenames.
+
+2007-01-02  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/20896
+	* interface.c (check_sym_interfaces): Remove call to
+	resolve_global_procedure.
+	gfortran.h : Remove prototype for resolve_global_procedure.
+	resolve.c (resolve_global_procedure): Add static attribute
+	to function declaration.
+
+2007-01-01  Steven G. Kargl  <kargls@comcast.net>
+
+	* ChangeLog: Copy to ...
+	* ChangeLog-2006: here.

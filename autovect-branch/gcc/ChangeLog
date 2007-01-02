@@ -1,0 +1,241 @@
+2007-01-02  Carlos O'Donell  <carlos@codesourcery.com>
+
+	* Makefile.in: Update copyright year.
+
+2007-01-02  Carlos O'Donell  <carlos@codesourcery.com>
+
+	* Makefile.in: Export GCC_EXEC_PREFIX before calling $(RUNTEST)
+	in $(lang_checks) and check-consistency targets.
+
+2007-01-02  Jan Hubicka  <jh@suse.cz>
+
+        * tree-mudflap.c (mf_decl_cache_locals, mf_build_check_statement_for):
+        Do not add referenced vars.
+        * tree-cfg.c (update_modified_stmts): Do not update when SSA operands
+        are not active.
+        * passes.c (init_optimization_passes): Put mudflap_2 after
+        free_datastructures.
+
+2007-01-02  Jan Hubicka  <jh@suse.cz>
+
+	* tree-optimize (execute_fixup_cfg): Set after_inlining flag.
+	Set NOTHROW flag on call statements proved to be nothrow.
+	Update statement of local calls so new pure/const functions are
+	updated. Update_ssa when in ssa form. Mark PHI nodes of nonlocal
+	goto receivers.
+	(tree_rest_of_compilation): Register hooks and initialize bitmap
+	early. Do not set after_inlining flag.
+
+2007-01-02  Steve Ellcey  <sje@cup.hp.com>
+
+	* sbitmap.c (HOST_BITS_PER_LONG_LONG):  Change to
+	HOST_BITS_PER_LONGLONG 
+
+2007-01-02  Manuel Lopez-Ibanez <manu@gcc.gnu.org>
+
+	PR c/19977
+	* c-typeck.c (store_init_value): Don't emit pedantic overflow
+	warning for non-static initializers.
+	
+2007-01-02  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* config/alpha/alpha.md, arm/arm.c, darwin.c, frv/frv.md,
+	m32r/m32r.c, m32r/m32r.c, mn10300/mn10300.md, pa/pa.c,
+	rs6000/rs6000.c, s390/s390.md, sh/sh.md, sparc/sparc.c:
+	Always use set_unique_reg_note to add REG_EQUAL notes.
+
+2007-01-02  Kazu Hirata  <kazu@codesourcery.com>
+
+	Revert:
+	2007-01-02  Kazu Hirata  <kazu@codesourcery.com>
+
+	* alias.c (init_alias_analysis): Use VEC_safe_grow_cleared.
+	* cfgbuild.c (find_basic_blocks): Likewise.
+	* cfgrtl.c (rtl_create_basic_block): Likewise.
+	* function.c (temp_slots_at_level): Likewise.
+	* reg-stack.c (stack_regs_mentioned): Likewise.
+	* regclass.c (allocate_reg_info): Likewise.
+	* tree-cfg.c (init_empty_tree_cfg, build_tree_cfg, create_bb,
+	set_bb_for_stmt, move_block_to_fn): Likewise.
+	* tree-complex.c (tree_lower_complex): Likewise.
+	* vec.h (VEC_safe_grow_cleared): New.
+
+2007-01-02  Ian Lance Taylor  <iant@google.com>
+
+	* c-common.c (c_common_truthvalue_conversion): When warning about
+	using an assignment as a truth value, set TREE_NO_WARNING.
+
+2007-01-02  Manuel Lopez-Ibanez  <manu@gcc.gnu.org>
+
+	PR middle-end/7651
+	* c.opt (Wold-style-declaration): New.
+	* doc/invoke.texi (C-only Warning Options): New.
+	(Wold-style-declaration): Document it.
+	(Wextra): Enabled by -Wextra.
+	* c-opts.c (c_common_post_options): Enabled by -Wextra.
+	* c-decl.c (declspecs_add_scspec): Replace -Wextra with
+	-Wold-style-declaration.
+	
+2007-01-02  Kazu Hirata  <kazu@codesourcery.com>
+
+	* alias.c (init_alias_analysis): Use VEC_safe_grow_cleared.
+	* cfgbuild.c (find_basic_blocks): Likewise.
+	* cfgrtl.c (rtl_create_basic_block): Likewise.
+	* function.c (temp_slots_at_level): Likewise.
+	* reg-stack.c (stack_regs_mentioned): Likewise.
+	* regclass.c (allocate_reg_info): Likewise.
+	* tree-cfg.c (init_empty_tree_cfg, build_tree_cfg, create_bb,
+	set_bb_for_stmt, move_block_to_fn): Likewise.
+	* tree-complex.c (tree_lower_complex): Likewise.
+	* vec.h (VEC_safe_grow_cleared): New.
+
+2007-01-02  Douglas Gregor  <doug.gregor@gmail.com>
+
+	* c-common.c(c_common_nodes_and_builtins): Since variants of
+	void_type_node get built before it is given a name, we need to
+	give those variants the name, too. 
+	(complete_array_type): We need to work with the canonical main
+	type of the array, from which we will build the qualified version.
+	* params.def (PARAM_VERIFY_CANONICAL_TYPES): New.
+	* print-tree.c (print_node): Display canonical type information
+	for each type.
+	* stor-layout.c (layout_type): When we don't know the
+	alignment of a type for which we're building an array, we end up
+	guessing wrong, so make the type require structural equality.
+	* tree.c (make_node_stat): When we build a new type, it is its
+	own canonical type.
+	(build_type_attribute_qual_variant): When building an attribute
+	variant, its canonical type is the non-attribute variant. However,
+	if the attributes are target-dependent and they differ, we need to
+	use structural equality checks for this type.
+	(build_qualified_type): A qualified type is not equivalent to its
+	unqualified variant; set the canonical type appropriately.
+	(build_distinct_type_copy): When building a distinct type from
+	another type, the new type is its own canonical type.
+	(build_variant_type_copy): When building a new type variant, we
+	assume that it is equivalent to the original type.
+	(build_pointer_type_for_mode): When building a pointer type, also
+	build a canonical type pointer.
+	(build_reference_type_for_mode): When building a reference type,
+	also build a canonical type reference.
+	(build_index_type): When we can't hash an index type (e.g.,
+	because its maximum value is negative), the index type requires
+	structural equality tests.
+	(build_array_type): Build the canonical form of an array type.
+	(build_function_type): Function types require structural equality,
+	because they contain default arguments, attributes, etc. 
+	(build_method_type_directly): Ditto for method types.
+	(build_offset_type): Build the canonical offset type.
+	(build_complex_type): Build the canonical vector type.
+	(make_vector_type): Build the canonical vector type.
+	* tree.h (TYPE_CANONICAL): New.
+	(TYPE_STRUCTURAL_EQUALITY_P): New.
+	(SET_TYPE_STRUCTURAL_EQUALITY): New.
+	(struct tree_type): Added "canonical" field.
+	* params.h (VERIFY_CANONICAL_TYPES): New.
+	* doc/c-tree.texi (TYPE_CANONICAL): Document.
+	(TYPE_STRUCTURAL_EQUALITY_P): Document.
+	(SET_TYPE_STRUCTURAL_EQUALITY): Document.
+	* doc/invoke.texi (verify-canonical-types): Document --param
+	parameter for verifying canonical types.
+
+2007-01-02  Joseph Myers  <joseph@codesourcery.com>
+
+	* config.gcc (powerpc-*-eabispe*, powerpc-*-eabisimaltivec*,
+	powerpc-*-eabisim*, powerpc-*-eabialtivec*, powerpc-*-eabi*,
+	powerpc-*-rtems*, powerpc-wrs-vxworks, powerpc-wrs-vxworksae,
+	powerpcle-*-eabisim*, powerpcle-*-eabi*): Add rs6000/e500.h to
+	tm_file.
+	* config/rs6000/e500.h: New.
+	* config/rs6000/eabi.h (TARGET_SPE_ABI, TARGET_SPE, TARGET_E500,
+	TARGET_ISEL, TARGET_FPRS, TARGET_E500_SINGLE, TARGET_E500_DOUBLE):
+	Remove.
+	* config/rs6000/linuxspe.h (TARGET_SPE_ABI, TARGET_SPE,
+	TARGET_E500, TARGET_ISEL, TARGET_FPRS, TARGET_E500_SINGLE,
+	TARGET_E500_DOUBLE): Remove.
+	* config/rs6000/vxworks.h (TARGET_SPE_ABI, TARGET_SPE,
+	TARGET_E500, TARGET_ISEL, TARGET_FPRS): Remove.
+	* config/rs6000/rs6000.h (CHECK_E500_OPTIONS): Define.
+	* config/rs6000/rs6000.c (rs6000_override_options): Use
+	CHECK_E500_OPTIONS.
+
+2007-01-02  Joseph Myers  <joseph@codesourcery.com>
+
+	* config/rs6000/rs6000.c (print_operand): Check (TARGET_SPE ||
+	TARGET_E500_DOUBLE), not TARGET_E500, for %y.
+	(rs6000_generate_compare, rs6000_emit_sCOND, output_cbranch,
+	rs6000_emit_cmove): Don't check TARGET_E500.
+	* config/rs6000/rs6000.md (bunordered, bordered, sunordered,
+	sordered): Don't check TARGET_E500.
+
+2007-01-01  Eric Christopher  <echristo@apple.com>
+
+	* config/mips/mips.c (mips_regno_mode_ok_for_base_p): Use
+	HARD_REGISTER_NUM_P.
+
+2007-01-01  Roger Sayle  <roger@eyesopen.com>
+
+	* fold-const.c (fold_binary) <EQ_EXPR>: Fold "(X^C1) eq/ne C2" into
+	"X eq/ne (C1^C2)".  Fold "(X^Z) eq/ne (Y^Z)" as "X eq/ne Y" when Z
+	has no side-effects.  Fold "(X^C1) eq/ne (Y^C2)" as "(X^(C1^C2))
+	eq/ne Y".
+
+2007-01-01  Mike Stump  <mrs@apple.com>
+
+	* configure.ac: Remove support for building with Apple's gcc-3.1.
+
+2007-01-02  Joseph Myers  <joseph@codesourcery.com>
+
+	PR middle-end/30311
+	* caller-save.c (add_stored_regs): Only handle SUBREGs if inner
+	REG is a hard register.  Do not modify REG before calling
+	subreg_nregs.
+	* rtlanal.c (subreg_get_info): Don't assert size of XMODE is a
+	multiple of the size of YMODE for certain lowpart cases.
+
+2007-01-01  Andrew Pinski  <pinskia@gmail.com>
+
+	PR middle-end/30253
+	* gimplify (voidify_wrapper_expr): Update for
+	GIMPLE_MODIFY_STMT.
+
+2007-01-01  Andreas Schwab  <schwab@suse.de>
+
+	PR target/29166
+	* config/ia64/ia64.c (ia64_compute_frame_size): Account space for
+	save of BR0 in extra_spill_size instead of spill_size.
+	(ia64_expand_prologue): Save BR0 outside of the gr/br/fr spill
+	area.
+	(ia64_expand_epilogue): Restore BR0 from its new location.
+
+2007-01-01  Andrew Pinski  <pinskia@gmail.com>
+
+	* gimplify.c (gimplify_init_constructor <case VECTOR_TYPE>):
+	Use a temporary variable if the left hand side is not a gimple
+	register.
+
+2007-01-01  Andrew Pinski  <pinskia@gmail.com>
+
+	* gimplify.c (gimplify_return_expr): Make the temporary variable
+	for the return expression, a gimple register variable.
+
+2007-01-01  Jan Hubicka  <jh@suse.cz>
+
+	* emit-rtl.c (emit_copy_of_insn_after): Do not call copy_insn_1 for
+	INSN_LIST.
+
+2007-01-01  Mike Stump  <mrs@apple.com>
+
+	* configure.ac (HAVE_GAS_LITERAL16): Add autoconf check for
+	.literal16.
+	* config/darwin.c (machopic_select_rtx_section): Use
+	HAVE_GAS_LITERAL16.
+	(darwin_mergeable_constant_section): Likewise.
+	* configure: Regenerate.
+	* config.in: Regenerate.
+
+2007-01-01  Jan Hubicka  <jh@suse.cz>
+	    Andrew Pinski  <pinskia@gmail.com>
+
+	* cgraphunit.c (cgraph_optimize): Call cgraph_add_new_functions
+	before starting IPA passes.
