@@ -1,0 +1,9 @@
+# crti and crtn are provided by uClibc.
+EXTRA_MULTILIB_PARTS=crtbegin.o crtend.o
+
+# Only include multilibs for the 68020 and for CPUs without an MMU.
+M68K_MLIB_CPU += && (MLIB == "68020" || !match(FLAGS, "FL_MMU"))
+
+# Add multilibs for execute-in-place and shared-library code.
+M68K_MLIB_OPTIONS += msep-data/mid-shared-library
+M68K_MLIB_DIRNAMES += msep-data mid-shared-library
