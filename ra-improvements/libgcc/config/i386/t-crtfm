@@ -1,2 +1,0 @@
-crtfastmath.o: $(gcc_srcdir)/config/i386/crtfastmath.c
-	$(gcc_compile) -msse -c $(gcc_srcdir)/config/i386/crtfastmath.c
