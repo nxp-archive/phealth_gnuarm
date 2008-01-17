@@ -1,0 +1,180 @@
+2008-01-14  Paolo Carlini  <pcarlini@suse.de>
+
+	* include/parallel/list_partition.h: Formatting fixes, inline tweaks.
+	* include/parallel/numeric: Likewise.
+	* include/parallel/balanced_quicksort.h: Likewise.
+	* include/parallel/unique_copy.h: Likewise.
+	* include/parallel/algobase.h: Likewise.
+	* include/parallel/algo.h: Likewise.
+
+2008-01-14  Seongbae Park <seongbae.park@gmail.com>
+
+	* crossconfig.m4: Add missing header checks, C99 TR1 check,
+	and sigsetjmp check.
+
+2008-01-14  Paolo Carlini  <pcarlini@suse.de>
+
+	* include/parallel/tree.h: Remove.
+	* include/Makefile.am: Update.
+	* include/Makefile.in: Rebuild.
+
+	* src/Makefile.am: Remove spurious trailing backslash.
+	* src/Makefile.in: Rebuild.
+	* po/Makefile.in: Likewise.
+	* libmath/Makefile.in: Likewise.
+	* testsuite/Makefile.in: Likewise.
+	* libsupc++/Makefile.in: Likewise.
+	* aclocal.m4: Likewise.
+	* Makefile.in: Likewise.
+	* configure: Likewise.
+
+2008-01-12  Paolo Carlini  <pcarlini@suse.de>
+
+	PR libstdc++/34730
+	* include/debug/functions.h (__check_sorted_set,
+	__check_sorted_set_aux): Add.
+	(__check_sorted): Check StrictWeakOrdering.
+	* include/debug/macros.h (__glibcxx_check_strict_weak_ordering,
+	__glibcxx_check_strict_weak_ordering_pred): Remove.
+	(__glibcxx_check_sorted, __glibcxx_check_sorted_pred): Adjust.
+	(__glibcxx_check_sorted_set, __glibcxx_check_sorted_set_pred): Add.
+	* include/debug/debug.h (__glibcxx_requires_sorted_set,
+	__glibcxx_requires_sorted_set_pred): Add.
+	* include/bits/stl_algo.h (merge, includes, set_union,
+	set_intersection, set_difference, set_symmetric_difference):
+	Adjust, use __glibcxx_requires_sorted_set* instead. 
+	* testsuite/25_algorithms/set_intersection/34730.cc: New.
+
+2008-01-09  Paolo Carlini  <pcarlini@suse.de>
+
+	* include/parallel/multiway_merge.h: Reformat to 80 columns;
+	adjust some inline specifiers; other minor style fixes.
+	* include/parallel/losertree.h: Likewise.
+	* include/parallel/list_partition.h: Likewise.
+	* include/parallel/multiseq_selection.h: Likewise.
+	* include/parallel/workstealing.h: Likewise.
+	* include/parallel/base.h: Likewise.
+	* include/parallel/par_loop.h: Likewise.
+	* include/parallel/numeric: Likewise.
+	* include/parallel/quicksort.h: Likewise.
+	* include/parallel/algorithmfwd.h: Likewise.
+	* include/parallel/for_each_selectors.h: Likewise.
+	* include/parallel/omp_loop_static.h: Likewise.
+	* include/parallel/random_shuffle.h: Likewise.
+	* include/parallel/balanced_quicksort.h: Likewise.
+	* include/parallel/set_operations.h: Likewise.
+	* include/parallel/tree.h: Likewise.
+	* include/parallel/merge.h: Likewise.
+	* include/parallel/unique_copy.h: Likewise.
+	* include/parallel/settings.h: Likewise.
+	* include/parallel/multiway_mergesort.h: Likewise.
+	* include/parallel/numericfwd.h: Likewise.
+	* include/parallel/search.h: Likewise.
+	* include/parallel/partition.h: Likewise.
+	* include/parallel/compatibility.h: Likewise.
+	* include/parallel/partial_sum.h: Likewise.
+	* include/parallel/find.h: Likewise.
+	* include/parallel/algo.h: Likewise.
+	* include/parallel/queue.h: Likewise.
+	* include/parallel/omp_loop.h: Likewise.
+	* include/parallel/sort.h: Likewise.
+	* include/parallel/random_number.h: Likewise.
+
+2008-01-09  Benjamin Kosnik  <bkoz@redhat.com>
+
+	* docs/html/17_intro/api.html: Fix markup for rope.h.
+
+2008-01-09  Paolo Carlini  <pcarlini@suse.de>
+
+	* include/parallel/iterator.h: Reformat to 80 columns; adjust some
+	inline specifiers.
+	* include/parallel/find_selectors.h: Likewise.
+	* include/parallel/losertree.h: Likewise.
+	* include/parallel/list_partition.h: Likewise.
+	* include/parallel/for_each.h: Likewise.
+	* include/parallel/multiseq_selection.h: Likewise.
+	* include/parallel/algorithmfwd.h: Likewise.
+	* include/parallel/for_each_selectors.h: Likewise.
+	* include/parallel/balanced_quicksort.h: Likewise.
+	* include/parallel/merge.h: Likewise.
+	* include/parallel/algobase.h: Likewise.
+	* include/parallel/find.h: Likewise.
+	* include/parallel/algo.h: Likewise.
+	* include/parallel/checkers.h: Likewise.	
+
+2008-01-09  Francesco Biscani  <bluescarni@gmail.com>
+
+	* include/tr1_impl/hashtable (_Hashtable): Fix friend declaration
+	of __detail::_Map_base<>.
+
+2008-01-08  Paolo Carlini  <pcarlini@suse.de>
+
+	* testsuite/22_locale/global_templates/user_facet_hierarchies.cc: Do
+	not include <cassert>.
+	* testsuite/22_locale/global_templates/standard_facet_hierarchies.cc:
+	Likewise.
+	* testsuite/util/testsuite_common_types.h: Include <algorithm>.
+
+2008-01-08  Jakub Jelinek  <jakub@redhat.com>
+
+	* configure.ac (--enable-linux-futex): Add new configure option.
+	(HAVE_LINUX_FUTEX): New AC_DEFINE.
+	* Makefile.in: Rebuilt.
+	* aclocal.m4: Rebuilt.
+	* configure: Rebuilt.
+	* config.h.in: Rebuilt.
+	* config/cpu/generic/cxxabi_tweaks.h (_GLIBCXX_GUARD_BIT,
+	_GLIBCXX_GUARD_PENDING_BIT, _GLIBCXX_GUARD_WAITING_BIT): Define.
+	* config/cpu/arm/cxxabi_tweaks.h (_GLIBCXX_GUARD_BIT,
+	_GLIBCXX_GUARD_PENDING_BIT, _GLIBCXX_GUARD_WAITING_BIT): Define.
+	* libsupc++/guard.cc: Include climits and syscall.h.
+	(_GLIBCXX_USE_FUTEX): Define if futex syscall and atomic builtins
+	are supported.
+	(_GLIBCXX_FUTEX_WAIT, _GLIBCXX_FUTEX_WAKE): Likewise.
+	(__guard_test_bit): New static inline.
+	(__cxa_guard_acquire, __cxa_guard_release, __cxa_guard_abort): Use
+	atomic builtins and futex syscall if _GLIBCXX_USE_FUTEX.
+
+2008-01-07  Paolo Carlini  <pcarlini@suse.de>
+
+	PR libstdc++/34680
+	* include/bits/locale_classes.h (has_facet<>, use_facet<>): Do not
+	use dynamic_cast when run-time type identification is disabled; do
+	not mark inline; only declare, define...
+	* include/bits/locale_classes.tcc: ... here.
+
+2008-01-06  Ted Phelps  <phelps@gnusto.com>
+
+	PR c++/34152
+	* libsupc++/eh_personality.cc (PERSONALITY_FUNCTION): Check
+	_GLIBCXX_HAVE_GETIPINFO instead of HAVE_GETIPINFO.
+
+2008-01-01  Paolo Carlini  <pcarlini@suse.de>
+
+	PR libstdc++/34095
+	* include/parallel/multiway_merge.h (multiway_merge_bubble,
+	parallel_multiway_merge): Together with ::operator new use
+	::operator delete.
+	* include/parallel/losertree.h (LoserTree<>::~LoserTree): Likewise.
+	* include/parallel/quicksort.h (parallel_sort_qs_divide): Likewise.
+	* include/parallel/random_shuffle.h (parallel_random_shuffle_drs_pu,
+	sequential_random_shuffle): Likewise.
+	* include/parallel/tree.h (_M_not_sorted_bulk_insertion_construction):
+	Likewise.
+	* include/parallel/multiway_mergesort.h (parallel_sort_mwms_pu,
+	parallel_sort_mwms): Likewise.
+	* include/parallel/partial_sum.h (parallel_partial_sum_linear):
+	Likewise. 
+	* testsuite/25_algorithms/sort/34095.cc: New.
+
+2008-01-01  Paolo Carlini  <pcarlini@suse.de>
+
+	* testsuite/25_algorithms/sort/34636.cc: Fix Copyright year.
+
+2008-01-01  Paolo Carlini  <pcarlini@suse.de>
+
+	PR libstdc++/34636
+	* include/parallel/algobase.h (lexicographical_compare_switch(...,
+	random_access_iterator_tag, random_access_iterator_tag)): Careful
+	with undereferenceable iterators.
+	* testsuite/25_algorithms/sort/34636.cc: New.
