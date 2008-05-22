@@ -1,0 +1,1008 @@
+2008-05-20  Rafael Espindola  <espindola@google.com>
+
+       * ../configure: Regenerate with the correct autoconf version: 2.59.
+
+2008-05-16  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @135422
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+	
+2008-05-14  Rafael Espindola  <espindola@google.com>
+
+	Mainline merge @135302
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2008-05-13  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @135270
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2008-05-12  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @135136
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2008-05-12  Diego Novillo  <dnovillo@google.com>
+
+	* lto-tree-flags.def (STRUCT_FIELD_TAG): Remove.
+	* treestruct.def (STRUCT_FIELD_TAG): Remove.
+	Update all users.
+	* lto-cgraph-out.c (output_node): Update references to
+	inline summary fields.
+
+2008-04-29  Ollie Wild  <aaw@google.com>
+
+	* lto-tags.h (enum LTO_tags): Add LTO_namespace_decl.
+	* lto-tree-tags.def (LTO_namespace_decl): New tag.
+	* lto-section-out.c (lto_get_out_decl_state): Initialize
+	out_state->namespace_decl_hash_table.
+	(produce_asm_for_decls): Write assembly for namespace declarations.
+	* lto-section-out.h (struct lto_out_decl_state): Add
+	namespace_decl_hash_table, next_namespace_decl_index, and
+	namespace_decls.
+	* lto-section.h (struct lto_decl_header): Add num_namespace_decls.
+	* lto-function-out.c (output_expr_operand): Add NAMESPACE_DECL case.
+	(lto_static_init): Clear lto_flags_needed_for and lto_types_needed_for
+	entries for NAMESPACE_DECL.
+	(output_constructors_and_inits): Output initializer if
+	DECL_CONTEXT (var) is not a FUNCTION_DECL.
+	* dwarf2out.c (lto_namespacedecl_ref): New function.
+	* dwarf2out.h (lto_namespacedecl_ref): New function.
+
+2008-04-24  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	Merge with mainline @134626.
+
+2008-04-16  Ollie Wild  <aaw@google.com>
+
+	* lto-function-out.c (output_type_ref): Updated function description.
+
+2008-04-16  Ollie Wild  <aaw@google.com>
+
+	* lto-function-out.c (output_type_ref_1): New function.
+	(output_type_ref): Split into two functions.
+	(output_function): Output an LTO_type record if DECL_CONTEXT (function)
+	is a type.
+	* lto-tags.h (LTO_tags): Add LTO_type enumerator.
+	* lto-tree-tags.def (LTO_type): Add new name.
+
+2008-03-25  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	Merge with mainline @133491.
+
+2008-03-05  Kenneth Zadeck <zadeck@naturalbridge.com>
+	    Jan Hubicka  <jh@suse.cz>
+
+	* cgraph.h (cgraph_local_info): Added lto_file_data.
+	(cgraph_decide_is_function_needed): Made public.
+	* tree-pass.h (pass_ipa_lto_cgraph_out): New lto pass.	
+	* lto-function-out.c (LTO_tag_names): Renamed to LTO_tree_tag_names.
+	(current_stmt_uid): Removed.
+	(create_output_block): Moved call to lto_get_output_decl_state and set
+	lto_debug_context.tag_names.
+	(output_expr_operand, output_bb, output_constructors_and_inits): 
+	Removed current_stmt_id.
+	(lto_static_init): Renamed LTO_tag_names to LTO_tree_tag_names
+	(output_function): Added debugging code.
+	* cgraphunit.c (decide_is_function_needed): Renamed to
+	cgraph_decide_is_function_needed and made public.
+	(cgraph_analyze_functions): Only analyze unanalyzed functions.
+	* lto-cgraph.h: New file.
+	* lto-header.h (LTO_DEBUG_FN_NAME): New macro.
+	(struct lto_debug_context.tag_names): New field.
+	(lto_debug_fn_name): New function.
+	* lto-tags.h (LTO_last_tag): Renamed to LTO_tree_last_tag.
+	* lto-stream-debug.c (lto_debug_indent): Get tag from context.
+	(lto_debug_fn_name): New function.
+	* Makefile.in (lto-stream-debug.o, lto-cgraph-out.o, varpool.o):
+	Fixed dependencies.
+	* passes.c (init_optimization_passes): New
+	pass_ipa_lto_cgraph_out.
+	* lto-cgraph-out.c: New file.
+	* varpool.c (decide_is_variable_needed): Check for in_lto_p.
+		
+2008-02-09  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* tree-pass.h: (pass_ipa_lto_out): Renamed to pass_ipa_lto_gimple_out.
+	(pass_ipa_lto_finish_out): New pass.
+	* lto-function-out.c (decl_slot, hash_decl_slot_node, eq_decl_slot_node, 
+	hash_type_slot_node, eq_type_slot_node, output_decl_index): Moved to
+	lto-section-out.c, made public and and renamed to have "lto_"
+	prefix.
+	(eq_label_slot_node, hash_label_slot_node): Uses lto_decl_slot rather than
+	decl_slot.
+	(output_block): Deleted these fields: field_decl_hash_table,
+	next_field_decl_index, field_decls, fn_decl_hash_table,
+	next_fn_decl_index, fn_decls, var_decl_hash_table,
+	next_var_decl_index, var_decls, type_decl_hash_table,
+	next_type_decl_index, type_decls, type_hash_table,
+	next_type_index, types.
+	Added cgraph_node and current_stmt_id.
+	(create_output_block): Now takes lto_section_type.  Removed code 
+	to init hash tables moved to lto_section_out.c.
+	(destroy_output_block): Removed is_function parameter.
+	Removed code to destroy tables moved to lto_section_out.c 
+	(output_type_ref, output_local_decl_ref, output_label_ref, 
+	output_expr_operand): Modified to call functions moved to lto_section_out.
+	(output_bb): Properly set current_stmt_id.
+	(write_references): Moved to lto_section_out.c.
+	(produce_asm): tripped of all of the function that was moved
+	to lto_section_out.c.
+	(output_constructor_or_init): Renamed
+	output_constructors_and_inits and writes all initializers in a
+	single section rather than one per section.
+	(lto_output): Moved loop over all constructors to
+	output_constructors_and_inits.
+	(gate_lto_out): Moved to lto-section-out.c. 
+	* tree-ssa-sccvn.c (init_scc_vn): Removed unused bb var.
+	* lto-header.h (lto_section_type): Changed prefix of all
+	elements to "LTO_section".
+	(lto_get_section_name): New function.
+	(lto_get_section): Move from lto-section.h.
+	(LTO_STREAM_DEBUGGING, LTO_DEBUG_INDENT, LTO_DEBUG_INDENT_TOKEN, 
+	LTO_DEBUG_INTEGER, LTO_DEBUG_STRING, LTO_DEBUG_TOKEN, 
+	LTO_DEBUG_TREE_FLAGS, LTO_DEBUG_UNDENT, LTO_DEBUG_WIDE,
+	lto_debug_context, lto_debug_out): Moved from lto-tags.h.
+	* lto-section.h: New file.
+	* lto-tags.h (lto_function_header): Moved fields num_field_decls,
+	num_fn_decls, num_var_decls, num_type_decls, num_types. to
+	lto_decl_header in lto-section.h.
+	(LTO_STREAM_DEBUGGING, LTO_DEBUG_INDENT, LTO_DEBUG_INDENT_TOKEN, 
+	LTO_DEBUG_INTEGER, LTO_DEBUG_STRING, LTO_DEBUG_TOKEN, 
+	LTO_DEBUG_TREE_FLAGS, LTO_DEBUG_UNDENT, LTO_DEBUG_WIDE,
+	lto_debug_context, lto_debug_out): Moved to lto-tags.h.
+	* lto-stream-debug.c: Include lto-header.h.
+	* Makefile.in (LTO_TAGS_H, lto-stream-debug.o, lto-function-out.o,
+	lto-section-out.o): Updated dependencies.
+	(LTO_SECTION_H): New.
+	* passes.c: (pass_ipa_lto_out): Renamed to pass_ipa_lto_gimple_out.
+	(pass_ipa_lto_finish_out): New pass.
+	* lto-section-out.c (lto_hash_decl_slot_node, lto_eq_decl_slot_node, 
+	lto_hash_type_slot_node, lto_eq_type_slot_node,
+	lto_output_decl_index): Moved from lto-function-out.c and
+	renamed with "lto_" prefix.
+	(lto_get_section_name, lto_get_out_decl_state, produce_asm_for_decls): New function.
+	(write_references, gate_lto_out): Moved from lto-function-out.c.
+	* lto-section-out.h (lto_out_decl_state): New structure.
+
+2008-01-28  Kenneth Zadeck <zadeck@naturalbridge.com>
+	* cgraph.h (cgraph_edge.lto_stmt_uid): New field.
+	* lto-function-out.c (output_constructor, output_expr_operand,
+	output_phi, output_bb, output_function): Removal of code to thread
+	the stmt_number thru the code.
+	(produce_asm): Moved code to create dwarf_sections to
+	lto_section_out.c.  Encapsulated section type independent code
+	into separate header structure.  Changed to use enum section_type.
+	(output_function, output_constructor_or_init): Added call to
+	renumber_gimple_stmt_uids and to pass section type to produce_asm.
+	(lto_output): Pass cgraph node rather than decl to
+	output_function.
+	* tree-ssa-dse (max_stmt_uid): Removed.
+	(get_stmt_uid, dse_possible_dead_store_p, dse_optimize_stmt, 
+	tree_ssa_dse): Encapsulate all uses of stmt_ann->uid.
+	* tree-ssa-sccvn.c (compare_ops, init_scc_vn): Ditto.
+	* lto-header.h: New
+	* function.h (cfun.last_stmt_uid): New field.
+	* lto-tags.h (lto_header): Renamed to lto_function_header and
+	moved shared fields to lto_header in lto-header.h.
+	(LTO_SECTION_NAME_PREFIX): Moved to lto-header.h.
+	* tree-flow-inline.h (set_gimple_stmt_uid, gimple_stmt_uid,
+	gimple_stmt_max_uid, set_gimple_stmt_max_uid, 
+	inc_gimple_stmt_max_uid): New functions.
+	* tree-dfa.c (renumber_gimple_stmt_uids): New function.
+	(create_stmt_ann): Initialize the ann->uid field.
+	* tree-ssa-pre.c (compute_avail): Encapsulate the stmt_ann->uid
+	with new calls.
+	* tree-flow.h (renumber_gimple_stmt_uids): New function.
+	* lto-section-out.c (lto_get_section): New function.
+	* lto-section-out.h (lto_get_section): New function.
+	
+2008-01-14  Kenneth Zadeck <zadeck@naturalbridge.com>
+	* lto-function-out (lto_debug_context, output_stream,
+	LTO_SET_DEBUGGING_STREAM): Moved to lto_section_out.h.
+	(debug_out_fun): Renamed lto_debug_out_fun and moved to
+	lto_section_out.c.
+	(write_stream): Renamed lto_write_stream and moved to
+	lto_section_out.c.
+	(output_1_stream): Renamed lto_output_1_stream and moved to
+	lto_section_out.c.
+	(output_uleb128_stream): Renamed lto_output_uleb128 and moved to
+	lto_section_out.c.
+	(output_widest_uint_uleb128_stream): Renamed
+	lto_output_widest_uint_uleb128_stream and moved to
+	lto_section_out.c.
+	(output_sleb128_stream): Renamed lto_output_sleb128_stream and
+	moved to lto_section_out.c.
+	(output_string, output_decl_index, output_record_start,
+	output_constructor, output_expr_operand, output_local_vars,
+	output_local_vars_index, output_ssa_names, output_bb, produce_asm,
+	output_function, output_constructor_or_init): Renamed all calls as above.
+	(output_integer): Guts moved to lto_output_integer_stream.
+	(output_expr_operand, output_local_var, output_cfg, output_phi,
+	output_bb, output_function): 
+        Added stmt_num parameter.
+	* lto-tags.h (lto_debug_context): Added.
+	* lto-section-out.c: New file that contains functions moved and
+	renamed from lto-function-out.
+	* lto-section-out.h: New file that contains declarations in
+	lto-section-out.c. 
+	* Makefile.in (lto-section-out.o): New rule.
+	
+2008-01-07  Diego Novillo  <dnovillo@google.com>
+
+	http://gcc.gnu.org/ml/gcc-patches/2008-01/msg00263.html
+
+	* dwarf2out.c (force_decl_die): Initialize SAVED_IGNORED_FLAG.
+	* dwarf2.h (enum dwarf_type): Remove trailing comma.
+
+2007-12-29  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* collect2.c (scan_prog_file): Read all the output when reading
+	information for LTO.
+
+2007-12-24  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* lto-function-out.c (output_local_vars): Output DECL_INITIAL
+	regardless of whether we are outputting the function in which
+	it was defined.
+
+2007-12-22  Nathan Froyd  <froydnj@codesourcery.com>
+	    Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* dwarf2out.c (force_decl_die): Unset the DECL_IGNORED_P flag if
+	we are called from LTO.  Remove the DW_AT_declaration flag if the
+	decl has an initial value.
+	* lto-function-out.c (output_expr_operand): Add explicit check
+	for statics or externs rathen than use DECL_CONTEXT.
+	(output_local_vars): Serialize the DECL_INITIAL field of local
+	statics and add it the unexpanded_vars_list as necessary.
+
+2007-12-19  Doug Kwan  <dougkwan@google.com>
+
+        * dwarf2out.c (base_type_de): Use DW_ATE_GNU_complex_unsigned
+        and DW_ATE_GNU_complex_signed as appropriate instead of using
+        DW_ATE_lo_user.
+
+        * dwarf2.h (DW_ATE_GNU_complex_signed, DW_ATE_GNU_complex_unsigned):
+        New encoding formats.
+
+2007-12-18  Doug Kwan  <dougkwan@google.com>
+
+        * real.c (real_to_decimal, real_to_hexadecimal): Distinguish
+        QNaN & SNaN.
+        (real_from_string): Handle NaNs and Inf as approriate.
+
+2007-12-17  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_block.unexpanded_local_decls_index): New vector.
+	(destroy_output_block): Added missing ifdef.
+	(output_decl_index): Added this_index to return added index.
+	(output_type_ref): Added parameter to output_decl_index.
+	(output_local_decl_ref): Added write parameter and code to initialize 
+	unexpanded_local_decls_index.
+	(output_expr_operand): Added extra operands to output_decl_index and
+	output_local_decl_ref.
+	(output_local_var): New function split out from output_local_vars.
+	(output_local_vars): Added code to string unexpanded_var_list separately.
+	(output_function): Added code to output decl_context for function.
+
+2007-12-13  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.c (mark_die_used): New function.
+	(lto_init_ref): Call it.
+
+2007-12-13  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* langhooks.h (struct lang_hooks) Add comment for
+	reduce_bit_field_operations.
+
+2007-12-12  Bill Maddox  <maddox@google.com>
+
+	Revert
+	2007-12-07  Bill Maddox  <maddox@google.com>
+
+	* dwarf2out.c (AT_string_form): Remove code to suppress
+	the use of the DWARF string table.
+
+2007-12-07  Bill Maddox  <maddox@google.com>
+
+	* dwarf2out.c (AT_string_form): Remove code to suppress
+	the use of the DWARF string table.
+
+2007-12-07  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* tree-flow.h (init_empty_tree_cfg_for_function): Declare.
+	* tree-cfg.c (init_empty_tree_cfg_for_function): Define.
+	(init_empty_tree_cfg): Call it.
+	* lto_function-out.c (output_cfg): Write out the block chain.
+
+2007-12-07  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.c (containing_decl_for_block): New function.
+	(force_block_die): Call it.
+	(dwarf2out_finish): Call it if we have a BLOCK for our context.
+
+2007-12-06  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* lto-function-out.c (write_references): New function.
+	(produce_asm): Call it.
+
+2007-12-03  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* tree-into-ssa.c (rebuild_ssa_for_lto): Remove.
+	(pass_rebuild_ssa_for_lto): Remove.
+	* tree-optimize.c (gate_early_lto_passes): Remove.
+	(pass_early_lto_passes): Remove.
+	* passes.c (init_optimization_passes): Remove pass_early_lto_passes
+	and its sub-passes.
+	* tree-pass.h (pass_early_lto_passes, pass_rebuild_ssa_for_lto):
+	Remove.
+	* lto-tree-flags.def (VAR_DECL): Add volatile_flag.
+
+2007-11-30  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* lto-tree-flags.def (RESULT_DECL): Add gimple_reg_flag.
+
+2007-11-29  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_expr_operand): Fix STRING_CST to
+	always have type.
+
+2007-11-21  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.c (gen_subprogram_die): Inhibit generation of labels
+	if we are being called for LTO's purposes.
+	(gen_variable_die): Don't generate multiple DIEs for and equate
+	the generated DIE with the decl for global variables.
+	(force_decl_die): Don't play games with DECL_EXTERNAL if we are
+	forcing a DIE for a global variable.
+	(lto_typedecl_ref): Remove assert.
+
+2007-11-16  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_expr_operand): Get types right 
+	for COMPLEX_CST.
+
+2007-11-16  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* c-common.c (c_build_bitfield_integer_type): Rename this...
+	* stor-layout.c (make_bitfield_integer_type): ...to this.
+	* c-decl.c (finish_struct): Use new name.
+	* c-common.h (c_build_bitfield_integer_type): Move declaration...
+	* tree.h (make_bitfield_integer_type): ...here.
+
+2007-11-16  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-tree-flags.def (tcc_constant): Added static_flag.
+	(tcc_vl_exp): Added asm_written_flag.
+	* lto-function-out.c (output_local_vars): Output DECL_INITIAL
+	for static local vars.
+	(lto_types_needed_for): Added STRING_CST.
+	* tree-cfg.c (dump_function_to_file): Add verbose dump for
+	local vars and parms.
+
+2007-11-15  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* tree.h (DECL_CONTEXT): Note that this applies to RESULT_DECLs too.
+
+2007-11-15  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* tree-dump.c (dump_options): Removed verbose from -all option.
+	* tree-pretty-print.c (dump_phi_nodes, dump_generic_bb_buff): 
+	Fixed && vs & dyslexia.
+	* lto-tree-flags.def (ADD_CLASS_FLAG) Renamed to ADD_CLASS_EXPR_FLAG.
+	(ADD_CLASS_DECL_FLAG): New macro.
+	(OMP_ATOMIC_LOAD, OMP_ATOMIC_STORE): New cases.
+	* lto-function-out (output_tree_flags, lto_debug_tree_flags):
+	Renamed to ADD_CLASS_EXPR_FLAG. ADD_CLASS_DECL_FLAG New Macro.
+	(output_expr_operand): Added type for SWITCH_EXPR.
+	* tree-cfg.c (dump_function_to_file): Fixed && vs & dyslexia.
+
+2007-11-14  Diego Novillo  <dnovillo@google.com>
+
+	Merge with mainline @130155.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge
+	string.
+	* configure: Regenerate.
+
+2007-11-13  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_tree_flags): Declare local
+	variable CURRENT_COL.  Fix existing misspellings of its
+	name.
+	* dwarf2out.c (lto_typedecl_ref): Remove unused variable.
+	Reformat comments.
+
+2007-11-13  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-tree-flags.def (PARM_DECL): Serialize the addressable_flag.
+	(PHI_NODE): Serialize the asm_written_flag.
+
+2007-11-13  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_expr_operand): Get the types
+	correct for vector-cst.
+	* tree-cfg.c (dump_function_to_file): Print the
+	function_decl in verbose mode.
+
+2007-11-13  Diego Novillo  <dnovillo@google.com>
+
+	* lto-tags.h: Call #error if BITS_PER_LTO_FLAGS_TYPE is
+	not wide enough.
+
+2007-11-13  Doug Kwan  <dougkwan@google.com>
+
+	* lto-function-out.c (output_widest_uint_uleb128_stream,
+	output_widest_uint_uleb128): New functions. 
+	(output_tree_flags): Use lto_flags_type instead of unsigned
+	HOST_WIDE_INT.  Call output_widest_unint_uleb128 instead of
+	output_uleb128.
+	(lto_debug_tree_flags): Replace HOST_BITS_PER_WIDE_INT with
+	BITS_PER_LTO_FLAGS_TYPE as appropriate.
+	* lto-tags.h (lto_flags_type): New type.
+	(BITS_PER_LTO_FLAGS_TYPES): New macro.
+	(lto_debug_tree_flags): Change prototype to use
+	lto_flags_type.
+
+2007-11-13  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_constructor): Modified to output
+	index field if it exists.
+	(output_expr_operand): Removed incorrect assert about type names.
+	Added RANGE_EXPR case.
+	* lto-tree-flags.def (LTO_constructor_range): Removed.
+	* lto-tags.h (LTO_constructor_range): Removed.
+		
+2007-11-11  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* doc/invoke.text (-fdump-tree-*-verbose): New option.
+	* tree-dump.c (dump_options): New verbose option.
+	* tree-pretty-print.c (dump_phi_nodes, dump_generic_bb_buff):
+	Add verbose dump.
+	* lto-tree-flags.def (tcc_expression, tcc_gimple_stmt,
+	tcc_statement): Add asm_written flag to support undocumented use.
+	(FUNCTION_DECL): Removed all flags since these are not serialized
+	by lto-function-out.
+	(VAR_DECL): Reorganized flags and added missing ones.
+	* tree-pass.h (TDF_VERBOSE): New dump flag.
+	* lto-function-out.c (output_tree_flags): Removed ADD_FUNCT_FLAG
+	macro.  Added fixes to get line numbers correct.
+	(pass_ipa_lto_out): Fixed dump options and name.
+	* lto-flags.h (LTO_SOURCE_*): Removed conditional code
+	USE_MAPPED_LOCATION.
+	(LTO_SOURCE_HAS_LOC): New macro.
+	* tree-dfa-c (pass_referenced_var): Added dump option.
+	* print-tree.c (print_node): Added code to be able to print
+	PHI_NODES.
+	(tree-flow.h): Added include.
+	Makefile.in (print-tree.o):  Added TREE_FLOW_H.
+		
+2007-11-09  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.c (lto_var_ref): Don't remove DW_AT_declaration.
+
+2007-11-09  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.h (dwarf2_generate_frame_info_p): Rename this...
+	(dwarf2_called_from_lto_p): ...to this.
+	* dwarf2out.c (dwarf2_generate_frame_info): Rename this...
+	(dwarf2_called_from_lto_p): ...to this.
+	(gen_subprogram_die): Use dwarf2_called_from_lto_p and invert sense.
+	(add_high_low_attributes): Disable generation of the attributes if
+	we are generating information for LTO.
+	* lto-function-out.c (output_function): Use push_cfun and pop_cfun.
+	(lto_output): Use dwarf2_called_from_lto_p and invert sense.
+
+2007-11-09  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.c (lto_var_ref): Remove DW_AT_declaration if we are
+	forcing an initialized global variable.
+
+2007-11-08  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* c-decl.c (match_builtin_function_types): Move this...
+	* tree.c (match_builtin_function_types): ...here.
+	* tree.h (match_builtin_function_types): Declare it.
+
+2007-11-08  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* gengtype.c (main): Add uint64_t as a typedef.
+
+2007-11-07  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* doc/gty.texi (Source Files Containing Type Information): Note
+	that headers should appear first in the gtfiles list.
+
+2007-11-06  Doug Kwan  <dougkwan@google.com>
+
+        * lto-function-out.c (output_record_start): Check for presence of
+        type before calling output_type_ref.
+		  
+2007-11-06  Alon Dayan <alond@il.ibm.com>
+	    Kenneth Zadeck <zadeck@naturalbridge.com>
+
+     	* lto-function-out.c: (output_tree_flags): Use expanded location for exprs.
+	(output_tree_flags, lto_debug_tree_flags): 
+	Macro add flags of size>1.
+     	* lto-tree-flags.def: Likewise.
+
+2007-11-02  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.c (force_block_die): Implement.  
+
+2007-11-02  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* lto-function-out.c (output_expr_operand): Change the
+	single-argument RETURN_EXPR case to check whether we are writing
+	out DECL_RESULT.
+	
+2007-11-01  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_tree_list): Removed function.
+	(output_expr_operand): Added case for TREE_LIST, and
+	IDENTIFER_NODE and changed ASM_EXPRs to recursively call
+	output_expr_operand.
+	(output_local_vars): Changed some calls from output_uleb128 to
+	output_zero and changed calls to output_tree_list to
+	output_expr_operand.
+	(output_ssa_names): Changed some calls from output_uleb128 to
+	output_zero.
+	(lto_static_init): Initialized IDENTIFIER_NODE and TREE_LIST
+	cases.
+	* lto-tree-tags.def: Ditto.
+	* lto-tags.h: Ditto.
+	
+	
+2007-10-31  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* lto-function.c (output_expr_operand): Assert that DECL_NAME of a
+	TYPE_DECL is NULL, as it should be for function-local TYPE_DECLs.
+	(lto_static_init): Reset the bit for TYPE_DECLs in
+	lto_flags_needed_for and lto_types_needed_for.
+	(generate_early_dwarf_information): Move the setting of
+	dwarf2_generate_frame_info_p to...
+	(lto_output): ...here.
+	* dwarf2out.c (force_decl_die): Don't handle TYPE_DECL.
+	(lto_typedecl_ref): Dump a reference to the decl's type instead of
+	the decl itself.
+
+2007-10-30  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* Makefile.in (lto/lto-stream-debug.o): Add dependency on $(TREE_H).
+
+2007-10-29  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-tree-flags.def (VAR_DECL): Added seen_in_bind_expr flag.
+	* lto-function-out.c (struct output_block): Added
+	type_decl_hash_table, next_type_decl_index, type_decls,
+	current_col. Changed last_file to current_file. Changed last_line
+	to current_line.
+	(clear_line_info): New function.
+	(create_output_block): Added call to clear_line_info.  Added
+	initialization of type_decl_hash_table.
+	(destroy_output_block): Added destruction of type_decl_hash_table.
+	(output_string): Fixed type snafu.
+	(output_tree_flags): Added force_loc parameter and uses of it.
+	Full rewrite of processing of line numbers.
+	(output_expr_operand): Added TYPE_DECL case.
+	(output_local_vars): Properly handle TREE_CHAIN and DECL_CONTEXT.
+	(output_named_labels, output_constructor_or_init): Added call to
+	clear_line_info.
+	(output_ssa_names): Added parm to not process line numbers for ssa
+	names.
+	(produce_asm): Added code to output type_decls.
+	(output_function): Added call to clear_line_info.  Moved
+	production of labels to after local_vars to get processing of
+	context correct.
+	* lto-tree-tags.def (LTO_type_decl): New tag.
+	* lto-tags.h (lto_header): Added num_type_decls.
+	(LTO_type_decl): New tag.
+	(LTO_SOURCE_FILE, LTO_SOURCE_LINE, LTO_SOURCE_LOC_BITS,
+	LTO_SOURCE_COL): New macros.
+	* tree-dfa.c (find_referenced_vars): Added code to walk phi
+	operands.
+	
+
+2007-10-29  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.h (lto_typedecl_ref): Declare.
+	* dwarf2out.c (force_die_for_context): New function.
+	(force_decl_die): Use it.  Handle TYPE_DECLs.
+	(force_type_die): Use it.
+	(force_block_die): New function.
+	(lto_typedecl_ref): New function.
+
+2007-10-22  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_tree_flags): Changed type of
+	flags and enhanced stream debugging for flags.
+	(output_local_vars): Added debugging for tree_chains.
+	(lto_debug_tree_flags): New function.
+	* lto-flags.h (lto_debug_tree_flags): New function.
+	(LTO_flags_needed): New LTO_tags.
+	(LTO_DEBUG_TREE_FLAGS): New macro.
+	* Makefile.in (LTO_TAGS_H): Add tree.h dependency.
+
+
+2007-10-19  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.c (cc1_options): Force -O2 if -flto is given.
+	* collect2.c (maybe_run_lto_and_relink): Tidy formatting.
+	Add -O2 when calling gcc to do an LTO link.
+	(scan_prog_file): Send the error output of 'nm' to HOST_BIT_BUCKET.
+
+2007-10-19  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.c (gen_decl_die): Check cgraph_global_info_ready to determine
+	whether we can output information for abstract instances.
+
+2007-10-18  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* tree-into-ssa.c (get_default_def_for, rewrite_stmt,
+	maybe_register_def): Add cfun parameter to make_ssa_name.
+	* tree-ssa-loop-im.c (rewrite_reciprocal, rewrite_bittest): Ditto.
+	* tree-complex.c (get_component_ssa_name): Ditto.
+	* tree-ssa-loop-manip.c (create_iv, tree_transform_and_unroll_loop): Ditto.
+	* tree-tailcall.c (adjust_accumulator_values,
+	adjust_return_value, tree_optimize_tail_calls_1): Ditto.
+	* tree.h (extern void phinodes_print_statistics): Ditto.
+	* tree-phinodes.c (make_phi_node): Ditto.
+	* omp-low.c (expand_parallel_call, expand_omp_parallel,
+	expand_omp_for_static_chunk): Ditto.
+	* tree-parloops.c (take_address_of, separate_decls_in_loop,
+	transform_to_exit_first_loop, create_parallel_loop): Ditto.
+	* matrix-reorg.c (transform_access_sites): Ditto.
+	* tree-if-conv.c (ifc_temp_var): Ditto.
+	* gimplify.c (gimplify_modify_expr): Ditto.
+	* tree-ssa-phiopt.c (conditional_replacement, abs_replacement,
+	cond_store_replacement): Ditto.
+	* tree-ssa-pre.c (create_expression_by_pieces, insert_fake_stores): Ditto.
+	* tree-predcom.c (initialize_root_vars,
+	* initialize_root_vars_lm, execute_load_motion,
+	reassociate_to_the_same_stmt): Ditto.
+	* tree-ssa-forwprop.c (phiprop_insert_phi): Ditto.
+	* tree-vect-patterns.c (vect_pattern_recog_1): Ditto.
+	* lambda-code.c (lambda_loopnest_to_gcc_loopnest,
+	replace_uses_equiv_to_x_with_y, perfect_nestify): Ditto.
+	* tree-inline.c (remap_ssa_name): Ditto.
+	* tree-vect-transform.c (vect_create_data_ref_ptr,
+	bump_vector_ptr, vect_init_vector,
+	get_initial_def_for_induction,
+	get_initial_def_for_induction,
+	vect_create_epilog_for_reduction, vect_finalize_reduction,
+	vectorizable_reduction, vectorizable_call,
+	vect_gen_widened_results_half, vectorizable_conversion,
+	vectorizable_assignment, vectorizable_operation,
+	vectorizable_type_demotion, vect_permute_store_chain,
+	vect_setup_realignment, vect_permute_load_chain,
+	vectorizable_load, vectorizable_condition,
+	vect_create_cond_for_align_checks): Ditto.
+	* tree-outof-ssa.c (insert_backedge_copies): Ditto.
+	* tree-cfg.c (tree_make_forwarder_block, replace_ssa_name): Ditto.
+	* tree-ssanames.c (duplicate_ssa_name): Ditto.
+	(make_ssa_name): Use struct function parameter rather than cfun.
+	* lto-function-out.c (output_local_vars): Add chaining for parm_decls.
+
+2007-10-17  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.c (gen_subprogram_die): Don't remove attributes and
+	formal parameters if we are generating LTO objects, as the formal
+	parameters likely have references to them from elsewhere.
+	Instead, return early if we find a DIE for this decl.
+
+2007-10-16  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_integer): Added casting.
+	(output_tree_list): Remove the tag parameter and the record.
+	(output_expr_operand): Make the asm operands use output_tree_list.
+	(output_local_vars): Remove LTO_attribute_list.
+        * lto-tree-tags.def (LTO_attribute_list): Removed.
+	* lto-tags.h (LTO_attribute_list): Removed.
+
+2007-10-16  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (struct string_slot): Added len.
+	(eq_string_slot_node): Fixed to honor real length of strings with nulls.  
+	(output_string): Set len and fix debugging.
+	(output_expr_operand): Output CASE_HIGH and CASE_LOW properly.
+
+2007-10-05  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.h (dwarf_attr_name): Declare.
+	* dwarf2out.c (dwarf_attr_name): Remove declaration and change
+	definition accordingly.
+
+2007-10-05  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_constructor): Handle constructor elts
+	with NULL indices.
+	(output_expr_operand): Check whether the variable is in the
+	global scope.
+	(lto_output): Only handle statics that are in the global
+	scope.
+	* tree-nested.c (get_trampoline_type): Set DECL_CONTEXT for
+	the new field.
+
+	Backport
+
+	2007-07-26  Doug Kwan  <dougkwan@google.com>
+
+	* dwarf2out.c: (may_reference_to_unsued) : Renamed from
+	reference_to_unsued as it is now more conservative than
+	before. Replace unreachable assert into a return that tells
+	caller that tree may reference an unused DECL.
+	(rtl_for_decl_init): Rename callee to may_reference_to_usused.
+
+2007-10-04  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-tree-flags.def (FIXED_CONVERT_EXPR, FIXED_CST, FIXED_POINT_TYPE,
+	OMP_SECTIONS_SWITCH): Added new tree codes.
+	* lto-function-out.c (lto_static_init): Added types for FIXED_CONVERT_EXPR,
+	FIXED_CST.
+	* lto-tree-tags.def (FIXED_CONVERT_EXPR, FIXED_CST): Added mappings.
+	* lto-tags.h (LTO_fixed_convert_expr, LTO_fixed_cst): New codes.
+
+2007-10-02  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* omp-low.c (expand_omp_parallel): Added struct function param
+	to init_tree_ssa.
+	* passes.c (dump_properties): Removed reference to PROP_pta.
+
+2007-09-26  Nathan Froyd  <froydnj@codesourcery.com>
+
+	* dwarf2out.h (dwarf2_generate_frame_info_p): Declare.
+	* dwarf2out.c (dwarf2_generate_frame_info_p): Define it.
+	(gen_subprogram_die): Consult it to determine whether to generate
+	frame information.
+	(lto_type_ref): Remove sorry call.
+	* lto-function-out.c (generate_early_dwarf_information): New function.
+	(output_function): Call it.  Set current_function_decl and cfun to
+	facilitate DWARF generation.
+
+2007-09-11  Bill Maddox  <maddox@google.com>
+
+	Add `gcc' driver support for link-time code generation (LTO).
+
+	* collect2.c (enum pass): Add new literal PASS_LTOINFO.
+	(lto_flag, lto_objects, lto_o_file): New variables.
+	(struct lto_object, struct lto_object_list): New structures.
+	(collect_exit, handler): Remove LTO temporary output file on exit.
+	(add_lto_object): New function.
+	(maybe_run_lto_and_relink): New function. Perform link time code
+	generation and relinking for object files containing LTO information.
+	(main): Invoke maybe_run_lto_and_relink().
+	(dump_argv): New function.  For debugging, currently disabled.
+	(scan_prog_file): Add LTO information pass.
+	* gcc.c (LINK_COMMAND_SPEC): Pass `-flto' switch to linker, i.e.,
+	collect2.
+	* toplev.c (compile_file): Emit assembler directive to create
+	the `gnu_lto_v1' marker symbol when compiling with `-flto'.
+
+2007-09-11  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (lto_static_init): Added type for STRING_CST.
+
+2007-09-11  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_constructor): Allow anything in the tree.
+	* lto-tree-tags.def (POINTER_PLUS_EXPR): New tree type.
+
+2007-09-05  Jan Hubicka  <jh@suse.cz>
+
+	* cgraphbuild.c (build_cgraph_edges): Export.
+	* cgraph.h (build_cgraph_edges): Declare.
+	* cgraphunit.c (cgraph_finalize_function): Rebuild cgraph edges.
+
+2007-08-29  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (LTO_SET_DEBUGGING_STREAM): Now swallows
+	semicolons.
+	(LTO_CLEAR_DEBUGGING_STREAM): New macro.
+	(create_output_block, destroy_output_block,
+	output_constructor_or_init): New functions.
+	(produce_asm, lto_output): Modified to produce both functions and
+	constructors.
+	(output_function): Much of the function that could be used to also
+	handle constructors has been moved to create_output_block and
+	destroy_output_block.
+	* lto-tags.h (lto_function_header): Renamed to lto_header.
+		
+2007-08-28  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out (output_expr_operand): Reorder the fields
+	in the stream for CALL_EXPRs.
+	(lto_static_init): Do not put out types for FUNCTION_DECLs.
+
+2007-08-28  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_block): Added
+	local_decl_index_stream, debug_decl_index_stream,
+	local_decls_index and local_decls_index_d.
+	(output_local_vars): Add code to write a seperate stream
+	containing the index of each local var.
+	(output_local_vars_index): New function.
+	(produce_asm, output_function): Write new streams.
+	(lto_static_init): Do not write flags or types for FIELD_DECLS.
+	* lto-tags.h (lto_debug_context): Added decl_index_data.
+	
+2007-08-15  Jim Blandy  <jimb@codesourcery.com>
+
+	* dwarf2out.c (lto_field_ref, force_field_die): New functions.
+	* dwarf2out.h (lto_field_ref): New declaration.
+
+2007-08-05  Mark Mitchell  <mark@codesourcery.com>
+
+	* tree.h (FILE_SCOPE_P): New macro.
+	(DECL_FILE_SCOPE_P): Use it.
+	* dwarf2out.c (lto_type_ref): Use FILE_SCOPE_P to test whether
+	an entity is at file scope.
+
+2007-08-02  Kenneth Zadeck <zadeck@naturalbridge.com>
+        * lto-tags.h (LTO_DEBUG_INDENT, LTO_DEBUG_INDENT_TOKEN,
+	LTO_DEBUG_INTEGER, LTO_DEBUG_STRING, LTO_DEBUG_TOKEN,
+	LTO_DEBUG_UNDENT, LTO_DEBUG_WIDE): Change "useless_function ()" to
+	"(void)0"
+	(useless_function): Removed.
+
+	
+2007-08-01  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (output_1_stream, output_zero,
+	output_sleb128_stream, output_string, output_real, output_integer,
+	output_tree_flags, output_type_ref, output_record_start,
+	output_tree_list, output_eh_cleanup, output_eh_try,
+	output_eh_catch, output_eh_allowed, output_eh_must_not_throw,
+	output_eh_regions, output_constructor, output_expr_operand,
+	output_local_vars, output_cfg, output_phi, output_bb,
+	output_function): Added semicolons.
+	* lto-tags.h (LTO_DEBUG_INDENT, LTO_DEBUG_INDENT_TOKEN,
+	LTO_DEBUG_INTEGER, LTO_DEBUG_STRING, LTO_DEBUG_TOKEN, 
+	LTO_DEBUG_UNDENT, LTO_DEBUG_WIDE): Changed to support semicolon
+	after macro call.
+	(useless_function): New function.
+	
+
+2007-07-31  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-function-out.c (produce_asm): Remove old debugging code.
+	(output_function): Serialize DECL_ARGUMENTS.
+
+2007-07-31  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* tree-into-ssa.c (rebuild_ssa_for_lto): New function.
+	(pass_rebuild_ssa_for_lto): New pass.
+	* cgraph_build.c (tree_opt_pass pass_rebuild_cgraph): Added some dumping.
+	* lto-tree-flags.def (tcc_declaration): Added used_flag to serialized list.
+	(SSA_NAME): Added nothrow_flag and volatile_flag to serialized list.
+	* tree-pass.h (pass_early_lto_passes, pass_rebuild_ssa_for_lto): New passes.
+	* lto-function-out.c (output_tree_flags): Added code to properly
+	control writing of flags. Also added new parameter to pass in the
+	tree code.
+	(output_record_start, output_local_vars): Added param to
+	output_tree_flags.
+	(output_tree_list, output_eh_cleanup, output_eh_try,
+	output_eh_catch, output_eh_allowed, output_eh_must_not_throw,
+	output_eh_regions): Added missing debugging undent.
+	(output_expr_operand): Added assert that there was no rtl and code
+	to properly handle COND_EXPR.  Fixed the outputing of types and
+	flags for many tree codes.
+	(output_phi): Fixed the outputing of types and flags.  Generalized
+	to handle parameters to phi that are not SSA_NAMES.
+	(output_bb, LTO_SET_DEBUGGING_STREAM): Added assert to check for
+	proper debug stream usage.
+	(lto_static_init): Changed the outputting of flags and types for
+	various tree codes.
+	(pass_ipa_lto_out): Added dumping.
+	* ipa-inline.c (pass_inline_parameters): Added dumping.
+	* lto-tree-tags.def (COND_EXPR): Changed processing options.
+	* lto-tags.h: Changed define into enum.
+	* ipa.c (gate_ipa_fun_and_var_visibility): Always execute this
+	pass.
+	* tree.def (COND_EXEC): Properly documented this code.
+	* tree-dfa.c (find_referenced_vars): Added code to walk phi
+	functions.
+	(pass_referenced_vars): Added name and dump flag.
+	(find_vars_r): Now handles SSA_NAMES.
+	* tree-optimize.c (gate_early_lto_passes): New function.
+	(pass_early_lto_passes): New pass.
+	* passes.c (pass_early_lto_passes): New pass.
+	(dump_properties, debug_properties): New debugging function.
+	* tree-ssanames.c (pass_release_ssa_names): Added dumping.
+	
+	
+2007-07-19  Jan Hubicka  <jh@suse.cz>
+
+	* cgraphunit.c (cgraph_finalize_function): Set properties of lowered
+	body.
+
+2007-07-13  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* flags.h (in_lto_p): New flag.
+	* lto-tree_flags.def (CHANGE_DYNAMIC_TYPE_EXPR, POINTER_PLUS_EXPR): 
+	New tree codes from merge.
+	* tree.h (init_ssanames): Added cfun parameter.
+	* lto-function-out.c: (ssa_names_stream, cfg_stream): New streams.
+	(output_eh_regions): Renamed parameter cfun to fn.
+	(output_expr_operand): Implemented SSA_NAME and GIMPLE_MODIFY_STMT
+	cases.
+	(output_local_vars): Set the local_vars stream locally.
+	(output_ssa_names, output_cfg, output_phi): New function.
+	(output_bb): Changed the cfun parameter to fn.  Do not put out cfg
+	locally.  Output the phi_functions.
+	(produce_asm): Add code to support ssa_names and cfg streams.
+	(lto_static_init): Added GIMPLE_MODIFY_STMT.
+	(LTO_SET_DEBUGGING_STREAM): New macro.
+	(output_function): Add code to support ssa_names and cfg streams.
+	* toplev.c (in_lto_p): Initialize.
+	* ipa-inline.c (cgraph_gate_ipa_early_inlining): Added test for
+	in_lto_p.
+	* lto-tree-tags.def (GIMPLE_MODIFY_STMT, PHI_NODE): New tags.
+	(LTO_change_dynamic_type_expr, LTO_gimple_modify_stmt,
+	LTO_phi_node, LTO_pointer_plus_expr): New names.
+	lto-tags.h (ssa_names_size, cfg_size, debug_ssa_names_size,
+	debug_cfg_size): New fields in lto_function_header.
+	(LTO_change_dynamic_type_expr, LTO_gimple_modify_stmt,
+	LTO_phi_node, LTO_pointer_plus_expr): New fields and renumbered
+	the rest.
+	(ssa_names_data, cfg_data): New fields of lto_debug_context.
+	* ipa.c (flags.h): New include.
+	(gate_ipa_fun_and_var_visibility): New function for
+	pass_ipa_function_and_variable_visibility.
+	* tree-ssa.c (init_tree_ssa): Add fn parameter and replaced refs
+	to cfun.
+	* tree-inline.c (initialize_cfun): Ditto.
+	* tree-optimize.c (gate_all_early_local_passes): Added ref to
+	in_ltp_p.
+	(execute_init_datastructures): Added cfun parameter to
+	init_tree_ssa.
+	* tree-flow.h (init_tree_ssa): Added struct function parameter.
+	* Makefile.in (ipa.o): Added FLAGS_H dependency.
+	* tree-ssanames.c (init_ssanames): Added two parameters.  Now
+	takes struct function and default size.
+
+	
+2007-06-26  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-tree-flags.def (tcc_gimple_stmt): New TREE_CLASS.
+	(GIMPLE_MODIFY_STMT, MEMORY_PARTITION_TAG, VEC_WIDEN_MULT_HI_EXPR,
+	VEC_WIDEN_MULT_LO_EXPR, VEC_UNPACK_HI_EXPR,
+	VEC_UNPACK_LO_EXPR, VEC_UNPACK_FLOAT_HI_EXPR,
+	VEC_UNPACK_FLOAT_LO_EXPR, VEC_PACK_TRUNC_EXPR,
+	VEC_PACK_SAT_EXPR, VEC_PACK_FIX_TRUNC_EXPR,
+	VEC_EXTRACT_EVEN_EXPR, VEC_EXTRACT_ODD_EXPR,
+	VEC_INTERLEAVE_HIGH_EXPR, VEC_INTERLEAVE_LOW_EXPR): New
+	TREE_EXPRs.
+
+
+2007-06-23  Mark Mitchell  <mark@codesourcery.com>
+	
+	* configure.ac: Use AC_CHECK_HEADERS to find libelf.h.
+	* config.in: Regenerated.
+	* configure: Likewise.
+
+	* lto-tags.h (LTO_last_tag): Update.
+
+2007-06-21  Kenneth Zadeck <zadeck@naturalbridge.com>
+
+	* lto-tree-flags.def (FIX_CEIL_EXPR, FIX_FLOOR_EXPR,
+	FIX_ROUND_EXPR, section_name, call_clobbered_flag): Removed dead
+	cases.
+	* lto-function-out.c (ADD_CLASS_FLAG, ADD_EXPR_FLAG): Changed
+	expr->common to expr->base.
+	* cfg.c (init_flow): Fixed ggc macro rot.
+	* lto-tree-tags.def (FIX_CEIL_EXPR, FIX_FLOOR_EXPR,
+	FIX_ROUND_EXPR): Removed dead tree types.
+	
+
+Local Variables:
+change-log-default-name: "ChangeLog.lto"
+End:
