@@ -1,0 +1,80 @@
+2008-05-30  Diego Novillo  <dnovillo@google.com>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.dg/tree-ssa/20080530.c: New test.
+
+2008-05-30  Jakub Jelinek  <jakub@redhat.com>
+
+	* gfortran.dg/gomp/block-1.f90: Adjust dg-error.
+
+2008-03-24  Andrew Pinski  <pinskia@gmail.com>
+
+	* gcc.dg/tree-ssa/20030728-1.c: Test final_cleanup instead of
+	optimized dump.
+
+2007-11-10  Aldy Hernandez  <aldyh@redhat.com>
+
+	* lib/objc.exp: Set -I regardless of libobjc.
+
+2007-09-15  Diego Novillo  <dnovillo@google.com>
+
+	* testsuite/gcc.dg/gimple: Remove.
+
+2007-07-24  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/gimple/constructors.c: Fix expected pattern.
+
+2007-07-23  Aldy Hernandez  <aldyh@redhat.com>
+
+	* testsuite/gcc.dg/gimple/call2.c: New.
+
+2007-07-16  Chris Matthews  <chrismatthews@google.com>
+
+	* gs_assign.c: Renamed to gimple_assign.c.
+	* gs_bind.c: Renamed to gimple_bind.c.
+	* gs_call.c: Renamed to gimple_call.c.
+	* gs_cond.c: Renamed to gimple_cond.c.
+	* gs_goto.c: Renamed to gimple_goto.c.
+	* gs_return.c: Renamed to gimple_return.c.
+	* gs_switch.c: Renamed to gimple_switch.c.
+	* gs_switch2.c: Renamed to gimple_switch2.c.
+	* gs_switch3.c: Renamed to gimple_switch3.c.
+	* with_size_expr.c: GS_ renamed to GIMPLE_.
+
+2007-07-16  Chris Matthews  <chrismatthews@google.com>
+
+	* gs_switch.c: Improved test case to look at the gs_switch case list
+	instead
+	of just the body.
+	* gs_switch2.c: Same.
+	* gs_switch3.c: Same.
+
+2007-07-16  Aldy Hernandez  <aldyh@redhat.com> 
+
+	* gcc.dg/gimple/with_size_expr.c: Scan for GS_TRY and
+	__builtin_stack_save.
+
+2007-07-15  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/gimple/call.c: Add strings to expect in the .gimple file.
+
+2007-07-13  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/gimple/gimple.exp (load_lib): Add -fgimple-only to
+	DEFAULT_CFLAGS.
+
+2007-07-12  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/gimple/call.c: New test.
+
+2007-06-27  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/gimple/compound_expr.c: Cleanup .gimple files on exit.
+	* gcc.dg/gimple/gs_call.c: Likewise
+	* gcc.dg/gimple/constructors.c: Likewise
+	* gcc.dg/gimple/gs_return.c: Likewise
+	* gcc.dg/gimple/gs_assign.c: Likewise
+
+2007-06-26  Diego Novillo  <dnovillo@google.com>
+
+	* testsuite/gcc.dg/gimple/gimple.exp: Use -O2.
