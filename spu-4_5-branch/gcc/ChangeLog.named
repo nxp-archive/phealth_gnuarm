@@ -1,0 +1,781 @@
+2008-11-21  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* config/spu/spu.md (to_ea): Use convert_move to convert input
+	operand to the appropriate type.  If the output is not a register,
+	create a register, create the result in the register, and move to
+	the output.
+
+<sync up to revision 142093, November 21, 2008>
+
+2008-11-20  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* tree.h (CLEAR_QUAL_ADDR_SPACE): New macro to clear out the
+	address space portion of the qualifier encoding.
+
+	* c-decl.c (grokdeclarator): Rewrite code dealing with named
+	address spaces so that the correct named address is picked up for
+	multiple pointer levels, like char *__ea *__ea foo.
+
+	* config/spu/spu.c (expand_ea_mem): Add comment for having back to
+	back set_mem_alias calls.  Explicitly clear the named address for
+	the cached pointer.
+
+2008-11-18  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* expr.c (expand_expr_real_1): Fix thinko in converting named
+	address space pointers.
+
+2008-11-15  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* expr.c (expand_expr_real_1): Fix thinko in 11/12 changes, use
+	type node of the cast, not the operand.
+
+2008-11-13  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* config/spu/spu.c (SPU_ADDR_SPACE_VALID_P): Rename from
+	SPU_VALID_ADDR_SPACE.
+	(spu_ea_identifier): New static tree to hold __ea identifier.
+	(spu_addr_space_valid_p): Rename from spu_valid_addr_space.
+	(spu_addr_space_valid_p): Don't use strcmp to identify __ea, cache
+	the identifier and do a pointer comparison.
+	(spu_addr_space_number): Ditto.
+
+	* target-def.h (SPU_ADDR_SPACE_VALID_P): Rename from
+	SPU_VALID_ADDR_SPACE.
+
+	* doc/tm.texi (Named Address Spaces): Move named address space tm
+	macros to a separate section.  Add documentation for named address
+	support.  Update the target hooks to reflect the current changes.
+
+2008-11-12  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* targhooks.c (default_addr_space_name): Use addr_space_t for the
+	argument, not int.
+	(default_addr_space_convert): New hook function to do the
+	conversion between address spaces.
+	(default_addr_space_conversion_rtl): Delete in favor of
+	default_addr_space_convert.
+	(default_addr_space_number): Change return type to addr_space_t
+	from unsigned char.
+	(default_addr_space_section_name): New default hook for returning
+	the section name for a named address.
+
+	* targhooks.h (default_addr_space_name): Update calling signature.
+	(default_addr_space_number): Ditto.
+	(default_addr_space_section_name): Ditto.
+	(default_addr_space_convert): New declaration.
+	(default_addr_space_conversion_rtl): Delete.
+
+	* tree-pretty-print.c (dump_generic_node): Move target space hooks
+	into a sub-structure.
+
+	* tree.c (integer_pow2p): Move target space hooks into a
+	sub-structure.
+	(tree_log2): Ditto.
+	(tree_floor_log2): Ditto.
+	(build_pointer_type): Ditto.
+
+	* fold-const.c (fit_double_type): Move target space hooks into a
+	sub-structure.
+
+	* expr.c (expand_expr_addr_expr): Move target space hooks into a
+	sub-structure.
+	(expand_expr_real_1): Change how the named addresses are
+	converted.
+
+	* tree.h (addr_space_t): Delete, move to coretypes.h.
+
+	* target.h (struct gcc_target): Move address space hooks into a
+	sub-structure.  Change the signature of the address space hooks to
+	use addr_space_t instead of int or unsigned char.  Change the
+	address space conversion hook.  Add a hook for returning the
+	section name.
+
+	* c-decl.c (start_decl): Use named address space section hook to
+	make the section name, instead of hardwiring ._ea.
+	(grokdeclarator): Move target space hooks into a sub-structure.
+	(declspecs_add_addrspace): Ditto.
+
+	* c-pretty-print.c (pp_c_type_qualifier_list): Move target space
+	hooks into a sub-structure.
+
+	* coretypes.h (addr_space_t): Move type here from tree.h.
+
+	* varasm.c (make_decl_rtl): Move target space hooks into a
+	sub-structure.
+
+	* target-def.h (TARGET_ADDR_SPACE_CONVERT): New hook to replace
+	TARGET_ADDR_SPACE_CONVERSION_RTL.
+	(TARGET_ADDR_SPACE_CONVERSION_RTL): Delete.
+	(TARGET_ADDR_SPACE_SECTION_NAME): New hook to return the section
+	name.
+	(TARGET_ADDR_SPACE_HOOKS): Group all of the address space hooks
+	together.
+	(TARGET_INITIALIZER): Use TARGET_ADDR_SPACE_HOOKS instead of the
+	individual hooks.
+
+	* c-parser.c (c_lex_one_token): Move target space hooks into a
+	sub-structure.
+
+	* config/spu/spu.c (ADDR_SPACE_GENERIC): New macro to define
+	address space ids.
+	(ADDR_SPACE_EA): Ditto.
+	(struct spu_address_space): Delete, no longer used.
+	(spu_addr_space_name): Use addr_space_t instead of int arg.
+	Delete use of spu_address_space array.
+	(spu_addr_space_convert): New function to convert between address
+	spaces.  Replace spu_addr_space_conversion_rtl.
+	(spu_addr_space_conversion_rtl): Delete.
+	(spu_addr_space_section_name): New hook to return the section name
+	for named addresses.
+	(spu_valid_addr_space): Delete use of spu_address_space array.
+	(spu_addr_space_number): Ditto.
+	(spu_ea_name): New static to hold the ._ea section name.
+	(gt-spu.h): Include.
+
+	* convert.c (convert_to_pointer): Move target space hooks into a
+	sub-structure.
+	(convert_to_integer): Ditto.
+
+2008-11-11  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* emit-rtl.c (get_mem_attrs): Consider address space when seeing
+	if the memory has the default attributes.
+
+2008-11-07  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* tree.c (integer_pow2p): Reduce columns to under 80.
+	(tree_log2): Ditto.
+	(tree_floor_log2): Ditto.
+
+	* tree.h (ENCODE_QUAL_ADDR_SPACE): Add a comment.
+
+	* print-tree.c (toplevel): Revert includes of target.h and
+	target-def.h back to the mainline code since MD code has been
+	removed.
+
+	* fold-const.c (fit_double_type): Reduce columns to under 80.
+
+	* expr.c (expand_expr_addr_expr): Reduce columns to under 80.
+	(expand_expr_real_1): Start work to merge to/from conversions to
+	one case.
+
+2008-10-31  Ben Elliston  <bje@au.ibm.com>
+
+	* tree.h (DECODE_QUAL_ADDR_SPACE): Fix logic bug.
+
+2008-10-27  Ben Elliston  <bje@au.ibm.com>
+
+	* targhooks.c (default_addr_space_number): Conform to the GNU
+	coding standard.
+	* tree.h (addr_space_t): Add a comment.
+	* c-decl.c (grokdeclarator): Use != 0, not > 0 when testing
+	for non-generic address spaces.
+	
+2008-10-21  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* emit-rtl.c (get_spill_slot_decl): Pass 0 as address space.
+	(set_mem_attrs_for_spill): Ditto.
+	(mem_attrs_htab_hash): Use the address space in the hash.
+	(mem_attrs_htab_eq): Ditto.
+
+2008-10-20  Ben Elliston  <bje@au.ibm.com>
+
+	* doc/invoke.texi (SPU Options): Improve documentation for -mea32,
+	-mea64, -mcache-size and -matomic-updates options.
+
+2008-09-19  Ben Elliston  <bje@au.ibm.com>
+
+	* c-decl.c (grokdeclarator): Always emit an error about
+	incompatible address spaces--not conditional on !flag_iso.
+
+2008-08-29  Ben Elliston  <bje@au.ibm.com>
+
+	* Makefile.in (c-decl.o, c-pretty-print.o, convert.o,
+	tree-pretty-print.o, fold-const.o): Update make dependencies.
+
+2008-08-29  Ben Elliston  <bje@au.ibm.com>
+
+	* c-decl.c (grokdeclarator): Produce an error for incompatible
+	address space qualifiers via typedef.
+	(declspecs_add_addrspace): Likewise.
+
+2008-08-28  Ben Elliston  <bje@au.ibm.com>
+
+	* c-parser.c (c_parser_declspecs): Remove c_dialect_objc test.
+	(c_parser_declspecs): Do not set seen_type.
+
+	* varasm.c (make_decl_rtl): Formatting.
+	* print-tree.c (print_node): Remove target-specific code.
+
+2008-08-28  Ben Elliston  <bje@au.ibm.com>
+
+	* config/spu/t-spu-elf: Use $(T) to avoid the use of multiple make
+	targets for the -mea32 and -mea64 cache libraries.  Pass
+	$(MULTILIB_CFLAGS) when compiling such objects.
+
+2008-08-28  Ben Elliston  <bje@au.ibm.com>
+
+	* c-decl.c: Fix some merge botches.
+
+2008-08-27  Ben Elliston  <bje@au.ibm.com>
+
+	* target.h (struct gcc_target): Ensure that the addr_space_number
+	member takes a const_tree.
+	* config/spu/spu.c (spu_addr_space_number): Likewise.
+
+2008-08-26  Alan Modra  <amodra@bigpond.net.au>
+	    Ben Elliston  <bje@au.ibm.com>
+
+	* tree.c (build_pointer_type): Arrays have their type qualifiers
+	applied to the element type (see c_build_qualified_type and
+	ISO/IEC 9899:1999 section 6.7.3), so TYPE_ADDR_SPACE needs to
+	access the element type if operating on an array type.
+	* tree.h (OTHER_ADDR_SPACE_POINTER_TYPE): Likewise.
+	(GENERIC_ADDR_SPACE_POINTER_TYPE): Likewise.
+	(COMPLETE_TYPE_P): Likewise.
+	* c-objc-common.c (c_types_compatible_p): Likewise.
+	* dwarf2out.c (modified_type_die): Likewise.
+	* convert.c (convert_to_integer): Likewise.
+	* emit-rtl.c (get_mem_attrs): Use an addr_space_t argument.
+	(set_mem_attributes_mini_bitpos): Strip array types.
+	(set_mem_addr_space): Use an addr_space_t argument.
+	* tree-ssa.c (useless_type_conversion_p): Simplify void * test.
+	* c-parser.c (c_parser_postfix_expression_after_paren_type): Strip
+	array types.
+	* c-decl.c (start_decl): Set DECL_SECTION_NAME to "._ea" for __ea
+	variable definitions.
+	(grokdeclarator): Allow static and global __ea variable
+	definitions.
+	* config/spu/spu.h (TEXT_SECTION_ASM_OP): Add a tab.
+	(DATA_SECTION_ASM_OP): Likewise.
+	(ASM_OUTPUT_SYMBOL_REF): Strip array types on arg.
+	* config/spu/spu.c (TARGET_SECTION_TYPE_FLAGS): Define.
+	(spu_section_type_flags): New function.
+	(ea_symbol_ref): Convert to for_each_rtx predicate.
+	(spu_legitimate_constant_p): Reject __ea symbol refs wrapped in
+	const.
+	(spu_legitimate_address): Likewise.
+
+2008-08-25  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* config/spu/cachemgr.c: Make interrupt safe and respect tag mask
+	policy.
+
+2008-08-22  Ben Elliston  <bje@au.ibm.com>
+
+	* doc/extend.texi (Named Address Spaces): Use N1275, not N1169.
+
+2008-08-22  Ben Elliston  <bje@au.ibm.com>
+
+	* targhooks.c (default_addr_name_space): Add function comment.
+	(default_addr_space_conversion_rtl): Likewise.
+	(default_addr_space_number): Likewise.
+	* c-decl.c (declspecs_add_addrspace): Likewise.
+	* varasm.c (default_addr_space_pointer_mode): Likewise.
+	* tree.h (addr_space_t): New typedef.
+	(struct tree_type): Reorder fields for compactness. Use
+	addr_space_t.
+	* rtl.h (struct mem_attrs): Reorder fields for compactness.
+	* c-tree.h (struct c_declspecs): Use addr_space_t.
+	* doc/extend.texi (Named Address Spaces): Use @code, not @var when
+	mentioning the __ea address space qualifier.
+	* doc/tm.texi: Revert unwanted changes.
+
+2008-08-20  Ben Elliston  <bje@au.ibm.com>
+
+	* config/spu/spu_mfcio.h: Remove unconditional uint64_t typedef.
+
+2008-08-20  Ben Elliston  <bje@au.ibm.com>
+
+	* doc/tm.texi (Misc): Document target hooks for named addresss
+	space support.
+
+2008-08-20  Ben Elliston  <bje@au.ibm.com>
+
+	* c-decl.c (grokdeclarator): Rename ea_p to addr_space_p.
+
+2008-08-19  Ben Elliston  <bje@au.ibm.com>
+
+	* print-tree.c (print_node): Don't use target hooks from this
+	function (for now).
+
+2008-08-19  Ben Elliston  <bje@au.ibm.com>
+
+	* tree-ssa.c (useless_type_conversion_p_1): Do not lose casts
+	between pointers in different address spaces.
+
+2008-08-18  Ben Elliston  <bje@au.ibm.com>
+
+	* config/spu/spu.c (spu_expand_mov): Adjust __ea mems before
+	calling spu_valid_move.
+	
+2008-08-11  Ben Elliston  <bje@au.ibm.com>
+
+	* print-rtl.c (print_rtx): Print address space number, if non-zero.
+	* tree-pretty-print.c (dump_generic_node): Print address space
+	name, if non-generic.
+
+2008-08-08  Ben Elliston  <bje@au.ibm.com>
+
+	* c-decl.c (grokdeclarator): Fix bug constructing type_quals mask.
+
+2008-08-06  Ben Elliston  <bje@au.ibm.com>
+
+	* varasm.c (make_decl_rtl): Improvements to previous change.
+
+2008-08-04  Ben Elliston  <bje@au.ibm.com>
+
+	* varasm.c (make_decl_rtl): Guard against the error_mark_node.
+
+2008-07-30  Ben Elliston  <bje@au.ibm.com>
+
+	* target.h (struct gcc_target): Fix valid_addr_space prototype.
+	* c-decl.c (grokdeclarator): Remember to pass arg 1 to pedwarn.
+	(declspecs_add_addrspace): Likewise.	
+
+2008-07-29  Ben Elliston  <bje@au.ibm.com>
+
+	* c-parser.c (c_parser_postfix_expression_after_paren_type): Guard
+	against the error_mark_node.
+
+2008-07-28  Ben Elliston  <bje@au.ibm.com>
+
+	* tree.c (set_type_quals): Use DECODE_QUAL_ADDR_SPACE.
+	* tree.h (ENCODE_QUAL_ADDR_SPACE): New.
+	(DECODE_QUAL_ADDR_SPACE): Likewise.
+	(TYPE_QUALS): Use ENCODE_QUAL_ADDR_SPACE.
+	* tree-ssa-loop-ivopts.c (generic_type_for): Likewise.
+	* c-decl.c (quals_from_declspecs): Likewise.
+	(grokdeclarator): Likewise.
+	* c-typeck.c (build_binary_op): Likewise.
+
+2008-07-15  Ben Elliston  <bje@au.ibm.com>
+
+	* doc/rtl.texi (Special Accessors): Document MEM_ADDR_SPACE.
+	* rtl.h (MEM_ADDR_SPACE): Re-define to use mem_attrs.
+	(struct rtx_def): Move addr_space field from here ..
+	(struct mem_attrs): .. to here.
+	* emit-rtl.c (set_mem_attributes_minus_bitpos,
+	set_mem_attrs_from_reg, set_mem_alias_set, set_mem_align,
+	set_mem_expr, set_mem_offset, set_mem_size, change_address,
+	adjust_address_1, offset_address, widen_memory_access): Update
+	all callers.
+	(set_mem_addr_space): New.
+	(get_mem_attrs): Add address space parameter, set attrs.
+	* emit-rtl.h (set_mem_addr_space): New.
+
+2008-07-11  Ben Elliston  <bje@au.ibm.com>
+
+	* tree.c (set_type_quals): TYPE_QUAL_EA -> TYPE_QUAL_ADDRSPACE.
+	* tree.h: Likewise.
+	(TYPE_QUALS): Likewise.
+	* tree-ssa-loop-ivopts.c (generic_type_for): Likewise.
+	* c-decl.c (quals_from_declspecs): Likewise.
+	(grokdeclarator): Likewise.
+	* c-typeck.c (build_binary_op): Likewise.
+
+2008-07-11  Ben Elliston  <bje@au.ibm.com>
+
+	* rtl.h (struct rtx_def): Rename `ea' to `addr_space'.
+	(MEM_EA_P): Rename from this ..
+	(MEM_ADDR_SPACE): .. to this.
+	* emit-rtl.c (set_mem_attributes_minus_bitops): Update callers.
+	* config/spu/spu.c (spu_expand_mov): Likewise.
+
+2008-06-13  Ben Elliston  <bje@au.ibm.com>
+
+	* config/spu/spu.c (TARGET_ADDR_SPACE_NUMBER): Define.
+	(spu_addr_space_number): Provide this hook function for SPU.
+
+2008-05-09  Ben Elliston  <bje@au.ibm.com>
+
+	* targhooks.c (default_addr_space_number): New.
+	* targhooks.h (default_addr_space_number): New prototype.
+	* target.h (struct gcc_target): New field addr_space_number.
+	* target-def.h (TARGET_ADDR_SPACE_NUMBER): New.
+	(TARGET_INITIALIZER): Add TARGET_ADDR_SPACE_NUMBER.
+	* c-decl.c (declspecs_add_addrspace): Use this target hook to look
+	up the address space number for a decl.
+	* config/spu/spu.c (struct spu_address_space): Add new fields.
+	(spu_address_spaces): Update struct instance.
+	(spu_valid_pointer_mode): Remove fixme.
+	(spu_addr_space_name): Likewise.
+	(spu_addr_space_conversion_rtl): Simplify--use the table.
+	(spu_valid_addr_space): Likewise.
+
+2008-05-09  Ben Elliston  <bje@au.ibm.com>
+
+	* doc/extend.texi: Document name address space extension.
+	* doc/invoke.texi: Document new SPU options.
+
+2008-05-09  Ben Elliston  <bje@au.ibm.com>
+
+	* tree-dump.c (dequeue_and_dump): Remove TYPE_QUAL_EA case.
+	* tree-pretty-print.c: Include target.h/target-def.h.
+	(dump_generic_node): Use TYPE_ADDR_SPACE, not TYPE_QUAL_EA.
+	(pp_c_type_qualifier_list): Likewise. Update comments.
+	* c-pretty-print.c: Include target.h/target-def.h.
+	(pp_c_type_qualifer_list): Likewise.
+
+2008-05-08  Ben Elliston  <bje@au.ibm.com>
+
+	* c-decl.c (declspecs_add_addrspace): Use addr_space_name hook
+	when producing the diagnostic.
+
+2008-05-08  Ben Elliston  <bje@au.ibm.com>
+
+	* c-parser.c (c_parser_declspecs): Handle the possibility of a
+	C_ID_ADDRSPACE appearing in the list of declaration specifiers.
+
+2008-05-07  Ben Elliston  <bje@au.ibm.com>
+
+	* target.h (struct gcc_target): Add valid_addr_space field.
+	* target-def.h (TARGET_VALID_ADDR_SPACE): New.
+	(TARGET_INITIALIZER): Add TARGET_VALID_ADDR_SPACE.
+	* c-parser.c (legitimate_addr_space): Remove.
+	(c_lex_one_token): Call target hook instead.
+	* config/spu/spu.c: Define TARGET_VALID_ADDR_SPACE.
+	(spu_valid_addr_space): New.
+
+2008-05-07  Ben Elliston  <bje@au.ibm.com>
+
+	* convert.c (convert_to_integer): Fix thinko (type -> intype).
+
+2008-05-07  Ben Elliston  <bje@au.ibm.com>
+
+	* c-common.h (RID_EA): Remove.
+	* c-parser.c (reswords): Remove "__ea"/RID_EA entry.
+	(enum c_id_kind): Add C_ID_ADDRSPACE.
+	(legitimate_addr_space): New (for now).
+	(c_lex_one_token): Handle C_ID_ADDRSPACE tokens in the lexer.
+	(c_token_starts_typename): Add C_ID_ADDRPSACE case.
+	Remove RID_EA keyword case.
+	(c_token_starts_declspecs): Add C_ID_ADDRSPACE case.
+	Likewise, remove RID_EA keyword case.
+	(c_parser_declspecs): Handle C_ID_ADDRSPACE.
+	Remove sundry handling of RID_EA keyword.
+	(c_parser_objc_selector): Likewise.
+	* c-tree.h (declspecs_add_addrspace): New.
+	* c-decl.c (declspecs_add_addrspace): Likewise.
+	(declspecs_add_qual): Remove RID_EA case.
+
+2008-05-02  Ben Elliston  <bje@au.ibm.com>
+
+	* expr.c (expand_expr_real_1): Remove unused local variable `reg'.
+
+2008-05-02  Ben Elliston  <bje@au.ibm.com>
+
+	* tree.c (integer_pow2p): Use the address space number, not a
+	hard-coded 1 when getting the address space pointer mode.
+	(tree_log2): Likewise.
+	(tree_floor_log2): Likewise.
+	(build_pointer_type): Likewise.
+	* fold-const.c (fit_double_type): Likewise.
+	* expr.c (expand_expr_addr_expr): Likewise.
+	* varasm.c (make_decl_rtl): Likewise.
+	(default_addr_space_pointer_mode): Assert generic address space.
+	* convert.c (convert_to_pointer): Likewise.
+	(convert_to_integer): Likewise.
+	* config/spu/spu.c (spu_ea_pointer_mode): Handle the generic
+	address space, returning ptr_mode.  Abort on invalid address
+	spaces.
+	(spu_addr_space_conversion_rtl): Return 0, not NULL_RTX.
+
+2008-05-02  Ben Elliston  <bje@au.ibm.com>
+
+	* targhooks.h (default_addr_space_conversion_rtl): New.
+	* targhooks.c (default_addr_space_conversion_rtl): Likewise..
+	* target.h (addr_space_conversion_rtl): New target hook.
+	* target-def.h (TARGET_ADDR_SPACE_CONVERSION_RTL): New.
+	(TARGET_INITIALIZER): Add TARGET_ADDR_SPACE_CONVERSION_RTL.
+	* expr.c (expand_expr_real_1): Use addr_space_conversion_rtl
+	target hook to emit the insn.
+	* config/spu/spu.c (TARGET_ADDR_SPACE_CONVERSION_RTL): Define.
+	(spu_addr_space_conversion_rtl): New.
+
+2008-05-02  Ben Elliston  <bje@au.ibm.com>
+	
+	* c-parser.c (c_parser_declspecs): Adjust the top-of-function
+	comment so that the address-space production is classified as a
+	GNU extension.
+
+2008-04-29  Ben Elliston  <bje@au.ibm.com>
+
+	* targhooks.c (default_addr_space_name): Constify return
+	type. Mark incoming argument as ATTRIBUTE_UNUSED.
+	* targhooks.h (default_addr_space_name): Update prototype.
+	* target.h (struct gcc_target): Constify addr_space_name return.
+	(struct gcc_target): Remove have_ea.
+	* c-decl.c: Include "targhooks.h".  Do not test targetm.have_ea,
+	test targetm.addr_space_name against default_addr_space_name
+	instead.
+	* varasm.c (default_addr_space_pointer_mode): Mark incoming
+	argument as ATTRIBUTE_UNUSED.
+	* target-def.h (TARGET_HAVE_EA): Remove.
+	(TARGET_INITIALIZER): Remove TARGET_HAVE_EA initialiser.
+	* config/spu/spu.h (TARGET_HAVE_EA): Remove.
+	* config/spu/spu.c (spu_address_space): Constify name field.
+	(spu_ea_pointer_mode): Take an integer argument (may be unused).
+	(spu_addr_space_name): Constify return type.
+	(spu_valid_pointer_mode): Hack up for now.
+
+2008-04-29  Ben Elliston  <bje@au.ibm.com>
+
+	* c-decl.c (grokdeclarator): Use targetm.addr_space_name hook to
+	translate address space numbers to identifiers.
+
+2008-04-28  Ben Elliston  <bje@au.ibm.com>
+
+	* targhooks.h (default_addr_space_name): New.
+	* targhooks.c (default_addr_space_name): New.
+	* target.h (addr_space_name): New target hook.
+	* print-tree.c 
+	* target-def.h (TARGET_ADDR_SPACE_NAME): New.
+	* config/spu/spu.c (struct spu_address_space): New.
+	(spu_address_spaces): New.
+	(TARGET_EA_POINTER_MODE): Rename from this ..
+	(TARGET_ADDR_SPACE_POINTER_MODE): .. to this.
+	(TARGET_ADDR_SPACE_NAME): New.
+	(spu_addr_space_name): New.
+
+2008-04-28  Ben Elliston  <bje@au.ibm.com>
+
+	* c-pretty-print.c (pp_c_type_qualifier_list): Update comments.
+	* varasm.c (default_addr_space_pointer_mode): Rename argument.
+
+2008-04-28  Ben Elliston  <bje@au.ibm.com>
+
+	* expr.c (expand_expr_real_1): Make comments more generic.
+	* c-typeck.c (build_binary_op): Likewise.
+	* c-parser.c (c_parser_declspecs): Likewise.
+	* tree.h (OTHER_ADDR_SPACE_POINTER_TYPE_P): Likewise.
+	(GENERIC_ADDR_SPACE_POINTER_TYPE_P): Likewise.
+	* target.h (addr_space_pointer_mode, have_ea): Likewise.
+
+2008-04-28  Ben Elliston  <bje@au.ibm.com>
+
+	* dwarf2out.c (modified_type_die): Encode address space number.
+
+2008-04-24  Ben Elliston  <bje@au.ibm.com>
+
+	* c-tree.h (struct c_declspecs): Make the type of address_space
+	field an unsigned char.
+	* tree.h (struct tree_type): Remove single bit ea_flag field,
+	replace with integral address_space field.
+	(EA_POINTER_TYPE_P): Rename from this ..
+	(OTHER_ADDR_SPACE_POINTER_TYPE_P): .. to this.
+	(NON_EA_POINTER_TYPE_P): Rename from this ..
+	(GENERIC_ADDR_SPACE_POINTER_TYPE_P): .. to this.
+	(TYPE_EA): Rename from this ..
+	(TYPE_ADDR_SPACE): .. to this.
+	* convert.c, fold-const.c, tree-ssa-loop-ivopts.c,
+	c-objc-common.c, c-tree.h, dwarf2out.c, expr.c, c-decl.c,
+	c-typeck.c, emit-rtl.c, print-tree.c, varasm.c, tree-ssa.c,
+	c-parser.c, config/spu/spu.c, config/spu/spu.h: Update callers.
+
+2008-04-24  Ben Elliston  <bje@au.ibm.com>
+
+	* target.h (ea_pointer_mode): Rename to addr_space_pointer_mode.
+	* c-tree.h (struct c_declspecs): Remove ea_p, add address_space.
+	* c-decl.c: Access declspecs->address_space, not ->ea_p.
+	* tree.c: Update callers to targetm.addr_space_pointer_mode.
+	* fold-const.c: Likewise.
+	* expr.c: Likewise.
+	* convert.c: Likewise.
+	* varasm.c: Likewise.
+	(default_ea_pointer_mode): Rename from this ..
+	(default_addr_space_pointer_mode): .. to this.
+	* target-def.h (TARGET_EA_POINTER_MOE): Rename from this ..
+	(TARGET_ADDR_SPACE_POINTER_MODE): .. to this.
+	* output.h (default_ea_pointer_mode): Rename from this ..
+	(default_addr_space_pointer_mode): .. to this.
+
+2008-04-17  Ben Elliston  <bje@au.ibm.com>
+
+	* config/spu/spu.c: Various bug fixes.
+	* testsuite/gcc.target/spu/cache.c: New test.
+
+2008-03-15  Ben Elliston  <bje@au.ibm.com>
+
+	* gcc/c-parser.c: Diagnose address space qualified compound
+	literals in function bodies.
+	* gcc/testsuite/gcc.dg/ea/errors.c: Add a test case.
+
+2007-11-09  Ben Elliston  <bje@au.ibm.com>
+
+	* c-decl.c (grokdeclarator): Pointer variables may not be defined
+	in the __ea address space.
+
+2007-11-09  Ben Elliston  <bje@au.ibm.com>
+
+	* c-decl.c (grokdeclarator): Within a structure or union
+	specifier, the type of a member shall not be qualified by an
+	address space qualifier.
+
+2007-11-01  Ben Elliston  <bje@au.ibm.com>
+
+	* print-rtl.c (print_rtx): Remove __ea flag handling.
+
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* fold-const.c (fit_double_type): Fix typo.
+	(fold_convert_const): Fix comparisons between integer constants
+	and __ea pointers.
+	* c-typeck.c (build_binary_op): If either operand is an __ea
+	pointer, make the result of a comparison an __ea pointer also.
+
+2007-10-30  Alan Modra  <amodra@bigpond.net.au>
+
+	* expr.c (expand_expr_addr_expr): Do not assume pointers are
+	ptr_mode or Pmode.
+	* varasm.c (make_decl_rtl): Likewise.
+	* config/spu/spu.c (TARGET_ASM_ALIGNED_DI_OP,
+	TARGET_ASM_ALIGNED_DI_OP): Use .quad and .8byte for DImode output,
+	which are perfectly good if the 32-bit assembler is built with
+	--enable-64-bit-bfd.
+	(ea_load_store): Call __cache_fetch-dirty on online __ea writes
+	that miss.  Properly set up library call sym refs.
+
+2007-10-30  Ulrich Weigand  <Ulrich.Weigand@de.ibm.com>
+
+	* config/spu/spu.c (ea_load_store_inline): Fix inline-generated
+	__ea access code.  Fix -mea64 cache access problems.
+
+2007-10-30  Ulrich Weigand  <Ulrich.Weigand@de.ibm.com>
+
+	* tree-ssa-loop-ivopts.c (generic_type_for): When generating a
+	type for an IV variable, ensure it is __ea-qualified, if
+	necessary.
+
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* convert.c: Include "target.h".
+	(convert_to_pointer): Do not assume pointers are POINTER_SIZE.
+	(convert_to_integer): Likewise.
+
+2007-10-30  Alan Modra  <amodra@bigpond.net.au>
+
+	* config/spu/spu.c (expand_ea_mem): Mark __ea mems with their own
+	alias set.
+	
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* explow.c (memory_address): Only convert a memory address if it
+	is not already a valid pointer mode.  If a value is already in a
+	valid pointer mode, force the value into a register of that mode,
+	not Pmode.
+	* config/spu/spu.c (TARGET_VALID_POINTER_MODE): Override.
+	(spu_valid_pointer_mode): New function.
+
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* target.h (struct gcc_target): Add ea_pointer_mode.
+	* tree.h (EA_POINTER_TYPE_P): New.
+	(NON_EA_POINTER_TYPE_P): Likewise.
+	* tree.c (integer_pow2p): Avoid POINTER_SIZE for __ea types.
+	(tree_log2): Likewise.
+	(tree_floor_log2): Likewise.
+	(build_pointer_type_for_mode): Avoid ptr_mode for __ea types.
+	* c-objc-common.c (c_types_compatible_p): Handle __ea types.
+	* expr.c (expand_expr_real_1): Handle casts of pointers to/from
+	__ea qualified pointers.
+	* varasm.c (default_ea_pointer_mode): New function.
+	* tree-ssa.c (useless_type_conversion_p): Casts to void * are only
+	useless if both pointers are non-ea pointers.
+	* target-def.h (TARGET_EA_POINTER_MODE): New.
+	(TARGET_INITIALIZER): Add TARGET_EA_POINTER_MODE.
+	* output.h (default_ea_pointer_mode): Provide extern declaration.
+	* config/spu/spu.c (TARGET_EA_POINTER_MODE): Override.
+	(spu_ea_pointer_mode): New function.
+	* config/spu/spu.md (to_ea, from_ea): New expanders.
+
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* config/spu/t-spu-elf (MULTILIB_OPTIONS): Add mea64.
+
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* config/spu/spu.h (ASM_OUTPUT_SYMBOL_REF): Define.
+	* config/spu/spu.c (ea_symbol_ref): New function.
+	(spu_legitimate_constant_p): Reject any __ea qualified reference.
+	(spu_legitimate_address): Keep __ea references until reload so
+	that spu_expand_mov can see them in MEMs.
+	(spu_expand_mov): Handle MEM_EA_P operands.
+	(EAmode): Define.
+	(ea_load_store): New function.
+	(ea_load_store_inline): Likewise.
+	(ea_alias_set): New global.
+	(expand_ea_mem): New function.
+
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* dwarf2out.c (modified_type_die): Add the DW_AT_address_class
+	attribute for __ea pointer and reference types.
+
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* config.gcc (spu-*-elf*) [extra_headers]: Add spu_cache.h.
+	* config/spu/spu_cache.h: New file.
+	* config/spu/cachemgr.c: Likewise.
+	* config/spu/cache.S: Likewise.
+	* config/spu/t-spu-elf (EXTRA_MULTILIB_PARTS): Add
+	libgcc_cachemgr.a, libgcc_cachemgr_nonatomic.a, libgcc_cache8k.a,
+	libgcc_cache16k.a, libgcc_cache32k.a, libgcc_cache64k.a,
+	libgcc_cache128k.a.
+	(cachemgr.o, %/cachemgr.o): New targets.
+	(cachemgr_nonatomic.o, %/cachemgr_nonatomic.o): Likewise.
+	(libgcc_%.a, %/libgcc_%.a): Likewise.
+	(cache8k.o, cache16k.o, cache32k.o, cache64k.o, cache128k.o,
+	%/cache8k.o, %/cache16k.o, %/cache32k.o, %/cache64k.o,
+	%/cache128k.o): Likewise.
+	
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* tree.h (TYPE_EA): New.
+	(TYPE_QUAL_EA): New.
+	(TYPE_QUALS): Include TYPE_EA.
+	(struct tree_type): Add ea_flag bit.
+	* target.h (struct gcc_target): Add have_ea.
+	* c-tree.h (struct c_declspecs): Add ea_p bitfield.
+	* target-def.h (TARGET_HAVE_EA): Define to false by default.
+	(TARGET_INITIALIZER): Add TARGET_HAVE_EA.
+	* rtl.h (struct rtx_def): Add ea bit.
+	* c-common.h (RID_EA): New.
+	* tree-dump.c (dequeue_and_dump): Handle TYPE_QUAL_EA.
+	* tree-pretty-print.c (dump_generic_node): Handle TYPE_QUAL_EA.
+	* tree.c (set_type_quals): Set TYPE_EA.
+	* c-decl.c (shadow_tag_warned): Handle declspecs->ea_p.
+	(quals_from_declspecs): Likewise, handle specs->ea_p.
+	(grokdeclarator): Warn about incorrect __ea usage.
+	(build_null_declspecs): Initialise ret->ea_p.
+	(declspecs_add_qual): Add RID_EA case.
+	* c-pretty-print.c (pp_c_type_qualifier_list): Print __ea.
+	* print-rtl.c (print_rtx): Print `/e' for __ea symbols.
+	* emit-rtl.c (set_mem_attributes_minus_bitpos): Set MEM_EA_P.
+	* print-tree.c (print_node): Handle trees with TYPE_EA.
+	* c-parser.c (reswords): Add __ea.
+	(c_token_starts_typename): Add RID_EA case.
+	(c_token_starts_declspecs): Likewise.
+	(c_parser_declspecs): Likewise.
+	(c_parser_attributes): Likewise.
+	(c_parser_asm_statement): Likewise.
+	(c_parser_objc_selector): Likewise.
+	* config/spu/spu.h (TARGET_HAVE_EA): Define to true.
+	* config/spu/spu-elf.h (DRIVER_SELF_SPECS): Handle -mcache-size=X
+	options; link the appropriate libgcc_cache library. Likewise for
+	-matomic-updates and -mno-atomic-updates.
+	(LIB_SPEC): Pass -lgcc_cache* options to the linker.
+	* config/spu/spu.opt (mea32, mea64): New options.
+	* config/spu/spu-c.c (spu_cpu_cpp_builtins): Define __EA32__ and
+	__EA64__ depending on the extended address pointer size.
+
+2007-10-30  Ben Elliston  <bje@au.ibm.com>
+
+	* config/spu/spu_mfcio.h: Avoid <stdint.h>.
+	(uint64_t): Typedef.
+
+2007-10-29  Ben Elliston  <bje@au.ibm.com>
+
+	* New.
+
