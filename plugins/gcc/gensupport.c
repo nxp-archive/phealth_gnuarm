@@ -1,5 +1,5 @@
 /* Support routines for the various generation passes.
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
    This file is part of GCC.
@@ -1367,6 +1367,9 @@ static const struct std_pred_table std_preds[] = {
   {"pop_operand", false, false, {MEM}},
   {"memory_operand", false, false, {SUBREG, MEM}},
   {"indirect_operand", false, false, {SUBREG, MEM}},
+  {"ordered_comparison_operator", false, false, {EQ, NE,
+						 LE, LT, GE, GT,
+						 LEU, LTU, GEU, GTU}},
   {"comparison_operator", false, false, {EQ, NE,
 					 LE, LT, GE, GT,
 					 LEU, LTU, GEU, GTU,

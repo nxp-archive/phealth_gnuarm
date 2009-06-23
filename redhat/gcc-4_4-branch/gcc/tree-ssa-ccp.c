@@ -1,5 +1,5 @@
 /* Conditional constant propagation pass for the GNU compiler.
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Adapted from original RTL SSA-CCP by Daniel Berlin <dberlin@dberlin.org>
    Adapted to GIMPLE trees by Diego Novillo <dnovillo@redhat.com>
@@ -227,6 +227,8 @@ typedef enum
    doing the store).  */
 static prop_value_t *const_val;
 
+static void canonicalize_float_value (prop_value_t *);
+
 /* Dump constant propagation value VAL to file OUTF prefixed by PREFIX.  */
 
 static void
@@ -287,10 +289,11 @@ get_symbol_constant_value (tree sym)
 	 have zero as the initializer if they may not be
 	 overridden at link or run time.  */
       if (!val
+	  && !DECL_EXTERNAL (sym)
 	  && targetm.binds_local_p (sym)
           && (INTEGRAL_TYPE_P (TREE_TYPE (sym))
 	       || SCALAR_FLOAT_TYPE_P (TREE_TYPE (sym))))
-        return fold_convert (TREE_TYPE (sym), integer_zero_node);
+	return fold_convert (TREE_TYPE (sym), integer_zero_node);
     }
 
   return NULL_TREE;
@@ -384,6 +387,8 @@ get_value (tree var)
   val = &const_val[SSA_NAME_VERSION (var)];
   if (val->lattice_val == UNINITIALIZED)
     *val = get_default_value (var);
+
+  canonicalize_float_value (val);
 
   return val;
 }
@@ -1285,7 +1290,9 @@ fold_const_aggregate_ref (tree t)
 	if (TREE_CODE (base) == SSA_NAME
 	    && (value = get_value (base))
 	    && value->lattice_val == CONSTANT
-	    && TREE_CODE (value->value) == ADDR_EXPR)
+	    && TREE_CODE (value->value) == ADDR_EXPR
+	    && useless_type_conversion_p (TREE_TYPE (t),
+					  TREE_TYPE (TREE_TYPE (value->value))))
 	  return fold_const_aggregate_ref (TREE_OPERAND (value->value, 0));
 	break;
       }
@@ -1941,8 +1948,7 @@ maybe_fold_offset_to_address (tree addr, tree offset, tree orig_type)
 	   || (TREE_CODE (orig) == COMPONENT_REF
 	       && TREE_CODE (TREE_TYPE (TREE_OPERAND (orig, 1))) == ARRAY_TYPE))
 	  && (TREE_CODE (t) == ARRAY_REF
-	      || (TREE_CODE (t) == COMPONENT_REF
-		  && TREE_CODE (TREE_TYPE (TREE_OPERAND (t, 1))) == ARRAY_TYPE))
+	      || TREE_CODE (t) == COMPONENT_REF)
 	  && !operand_equal_p (TREE_CODE (orig) == ARRAY_REF
 			       ? TREE_OPERAND (orig, 0) : orig,
 			       TREE_CODE (t) == ARRAY_REF

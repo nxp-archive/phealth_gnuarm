@@ -26,14 +26,15 @@ extern void   m32r_init (void);
 extern void   m32r_init_expanders (void);
 extern unsigned m32r_compute_frame_size (int);
 extern void   m32r_expand_prologue (void);
+extern void   m32r_expand_epilogue (void);
 extern int    direct_return (void);
 extern void   m32r_load_pic_register (void);
 
-#ifdef TREE_CODE
-extern enum m32r_function_type m32r_compute_function_type (tree);
-#endif /* TREE_CODE */
-
 #ifdef RTX_CODE
+/* Can't depend on TREE_CODE because insn-emit includes tm_p.h before tree.h.
+ */
+extern enum m32r_function_type m32r_compute_function_type (tree);
+
 extern int    easy_di_const (rtx);
 extern int    easy_df_const (rtx);
 extern rtx    gen_compare (enum rtx_code, rtx, rtx, int);

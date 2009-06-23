@@ -1,14 +1,14 @@
 /* Operating system specific defines to be used when targeting GCC for some
    generic System V Release 4 system.
    Copyright (C) 1991, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001 Free Software Foundation, Inc.
+   2000, 2001, 2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Ron Guilmette (rfg@monkeys.com).
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,12 +16,17 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
 
-   To use this file, make up a line like that in config.gcc:
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */
+
+
+/* To use this file, make up a line like that in config.gcc:
 
 	tm_file="$tm_file elfos.h svr4.h MACHINE/svr4.h"
 
@@ -56,7 +61,8 @@ Boston, MA 02110-1301, USA.
   && strcmp (STR, "Tdata") && strcmp (STR, "Ttext")	\
   && strcmp (STR, "Tbss"))
 
-/* Provide an ASM_SPEC appropriate for svr4.  Here we try to support as
+/* Provide an ASM_SPEC appropriate for svr4.
+   If we're not using GAS, we try to support as
    many of the specialized svr4 assembler options as seems reasonable,
    given that there are certain options which we can't (or shouldn't)
    support directly due to the fact that they conflict with other options
@@ -75,9 +81,16 @@ Boston, MA 02110-1301, USA.
    read its stdin.
 */
 
-#undef  ASM_SPEC
-#define ASM_SPEC \
+#ifdef USE_GAS
+#define SVR4_ASM_SPEC \
+  "%{v:-V} %{Wa,*:%*}"
+#else
+#define SVR4_ASM_SPEC \
   "%{v:-V} %{Qy:} %{!Qn:-Qy} %{n} %{T} %{Ym,*} %{Yd,*} %{Wa,*:%*}"
+#endif
+
+#undef  ASM_SPEC
+#define ASM_SPEC SVR4_ASM_SPEC
 
 #define AS_NEEDS_DASH_FOR_PIPED_INPUT
 

@@ -134,10 +134,6 @@ static VEC(expr_hash_elt_t,heap) *avail_exprs_stack;
    expressions are removed from AVAIL_EXPRS.  Else we may change the
    hash code for an expression and be unable to find/remove it from
    AVAIL_EXPRS.  */
-typedef gimple *gimple_p;
-DEF_VEC_P(gimple_p);
-DEF_VEC_ALLOC_P(gimple_p,heap);
-
 static VEC(gimple_p,heap) *stmts_to_rescan;
 
 /* Structure for entries in the expression hash table.  */
@@ -2474,7 +2470,7 @@ avail_expr_eq (const void *p1, const void *p2)
 /* Given PHI, return its RHS if the PHI is a degenerate, otherwise return
    NULL.  */
 
-static tree
+tree
 degenerate_phi_result (gimple phi)
 {
   tree lhs = gimple_phi_result (phi);

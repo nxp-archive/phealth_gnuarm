@@ -1,5 +1,5 @@
 /* Branch prediction routines for the GNU compiler.
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -123,6 +123,9 @@ maybe_hot_frequency_p (int freq)
     }
   if (profile_status == PROFILE_ABSENT)
     return true;
+  if (cfun->function_frequency == FUNCTION_FREQUENCY_EXECUTED_ONCE
+      && freq <= (ENTRY_BLOCK_PTR->frequency * 2 / 3))
+    return false;
   if (freq < BB_FREQ_MAX / PARAM_VALUE (HOT_BB_FREQUENCY_FRACTION))
     return false;
   return true;
@@ -169,9 +172,20 @@ cgraph_maybe_hot_edge_p (struct cgraph_edge *edge)
     return false;
   if (lookup_attribute ("hot", DECL_ATTRIBUTES (edge->caller->decl)))
     return true;
+  if (DECL_STRUCT_FUNCTION (edge->caller->decl))
+    {
+      struct function *fun = DECL_STRUCT_FUNCTION (edge->caller->decl);
+      if (fun->function_frequency == FUNCTION_FREQUENCY_UNLIKELY_EXECUTED)
+        return false;
+      if (fun->function_frequency == FUNCTION_FREQUENCY_HOT)
+        return true;
+      if (fun->function_frequency == FUNCTION_FREQUENCY_EXECUTED_ONCE
+          && edge->frequency < CGRAPH_FREQ_BASE * 3 / 2)
+	return false;
+    }
   if (flag_guess_branch_prob
-      && edge->frequency < (CGRAPH_FREQ_MAX
-      			    / PARAM_VALUE (HOT_BB_FREQUENCY_FRACTION)))
+      && edge->frequency <= (CGRAPH_FREQ_BASE
+      			     / PARAM_VALUE (HOT_BB_FREQUENCY_FRACTION)))
     return false;
   return true;
 }
@@ -656,7 +670,7 @@ combine_predictions_for_insn (rtx insn, basic_block bb)
   rtx *pnote;
   rtx note;
   int best_probability = PROB_EVEN;
-  int best_predictor = END_PREDICTORS;
+  enum br_predictor best_predictor = END_PREDICTORS;
   int combined_probability = REG_BR_PROB_BASE / 2;
   int d;
   bool first_match = false;
@@ -679,7 +693,8 @@ combine_predictions_for_insn (rtx insn, basic_block bb)
   for (note = REG_NOTES (insn); note; note = XEXP (note, 1))
     if (REG_NOTE_KIND (note) == REG_BR_PRED)
       {
-	int predictor = INTVAL (XEXP (XEXP (note, 0), 0));
+	enum br_predictor predictor = ((enum br_predictor)
+				       INTVAL (XEXP (XEXP (note, 0), 0)));
 	int probability = INTVAL (XEXP (XEXP (note, 0), 1));
 
 	found = true;
@@ -725,7 +740,8 @@ combine_predictions_for_insn (rtx insn, basic_block bb)
     {
       if (REG_NOTE_KIND (*pnote) == REG_BR_PRED)
 	{
-	  int predictor = INTVAL (XEXP (XEXP (*pnote, 0), 0));
+	  enum br_predictor predictor = ((enum br_predictor)
+					 INTVAL (XEXP (XEXP (*pnote, 0), 0)));
 	  int probability = INTVAL (XEXP (XEXP (*pnote, 0), 1));
 
 	  dump_prediction (dump_file, predictor, probability, bb,
@@ -767,7 +783,7 @@ static void
 combine_predictions_for_bb (basic_block bb)
 {
   int best_probability = PROB_EVEN;
-  int best_predictor = END_PREDICTORS;
+  enum br_predictor best_predictor = END_PREDICTORS;
   int combined_probability = REG_BR_PROB_BASE / 2;
   int d;
   bool first_match = false;
@@ -815,7 +831,7 @@ combine_predictions_for_bb (basic_block bb)
 	 by predictor with smallest index.  */
       for (pred = (struct edge_prediction *) *preds; pred; pred = pred->ep_next)
 	{
-	  int predictor = pred->ep_predictor;
+	  enum br_predictor predictor = pred->ep_predictor;
 	  int probability = pred->ep_probability;
 
 	  if (pred->ep_edge != first)
@@ -890,7 +906,7 @@ combine_predictions_for_bb (basic_block bb)
     {
       for (pred = (struct edge_prediction *) *preds; pred; pred = pred->ep_next)
 	{
-	  int predictor = pred->ep_predictor;
+	  enum br_predictor predictor = pred->ep_predictor;
 	  int probability = pred->ep_probability;
 
 	  if (pred->ep_edge != EDGE_SUCC (bb, 0))
@@ -2124,6 +2140,9 @@ compute_function_frequency (void)
 {
   basic_block bb;
 
+  if (cfun->function_frequency == FUNCTION_FREQUENCY_EXECUTED_ONCE)
+    return;
+
   if (!profile_info || !flag_branch_probabilities)
     {
       if (lookup_attribute ("cold", DECL_ATTRIBUTES (current_function_decl))
@@ -2132,6 +2151,11 @@ compute_function_frequency (void)
       else if (lookup_attribute ("hot", DECL_ATTRIBUTES (current_function_decl))
 	       != NULL)
         cfun->function_frequency = FUNCTION_FREQUENCY_HOT;
+      else if (MAIN_NAME_P (DECL_NAME (current_function_decl)))
+        cfun->function_frequency = FUNCTION_FREQUENCY_EXECUTED_ONCE;
+      else if (DECL_STATIC_CONSTRUCTOR (current_function_decl)
+	       || DECL_STATIC_DESTRUCTOR (current_function_decl))
+        cfun->function_frequency = FUNCTION_FREQUENCY_EXECUTED_ONCE;
       return;
     }
   cfun->function_frequency = FUNCTION_FREQUENCY_UNLIKELY_EXECUTED;
@@ -2187,7 +2211,7 @@ build_predict_expr (enum br_predictor predictor, enum prediction taken)
 {
   tree t = build1 (PREDICT_EXPR, void_type_node,
 		   build_int_cst (NULL, predictor));
-  PREDICT_EXPR_OUTCOME (t) = taken;
+  SET_PREDICT_EXPR_OUTCOME (t, taken);
   return t;
 }
 

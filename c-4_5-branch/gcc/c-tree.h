@@ -1,6 +1,6 @@
 /* Definitions for C parsing and type checking.
    Copyright (C) 1987, 1993, 1994, 1995, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2009
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -671,5 +671,9 @@ extern void c_write_global_declarations (void);
 
 extern void pedwarn_c90 (location_t, int opt, const char *, ...) ATTRIBUTE_GCC_CDIAG(3,4);
 extern void pedwarn_c99 (location_t, int opt, const char *, ...) ATTRIBUTE_GCC_CDIAG(3,4);
+
+extern bool c_cpp_error (cpp_reader *, int, location_t, unsigned int,
+			 const char *, va_list *)
+     ATTRIBUTE_GCC_CDIAG(5,0);
 
 #endif /* ! GCC_C_TREE_H */

@@ -1,5 +1,5 @@
 /* SSA-PRE for trees.
-   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dan@dberlin.org> and Steven Bosscher
    <stevenb@suse.de>
@@ -377,6 +377,9 @@ typedef struct bb_bitmap_sets
      the current iteration.  */
   bitmap_set_t new_sets;
 
+  /* A cache for value_dies_in_block_x.  */
+  bitmap expr_dies;
+
   /* True if we have visited this block during ANTIC calculation.  */
   unsigned int visited:1;
 
@@ -392,7 +395,8 @@ typedef struct bb_bitmap_sets
 #define ANTIC_IN(BB)	((bb_value_sets_t) ((BB)->aux))->antic_in
 #define PA_IN(BB)	((bb_value_sets_t) ((BB)->aux))->pa_in
 #define NEW_SETS(BB)	((bb_value_sets_t) ((BB)->aux))->new_sets
-#define BB_VISITED(BB) ((bb_value_sets_t) ((BB)->aux))->visited
+#define EXPR_DIES(BB)	((bb_value_sets_t) ((BB)->aux))->expr_dies
+#define BB_VISITED(BB)	((bb_value_sets_t) ((BB)->aux))->visited
 #define BB_DEFERRED(BB) ((bb_value_sets_t) ((BB)->aux))->deferred
 
 
@@ -1067,7 +1071,9 @@ get_or_alloc_expr_for (tree t)
 {
   if (TREE_CODE (t) == SSA_NAME)
     return get_or_alloc_expr_for_name (t);
-  else if (is_gimple_min_invariant (t))
+  else if (is_gimple_min_invariant (t)
+	   || TREE_CODE (t) == EXC_PTR_EXPR
+	   || TREE_CODE (t) == FILTER_EXPR)
     return get_or_alloc_expr_for_constant (t);
   else
     {
@@ -1245,20 +1251,43 @@ do_unary:
    it has the value it would have in BLOCK.  */
 
 static tree
-translate_vuse_through_block (tree vuse,
+translate_vuse_through_block (VEC (vn_reference_op_s, heap) *operands,
+			      tree vuse,
 			      basic_block phiblock,
 			      basic_block block)
 {
   gimple phi = SSA_NAME_DEF_STMT (vuse);
-  if (gimple_code (phi) == GIMPLE_PHI
-      && gimple_bb (phi) == phiblock)
+  tree ref;
+
+  if (gimple_bb (phi) != phiblock)
+    return vuse;
+
+  if (gimple_code (phi) == GIMPLE_PHI)
     {
-      edge e = find_edge (block, gimple_bb (phi));
-      if (e)
-	return PHI_ARG_DEF (phi, e->dest_idx);
+      edge e = find_edge (block, phiblock);
+      return PHI_ARG_DEF (phi, e->dest_idx);
     }
 
-  return vuse;
+  if (!(ref = get_ref_from_reference_ops (operands)))
+    return NULL_TREE;
+
+  /* Use the alias-oracle to find either the PHI node in this block,
+     the first VUSE used in this block that is equivalent to vuse or
+     the first VUSE which definition in this block kills the value.  */
+  while (!stmt_may_clobber_ref_p (phi, ref))
+    {
+      vuse = gimple_vuse (phi);
+      phi = SSA_NAME_DEF_STMT (vuse);
+      if (gimple_bb (phi) != phiblock)
+	return vuse;
+      if (gimple_code (phi) == GIMPLE_PHI)
+	{
+	  edge e = find_edge (block, phiblock);
+	  return PHI_ARG_DEF (phi, e->dest_idx);
+	}
+    }
+
+  return NULL_TREE;
 }
 
 /* Like find_leader, but checks for the value existing in SET1 *or*
@@ -1623,7 +1652,15 @@ phi_translate_1 (pre_expr expr, bitmap_set_t set1, bitmap_set_t set2,
 	  }
 
 	if (vuse)
-	  newvuse = translate_vuse_through_block (vuse, phiblock, pred);
+	  {
+	    newvuse = translate_vuse_through_block (newoperands,
+						    vuse, phiblock, pred);
+	    if (newvuse == NULL_TREE)
+	      {
+		VEC_free (vn_reference_op_s, heap, newoperands);
+		return NULL;
+	      }
+	  }
 	changed |= newvuse != vuse;
 
 	if (changed)
@@ -1699,6 +1736,9 @@ phi_translate_1 (pre_expr expr, bitmap_set_t set1, bitmap_set_t set2,
 	  {
 	    tree def = PHI_ARG_DEF (phi, e->dest_idx);
 	    pre_expr newexpr;
+
+	    if (TREE_CODE (def) == SSA_NAME)
+	      def = VN_INFO (def)->valnum;
 
 	    /* Handle constant. */
 	    if (is_gimple_min_invariant (def))
@@ -1835,18 +1875,72 @@ static bool
 value_dies_in_block_x (pre_expr expr, basic_block block)
 {
   tree vuse = PRE_EXPR_REFERENCE (expr)->vuse;
+  vn_reference_t refx = PRE_EXPR_REFERENCE (expr);
+  gimple def;
+  tree ref = NULL_TREE;
+  gimple_stmt_iterator gsi;
+  unsigned id = get_expression_id (expr);
+  bool res = false;
 
-  /* Conservatively, a value dies if it's vuse is defined in this
-     block, unless they come from phi nodes (which are merge operations,
-     rather than stores.  */
-  if (vuse)
+  if (!vuse)
+    return false;
+
+  /* Lookup a previously calculated result.  */
+  if (EXPR_DIES (block)
+      && bitmap_bit_p (EXPR_DIES (block), id * 2))
+    return bitmap_bit_p (EXPR_DIES (block), id * 2 + 1);
+
+  /* A memory expression {e, VUSE} dies in the block if there is a
+     statement that may clobber e.  If, starting statement walk from the
+     top of the basic block, a statement uses VUSE there can be no kill
+     inbetween that use and the original statement that loaded {e, VUSE},
+     so we can stop walking.  */
+  for (gsi = gsi_start_bb (block); !gsi_end_p (gsi); gsi_next (&gsi))
     {
-      gimple def = SSA_NAME_DEF_STMT (vuse);
-      if (gimple_bb (def) == block
-	  && gimple_code (def) != GIMPLE_PHI)
-	return true;
+      tree def_vuse, def_vdef;
+      def = gsi_stmt (gsi);
+      def_vuse = gimple_vuse (def);
+      def_vdef = gimple_vdef (def);
+
+      /* Not a memory statement.  */
+      if (!def_vuse)
+	continue;
+
+      /* Not a may-def.  */
+      if (!def_vdef)
+	{
+	  /* A load with the same VUSE, we're done.  */
+	  if (def_vuse == vuse)
+	    break;
+
+	  continue;
+	}
+
+      /* Init ref only if we really need it.  */
+      if (ref == NULL_TREE)
+	{
+	  if (!(ref = get_ref_from_reference_ops (refx->operands)))
+	    {
+	      res = true;
+	      break;
+	    }
+	}
+      /* If the statement may clobber expr, it dies.  */
+      if (stmt_may_clobber_ref_p (def, ref))
+	{
+	  res = true;
+	  break;
+	}
     }
-  return false;
+
+  /* Remember the result.  */
+  if (!EXPR_DIES (block))
+    EXPR_DIES (block) = BITMAP_ALLOC (&grand_bitmap_obstack);
+  bitmap_set_bit (EXPR_DIES (block), id * 2);
+  if (res)
+    bitmap_set_bit (EXPR_DIES (block), id * 2 + 1);
+
+  return res;
 }
 
 
@@ -1951,6 +2045,15 @@ valid_in_sets (bitmap_set_t set1, bitmap_set_t set2, pre_expr expr,
 	for (i = 0; VEC_iterate (vn_reference_op_s, ref->operands, i, vro); i++)
 	  {
 	    if (!vro_valid_in_sets (set1, set2, vro))
+	      return false;
+	  }
+	if (ref->vuse)
+	  {
+	    gimple def_stmt = SSA_NAME_DEF_STMT (ref->vuse);
+	    if (!gimple_nop_p (def_stmt)
+		&& gimple_bb (def_stmt) != block
+		&& !dominated_by_p (CDI_DOMINATORS,
+				    block, gimple_bb (def_stmt)))
 	      return false;
 	  }
 	return !value_dies_in_block_x (expr, block);
@@ -3559,7 +3662,8 @@ compute_avail (void)
       pre_expr e;
       if (!name
 	  || !SSA_NAME_IS_DEFAULT_DEF (name)
-	  || has_zero_uses (name))
+	  || has_zero_uses (name)
+	  || !is_gimple_reg (name))
 	continue;
 
       e = get_or_alloc_expr_for_name (name);
@@ -3816,16 +3920,18 @@ do_SCCVN_insertion (gimple stmt, tree ssa_vn)
 static unsigned int
 eliminate (void)
 {
+  VEC (gimple, heap) *to_remove = NULL;
   basic_block b;
   unsigned int todo = 0;
+  gimple_stmt_iterator gsi;
+  gimple stmt;
+  unsigned i;
 
   FOR_EACH_BB (b)
     {
-      gimple_stmt_iterator i;
-
-      for (i = gsi_start_bb (b); !gsi_end_p (i); gsi_next (&i))
+      for (gsi = gsi_start_bb (b); !gsi_end_p (gsi); gsi_next (&gsi))
 	{
-	  gimple stmt = gsi_stmt (i);
+	  stmt = gsi_stmt (gsi);
 
 	  /* Lookup the RHS of the expression, see if we have an
 	     available computation for it.  If so, replace the RHS with
@@ -3878,8 +3984,8 @@ eliminate (void)
 		      print_gimple_stmt (dump_file, stmt, 0, 0);
 		    }
 		  pre_stats.eliminations++;
-		  propagate_tree_value_into_stmt (&i, sprime);
-		  stmt = gsi_stmt (i);
+		  propagate_tree_value_into_stmt (&gsi, sprime);
+		  stmt = gsi_stmt (gsi);
 		  update_stmt (stmt);
 		  continue;
 		}
@@ -3926,8 +4032,8 @@ eliminate (void)
 		    sprime = fold_convert (gimple_expr_type (stmt), sprime);
 
 		  pre_stats.eliminations++;
-		  propagate_tree_value_into_stmt (&i, sprime);
-		  stmt = gsi_stmt (i);
+		  propagate_tree_value_into_stmt (&gsi, sprime);
+		  stmt = gsi_stmt (gsi);
 		  update_stmt (stmt);
 
 		  /* If we removed EH side effects from the statement, clean
@@ -3939,6 +4045,33 @@ eliminate (void)
 		      if (dump_file && (dump_flags & TDF_DETAILS))
 			fprintf (dump_file, "  Removed EH side effects.\n");
 		    }
+		}
+	    }
+	  /* If the statement is a scalar store, see if the expression
+	     has the same value number as its rhs.  If so, the store is
+	     dead.  */
+	  else if (gimple_assign_single_p (stmt)
+		   && !is_gimple_reg (gimple_assign_lhs (stmt))
+		   && (TREE_CODE (gimple_assign_rhs1 (stmt)) == SSA_NAME
+		       || is_gimple_min_invariant (gimple_assign_rhs1 (stmt))))
+	    {
+	      tree rhs = gimple_assign_rhs1 (stmt);
+	      tree val;
+	      val = vn_reference_lookup (gimple_assign_lhs (stmt),
+					 gimple_vuse (stmt), true, NULL);
+	      if (TREE_CODE (rhs) == SSA_NAME)
+		rhs = VN_INFO (rhs)->valnum;
+	      if (val
+		  && operand_equal_p (val, rhs, 0))
+		{
+		  if (dump_file && (dump_flags & TDF_DETAILS))
+		    {
+		      fprintf (dump_file, "Deleted redundant store ");
+		      print_gimple_stmt (dump_file, stmt, 0, 0);
+		    }
+
+		  /* Queue stmt for removal.  */
+		  VEC_safe_push (gimple, heap, to_remove, stmt);
 		}
 	    }
 	  /* Visit COND_EXPRs and fold the comparison with the
@@ -3967,6 +4100,17 @@ eliminate (void)
 	    }
 	}
     }
+
+  /* We cannot remove stmts during BB walk, especially not release SSA
+     names there as this confuses the VN machinery.  */
+  for (i = 0; VEC_iterate (gimple, to_remove, i, stmt); ++i)
+    {
+      gsi = gsi_for_stmt (stmt);
+      unlink_stmt_vdef (stmt);
+      gsi_remove (&gsi, true);
+      release_defs (stmt);
+    }
+  VEC_free (gimple, heap, to_remove);
 
   return todo;
 }
@@ -4268,7 +4412,7 @@ execute_pre (bool do_fre ATTRIBUTE_UNUSED)
 static unsigned int
 do_pre (void)
 {
-  return TODO_rebuild_alias | execute_pre (false);
+  return execute_pre (false);
 }
 
 static bool
@@ -4293,7 +4437,7 @@ struct gimple_opt_pass pass_pre =
     | PROP_ssa | PROP_alias,		/* properties_required */
   0,					/* properties_provided */
   0,					/* properties_destroyed */
-  0,					/* todo_flags_start */
+  TODO_rebuild_alias,			/* todo_flags_start */
   TODO_update_ssa_only_virtuals | TODO_dump_func | TODO_ggc_collect
   | TODO_verify_ssa /* todo_flags_finish */
  }

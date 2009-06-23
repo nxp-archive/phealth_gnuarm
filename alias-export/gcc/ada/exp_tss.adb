@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -28,8 +27,11 @@ with Atree;    use Atree;
 with Einfo;    use Einfo;
 with Elists;   use Elists;
 with Exp_Util; use Exp_Util;
+with Nlists;   use Nlists;
 with Lib;      use Lib;
-with Namet;    use Namet;
+with Restrict; use Restrict;
+with Rident;   use Rident;
+with Sem_Aux;  use Sem_Aux;
 with Sem_Util; use Sem_Util;
 with Sinfo;    use Sinfo;
 
@@ -39,7 +41,10 @@ package body Exp_Tss is
    -- Base_Init_Proc --
    --------------------
 
-   function Base_Init_Proc (Typ : Entity_Id) return Entity_Id is
+   function Base_Init_Proc
+     (Typ : Entity_Id;
+      Ref : Entity_Id := Empty) return Entity_Id
+   is
       Full_Type : E;
       Proc      : Entity_Id;
 
@@ -54,19 +59,26 @@ package body Exp_Tss is
 
       if No (Full_Type) then
          return Empty;
+
       elsif Is_Concurrent_Type (Full_Type)
         and then Present (Corresponding_Record_Type (Base_Type (Full_Type)))
       then
-         return Init_Proc (Corresponding_Record_Type (Base_Type (Full_Type)));
+         --  The initialization routine to be called is that of the base type
+         --  of the corresponding record type, which may itself be a subtype
+         --  and possibly an itype.
+
+         return Init_Proc
+           (Base_Type (Corresponding_Record_Type (Base_Type (Full_Type))),
+            Ref);
 
       else
-         Proc := Init_Proc (Base_Type (Full_Type));
+         Proc := Init_Proc (Base_Type (Full_Type), Ref);
 
          if No (Proc)
            and then Is_Composite_Type (Full_Type)
            and then Is_Derived_Type (Full_Type)
          then
-            return Init_Proc (Root_Type (Full_Type));
+            return Init_Proc (Root_Type (Full_Type), Ref);
          else
             return Proc;
          end if;
@@ -161,20 +173,30 @@ package body Exp_Tss is
    -- Has_Non_Null_Base_Init_Proc --
    ---------------------------------
 
+   --  Note: if a base Init_Proc is present, and No_Default_Initialization is
+   --  present, then we must avoid testing for a null init proc, since there
+   --  is no init proc present in this case.
+
    function Has_Non_Null_Base_Init_Proc (Typ : Entity_Id) return Boolean is
       BIP : constant Entity_Id := Base_Init_Proc (Typ);
-
    begin
-      return Present (BIP) and then not Is_Null_Init_Proc (BIP);
+      return Present (BIP)
+        and then (Restriction_Active (No_Default_Initialization)
+                    or else not Is_Null_Init_Proc (BIP));
    end Has_Non_Null_Base_Init_Proc;
 
    ---------------
    -- Init_Proc --
    ---------------
 
-   function Init_Proc (Typ : Entity_Id) return Entity_Id is
+   function Init_Proc
+     (Typ  : Entity_Id;
+      Ref  : Entity_Id := Empty) return Entity_Id
+   is
       FN   : constant Node_Id := Freeze_Node (Typ);
       Elmt : Elmt_Id;
+      E1   : Entity_Id;
+      E2   : Entity_Id;
 
    begin
       if No (FN) then
@@ -183,11 +205,57 @@ package body Exp_Tss is
       elsif No (TSS_Elist (FN)) then
          return Empty;
 
-      else
+      elsif No (Ref) then
          Elmt := First_Elmt (TSS_Elist (FN));
          while Present (Elmt) loop
             if Is_Init_Proc (Node (Elmt)) then
-               return Node (Elmt);
+               if not Is_CPP_Class (Typ) then
+                  return Node (Elmt);
+
+               --  In case of CPP classes we are searching here for the
+               --  default constructor and hence we must skip non-default
+               --  constructors (if any)
+
+               elsif
+                 No (Next
+                      (First
+                        (Parameter_Specifications (Parent (Node (Elmt))))))
+               then
+                  return Node (Elmt);
+               end if;
+            end if;
+
+            Next_Elmt (Elmt);
+         end loop;
+
+      --  Non-default constructors are currently supported only in the
+      --  context of interfacing with C++
+
+      else pragma Assert (Is_CPP_Class (Typ));
+
+         --  Use the referenced function to locate the IP procedure that
+         --  corresponds with the C++ constructor
+
+         Elmt := First_Elmt (TSS_Elist (FN));
+         while Present (Elmt) loop
+            if Is_Init_Proc (Node (Elmt)) then
+               E1 := Next_Formal (First_Formal (Node (Elmt)));
+               E2 := First_Formal (Ref);
+               while Present (E1) and then Present (E2) loop
+                  if Chars (E1) /= Chars (E2)
+                    or else Ekind (E1) /= Ekind (E2)
+                    or else Etype (E1) /= Etype (E2)
+                  then
+                     exit;
+                  end if;
+
+                  E1 := Next_Formal (E1);
+                  E2 := Next_Formal (E2);
+               end loop;
+
+               if No (E1) and then No (E2) then
+                  return Node (Elmt);
+               end if;
             end if;
 
             Next_Elmt (Elmt);
@@ -308,19 +376,30 @@ package body Exp_Tss is
    -------------
 
    procedure Set_TSS (Typ : Entity_Id; TSS : Entity_Id) is
-      Subprog_Body : constant Node_Id := Unit_Declaration_Node (TSS);
-
    begin
-      --  Case of insertion location is in unit defining the type
+      --  Make sure body of subprogram is frozen
 
-      if In_Same_Code_Unit (Typ, TSS) then
-         Append_Freeze_Action (Typ, Subprog_Body);
+      --  Skip this for Init_Proc with No_Default_Initialization, since the
+      --  Init proc is a dummy void entity in this case to be ignored.
 
-      --  Otherwise, we are using an already existing TSS in another unit
+      if Is_Init_Proc (TSS)
+        and then Restriction_Active (No_Default_Initialization)
+      then
+         null;
+
+      --  Skip this if not in the same code unit (since it means we are using
+      --  an already existing TSS in another unit)
+
+      elsif not In_Same_Code_Unit (Typ, TSS) then
+         null;
+
+      --  Otherwise make sure body is frozen
 
       else
-         null;
+         Append_Freeze_Action (Typ, Unit_Declaration_Node (TSS));
       end if;
+
+      --  Set TSS entry
 
       Copy_TSS (TSS, Typ);
    end Set_TSS;

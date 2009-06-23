@@ -1,5 +1,5 @@
 /* Target Definitions for R8C/M16C/M32C
-   Copyright (C) 2005, 2007
+   Copyright (C) 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Red Hat.
 
@@ -188,6 +188,9 @@ machine_function;
 
 #undef PTRDIFF_TYPE
 #define PTRDIFF_TYPE (TARGET_A16 ? "int" : "long int")
+
+#undef UINTPTR_TYPE
+#define UINTPTR_TYPE (TARGET_A16 ? "unsigned int" : "long unsigned int")
 
 /* REGISTER USAGE */
 

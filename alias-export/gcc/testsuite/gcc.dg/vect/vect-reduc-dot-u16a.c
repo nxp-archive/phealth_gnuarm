@@ -8,13 +8,13 @@
 #define DOT1 43680
 #define DOT2 43680
 
-unsigned short X[N] __attribute__ ((__aligned__(16)));
-unsigned short Y[N] __attribute__ ((__aligned__(16)));
+unsigned short X[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
+unsigned short Y[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
 
 /* short->short->int dot product. 
    Not detected as a dot-product pattern.
    Requires support for non-widneing multiplication and widening-summation.  */
-unsigned int
+__attribute__ ((noinline)) unsigned int
 foo1(int len) {
   int i;
   unsigned int result = 0;

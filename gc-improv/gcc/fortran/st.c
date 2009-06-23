@@ -1,5 +1,5 @@
 /* Build executable statement trees.
-   Copyright (C) 2000, 2001, 2002, 2004, 2005, 2006, 2007
+   Copyright (C) 2000, 2001, 2002, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
@@ -48,7 +48,7 @@ gfc_get_code (void)
 {
   gfc_code *c;
 
-  c = gfc_getmem (sizeof (gfc_code));
+  c = XCNEW (gfc_code);
   c->loc = gfc_current_locus;
   return c;
 }
@@ -58,20 +58,20 @@ gfc_get_code (void)
    its tail, returning a pointer to the new tail.  */
 
 gfc_code *
-gfc_append_code (gfc_code *tail, gfc_code *new)
+gfc_append_code (gfc_code *tail, gfc_code *new_code)
 {
   if (tail != NULL)
     {
       while (tail->next != NULL)
 	tail = tail->next;
 
-      tail->next = new;
+      tail->next = new_code;
     }
 
-  while (new->next != NULL)
-    new = new->next;
+  while (new_code->next != NULL)
+    new_code = new_code->next;
 
-  return new;
+  return new_code;
 }
 
 
@@ -80,19 +80,21 @@ gfc_append_code (gfc_code *tail, gfc_code *new)
 void
 gfc_free_statement (gfc_code *p)
 {
-  if (p->expr)
-    gfc_free_expr (p->expr);
+  if (p->expr1)
+    gfc_free_expr (p->expr1);
   if (p->expr2)
     gfc_free_expr (p->expr2);
 
   switch (p->op)
     {
     case EXEC_NOP:
+    case EXEC_END_BLOCK:
     case EXEC_ASSIGN:
     case EXEC_INIT_ASSIGN:
     case EXEC_GOTO:
     case EXEC_CYCLE:
     case EXEC_RETURN:
+    case EXEC_END_PROCEDURE:
     case EXEC_IF:
     case EXEC_PAUSE:
     case EXEC_STOP:
@@ -108,6 +110,8 @@ gfc_free_statement (gfc_code *p)
     case EXEC_ARITHMETIC_IF:
       break;
 
+    case EXEC_COMPCALL:
+    case EXEC_CALL_PPC:
     case EXEC_CALL:
     case EXEC_ASSIGN_CALL:
       gfc_free_actual_arglist (p->ext.actual);
@@ -146,6 +150,10 @@ gfc_free_statement (gfc_code *p)
       gfc_free_inquire (p->ext.inquire);
       break;
 
+    case EXEC_WAIT:
+      gfc_free_wait (p->ext.wait);
+      break;
+
     case EXEC_READ:
     case EXEC_WRITE:
       gfc_free_dt (p->ext.dt);
@@ -167,6 +175,7 @@ gfc_free_statement (gfc_code *p)
     case EXEC_OMP_PARALLEL_SECTIONS:
     case EXEC_OMP_SECTIONS:
     case EXEC_OMP_SINGLE:
+    case EXEC_OMP_TASK:
     case EXEC_OMP_WORKSHARE:
     case EXEC_OMP_PARALLEL_WORKSHARE:
       gfc_free_omp_clauses (p->ext.omp_clauses);
@@ -185,6 +194,7 @@ gfc_free_statement (gfc_code *p)
     case EXEC_OMP_MASTER:
     case EXEC_OMP_ORDERED:
     case EXEC_OMP_END_NOWAIT:
+    case EXEC_OMP_TASKWAIT:
       break;
 
     default:

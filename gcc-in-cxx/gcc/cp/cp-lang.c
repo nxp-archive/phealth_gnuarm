@@ -1,5 +1,5 @@
 /* Language-dependent hooks for C++.
-   Copyright 2001, 2002, 2004, 2007 Free Software Foundation, Inc.
+   Copyright 2001, 2002, 2004, 2007, 2008 Free Software Foundation, Inc.
    Contributed by Alexandre Oliva  <aoliva@redhat.com>
 
 This file is part of GCC.
@@ -69,7 +69,7 @@ const struct lang_hooks lang_hooks = LANG_HOOKS_INITIALIZER;
 tree
 objcp_tsubst_copy_and_build (tree t ATTRIBUTE_UNUSED,
 			     tree args ATTRIBUTE_UNUSED,
-			     int complain ATTRIBUTE_UNUSED,
+			     tsubst_flags_t complain ATTRIBUTE_UNUSED,
 			     tree in_decl ATTRIBUTE_UNUSED,
 			     bool function_p ATTRIBUTE_UNUSED)
 {

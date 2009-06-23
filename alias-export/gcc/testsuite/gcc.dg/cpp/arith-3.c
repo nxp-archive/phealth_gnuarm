@@ -9,7 +9,7 @@
    Please keep changes to arith-2.c and arith-3.c in sync.  */
 
 /* { dg-do preprocess } */
-/* { dg-options "-std=c99 -fno-show-column" } */
+/* { dg-options "-std=c99" } */
 
 #include <limits.h>
 
@@ -143,13 +143,13 @@
 
 #if UTARG_MAX			/* { dg-warning "so large" }  */
 #endif
-#if UTARG_MAX_PLUS_1		/* { dg-error "too large" }  */
+#if UTARG_MAX_PLUS_1		/* { dg-warning "too large" }  */
 #endif
-#if UTARG_MAX_PLUS_1_HEX	/* { dg-error "too large" }  */
+#if UTARG_MAX_PLUS_1_HEX	/* { dg-warning "too large" }  */
 #endif
 #if UTARG_MAX_HEX		/* { dg-bogus "too large" }  */
 #endif
-#if UTARG_MAX_PLUS_1_OCT	/* { dg-error "too large" }  */
+#if UTARG_MAX_PLUS_1_OCT	/* { dg-warning "too large" }  */
 #endif
 #if UTARG_MAX_OCT		/* { dg-bogus "too large" }  */
 #endif

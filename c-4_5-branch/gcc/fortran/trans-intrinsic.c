@@ -1,5 +1,5 @@
 /* Intrinsic translation
-   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
    and Steven Bosscher <s.bosscher@student.tudelft.nl>
@@ -488,11 +488,11 @@ gfc_conv_intrinsic_aint (gfc_se * se, gfc_expr * expr, enum rounding_mode op)
   mpfr_init (huge);
   n = gfc_validate_kind (BT_INTEGER, kind, false);
   mpfr_set_z (huge, gfc_integer_kinds[n].huge, GFC_RND_MODE);
-  tmp = gfc_conv_mpfr_to_tree (huge, kind);
+  tmp = gfc_conv_mpfr_to_tree (huge, kind, 0);
   cond = fold_build2 (LT_EXPR, boolean_type_node, arg[0], tmp);
 
   mpfr_neg (huge, huge, GFC_RND_MODE);
-  tmp = gfc_conv_mpfr_to_tree (huge, kind);
+  tmp = gfc_conv_mpfr_to_tree (huge, kind, 0);
   tmp = fold_build2 (GT_EXPR, boolean_type_node, arg[0], tmp);
   cond = fold_build2 (TRUTH_AND_EXPR, boolean_type_node, cond, tmp);
   itype = gfc_get_int_type (kind);
@@ -759,7 +759,7 @@ gfc_trans_same_strlen_check (const char* intr_name, locus* where,
   tree name;
 
   /* If bounds-checking is disabled, do nothing.  */
-  if (!flag_bounds_check)
+  if (!(gfc_option.rtcheck & GFC_RTCHECK_BOUNDS))
     return;
 
   /* Compare the two string lengths.  */
@@ -807,7 +807,7 @@ gfc_conv_intrinsic_exponent (gfc_se *se, gfc_expr *expr)
 
   res = gfc_create_var (integer_type_node, NULL);
   tmp = build_call_expr (built_in_decls[frexp], 2, arg,
-			 build_fold_addr_expr (res));
+			 gfc_build_addr_expr (NULL_TREE, res));
   gfc_add_expr_to_block (&se->pre, tmp);
 
   type = gfc_typenode_for_spec (&expr->ts);
@@ -885,7 +885,7 @@ gfc_conv_intrinsic_bound (gfc_se * se, gfc_expr * expr, int upper)
     }
   else
     {
-      if (flag_bounds_check)
+      if (gfc_option.rtcheck & GFC_RTCHECK_BOUNDS)
         {
           bound = gfc_evaluate_now (bound, &se->pre);
           cond = fold_build2 (LT_EXPR, boolean_type_node,
@@ -972,11 +972,16 @@ gfc_conv_intrinsic_bound (gfc_se * se, gfc_expr * expr, int upper)
 
       cond4 = fold_build2 (LT_EXPR, boolean_type_node, stride,
 			   gfc_index_zero_node);
-      cond4 = fold_build2 (TRUTH_AND_EXPR, boolean_type_node, cond4, cond2);
 
       if (upper)
 	{
+	  tree cond5;
 	  cond = fold_build2 (TRUTH_OR_EXPR, boolean_type_node, cond3, cond4);
+
+	  cond5 = fold_build2 (EQ_EXPR, boolean_type_node, gfc_index_one_node, lbound);
+	  cond5 = fold_build2 (TRUTH_AND_EXPR, boolean_type_node, cond4, cond5);
+
+	  cond = fold_build2 (TRUTH_OR_EXPR, boolean_type_node, cond, cond5);
 
 	  se->expr = fold_build3 (COND_EXPR, gfc_array_index_type, cond,
 				  ubound, gfc_index_zero_node);
@@ -1192,11 +1197,11 @@ gfc_conv_intrinsic_mod (gfc_se * se, gfc_expr * expr, int modulo)
 	  ikind = gfc_max_integer_kind;
 	}
       mpfr_set_z (huge, gfc_integer_kinds[n].huge, GFC_RND_MODE);
-      test = gfc_conv_mpfr_to_tree (huge, expr->ts.kind);
+      test = gfc_conv_mpfr_to_tree (huge, expr->ts.kind, 0);
       test2 = fold_build2 (LT_EXPR, boolean_type_node, tmp, test);
 
       mpfr_neg (huge, huge, GFC_RND_MODE);
-      test = gfc_conv_mpfr_to_tree (huge, expr->ts.kind);
+      test = gfc_conv_mpfr_to_tree (huge, expr->ts.kind, 0);
       test = fold_build2 (GT_EXPR, boolean_type_node, tmp, test);
       test2 = fold_build2 (TRUTH_AND_EXPR, boolean_type_node, test, test2);
 
@@ -1370,8 +1375,8 @@ gfc_conv_intrinsic_ctime (gfc_se * se, gfc_expr * expr)
   len = gfc_create_var (gfc_get_int_type (8), "len");
 
   gfc_conv_intrinsic_function_args (se, expr, &args[2], num_args - 2);
-  args[0] = build_fold_addr_expr (var);
-  args[1] = build_fold_addr_expr (len);
+  args[0] = gfc_build_addr_expr (NULL_TREE, var);
+  args[1] = gfc_build_addr_expr (NULL_TREE, len);
 
   fndecl = build_addr (gfor_fndecl_ctime, current_function_decl);
   tmp = build_call_array (TREE_TYPE (TREE_TYPE (gfor_fndecl_ctime)),
@@ -1408,8 +1413,8 @@ gfc_conv_intrinsic_fdate (gfc_se * se, gfc_expr * expr)
   len = gfc_create_var (gfc_get_int_type (4), "len");
 
   gfc_conv_intrinsic_function_args (se, expr, &args[2], num_args - 2);
-  args[0] = build_fold_addr_expr (var);
-  args[1] = build_fold_addr_expr (len);
+  args[0] = gfc_build_addr_expr (NULL_TREE, var);
+  args[1] = gfc_build_addr_expr (NULL_TREE, len);
 
   fndecl = build_addr (gfor_fndecl_fdate, current_function_decl);
   tmp = build_call_array (TREE_TYPE (TREE_TYPE (gfor_fndecl_fdate)),
@@ -1448,8 +1453,8 @@ gfc_conv_intrinsic_ttynam (gfc_se * se, gfc_expr * expr)
   len = gfc_create_var (gfc_get_int_type (4), "len");
 
   gfc_conv_intrinsic_function_args (se, expr, &args[2], num_args - 2);
-  args[0] = build_fold_addr_expr (var);
-  args[1] = build_fold_addr_expr (len);
+  args[0] = gfc_build_addr_expr (NULL_TREE, var);
+  args[1] = gfc_build_addr_expr (NULL_TREE, len);
 
   fndecl = build_addr (gfor_fndecl_ttynam, current_function_decl);
   tmp = build_call_array (TREE_TYPE (TREE_TYPE (gfor_fndecl_ttynam)),
@@ -1572,7 +1577,7 @@ gfc_conv_intrinsic_minmax_char (gfc_se * se, gfc_expr * expr, int op)
 
   /* Create the result variables.  */
   len = gfc_create_var (gfc_charlen_type_node, "len");
-  args[0] = build_fold_addr_expr (len);
+  args[0] = gfc_build_addr_expr (NULL_TREE, len);
   var = gfc_create_var (gfc_get_pchar_type (expr->ts.kind), "pstr");
   args[1] = gfc_build_addr_expr (ppvoid_type_node, var);
   args[2] = build_int_cst (NULL_TREE, op);
@@ -2158,7 +2163,8 @@ gfc_conv_intrinsic_minmaxloc (gfc_se * se, gfc_expr * expr, int op)
   switch (arrayexpr->ts.type)
     {
     case BT_REAL:
-      tmp = gfc_conv_mpfr_to_tree (gfc_real_kinds[n].huge, arrayexpr->ts.kind);
+      tmp = gfc_conv_mpfr_to_tree (gfc_real_kinds[n].huge,
+				   arrayexpr->ts.kind, 0);
       break;
 
     case BT_INTEGER:
@@ -2337,7 +2343,7 @@ gfc_conv_intrinsic_minmaxval (gfc_se * se, gfc_expr * expr, int op)
   switch (expr->ts.type)
     {
     case BT_REAL:
-      tmp = gfc_conv_mpfr_to_tree (gfc_real_kinds[n].huge, expr->ts.kind);
+      tmp = gfc_conv_mpfr_to_tree (gfc_real_kinds[n].huge, expr->ts.kind, 0);
       break;
 
     case BT_INTEGER:
@@ -3118,7 +3124,7 @@ gfc_conv_intrinsic_fraction (gfc_se * se, gfc_expr * expr)
   tmp = gfc_create_var (integer_type_node, NULL);
   se->expr = build_call_expr (built_in_decls[frexp], 2,
 			      fold_convert (type, arg),
-			      build_fold_addr_expr (tmp));
+			      gfc_build_addr_expr (NULL_TREE, tmp));
   se->expr = fold_convert (type, se->expr);
 }
 
@@ -3194,7 +3200,7 @@ gfc_conv_intrinsic_spacing (gfc_se * se, gfc_expr * expr)
   k = gfc_validate_kind (BT_REAL, expr->ts.kind, false);
   prec = build_int_cst (NULL_TREE, gfc_real_kinds[k].digits);
   emin = build_int_cst (NULL_TREE, gfc_real_kinds[k].min_exponent - 1);
-  tiny = gfc_conv_mpfr_to_tree (gfc_real_kinds[k].tiny, expr->ts.kind);
+  tiny = gfc_conv_mpfr_to_tree (gfc_real_kinds[k].tiny, expr->ts.kind, 0);
 
   switch (expr->ts.kind)
     {
@@ -3226,7 +3232,7 @@ gfc_conv_intrinsic_spacing (gfc_se * se, gfc_expr * expr)
   /* Build the block for s /= 0.  */
   gfc_start_block (&block);
   tmp = build_call_expr (built_in_decls[frexp], 2, arg,
-			 build_fold_addr_expr (e));
+			 gfc_build_addr_expr (NULL_TREE, e));
   gfc_add_expr_to_block (&block, tmp);
 
   tmp = fold_build2 (MINUS_EXPR, integer_type_node, e, prec);
@@ -3304,7 +3310,7 @@ gfc_conv_intrinsic_rrspacing (gfc_se * se, gfc_expr * expr)
 
   gfc_start_block (&block);
   tmp = build_call_expr (built_in_decls[frexp], 2, arg,
-			 build_fold_addr_expr (e));
+			 gfc_build_addr_expr (NULL_TREE, e));
   gfc_add_expr_to_block (&block, tmp);
 
   tmp = fold_build2 (MINUS_EXPR, integer_type_node,
@@ -3387,7 +3393,7 @@ gfc_conv_intrinsic_set_exponent (gfc_se * se, gfc_expr * expr)
   tmp = gfc_create_var (integer_type_node, NULL);
   tmp = build_call_expr (built_in_decls[frexp], 2,
 			 fold_convert (type, args[0]),
-			 build_fold_addr_expr (tmp));
+			 gfc_build_addr_expr (NULL_TREE, tmp));
   se->expr = build_call_expr (built_in_decls[scalbn], 2, tmp,
 			      fold_convert (integer_type_node, args[1]));
   se->expr = fold_convert (type, se->expr);
@@ -3615,18 +3621,27 @@ gfc_conv_intrinsic_adjust (gfc_se * se, gfc_expr * expr, tree fndecl)
 }
 
 
-/* Array transfer statement.
-     DEST(1:N) = TRANSFER (SOURCE, MOLD[, SIZE])
-   where:
-     typeof<DEST> = typeof<MOLD>
-   and:
-     N = min (sizeof (SOURCE(:)), sizeof (DEST(:)),
-	      sizeof (DEST(0) * SIZE).  */
+/* Generate code for the TRANSFER intrinsic:
+	For scalar results:
+	  DEST = TRANSFER (SOURCE, MOLD)
+	where:
+	  typeof<DEST> = typeof<MOLD>
+	and:
+	  MOLD is scalar.
 
+	For array results:
+	  DEST(1:N) = TRANSFER (SOURCE, MOLD[, SIZE])
+	where:
+	  typeof<DEST> = typeof<MOLD>
+	and:
+	  N = min (sizeof (SOURCE(:)), sizeof (DEST(:)),
+	      sizeof (DEST(0) * SIZE).  */
 static void
-gfc_conv_intrinsic_array_transfer (gfc_se * se, gfc_expr * expr)
+gfc_conv_intrinsic_transfer (gfc_se * se, gfc_expr * expr)
 {
   tree tmp;
+  tree tmpdecl;
+  tree ptr;
   tree extent;
   tree source;
   tree source_type;
@@ -3645,14 +3660,27 @@ gfc_conv_intrinsic_array_transfer (gfc_se * se, gfc_expr * expr)
   gfc_ss_info *info;
   stmtblock_t block;
   int n;
+  bool scalar_mold;
 
-  gcc_assert (se->loop);
-  info = &se->ss->data.info;
+  info = NULL;
+  if (se->loop)
+    info = &se->ss->data.info;
 
   /* Convert SOURCE.  The output from this stage is:-
 	source_bytes = length of the source in bytes
 	source = pointer to the source data.  */
   arg = expr->value.function.actual;
+
+  /* Ensure double transfer through LOGICAL preserves all
+     the needed bits.  */
+  if (arg->expr->expr_type == EXPR_FUNCTION
+	&& arg->expr->value.function.esym == NULL
+	&& arg->expr->value.function.isym != NULL
+	&& arg->expr->value.function.isym->id == GFC_ISYM_TRANSFER
+	&& arg->expr->ts.type == BT_LOGICAL
+	&& expr->ts.type != arg->expr->ts.type)
+    arg->expr->value.function.name = "__transfer_in_transfer";
+
   gfc_init_se (&argse, NULL);
   ss = gfc_walk_expr (arg->expr);
 
@@ -3682,10 +3710,10 @@ gfc_conv_intrinsic_array_transfer (gfc_se * se, gfc_expr * expr)
       source_type = gfc_get_element_type (TREE_TYPE (argse.expr));
 
       /* Repack the source if not a full variable array.  */
-      if (!(arg->expr->expr_type == EXPR_VARIABLE
-	      && arg->expr->ref->u.ar.type == AR_FULL))
+      if (arg->expr->expr_type == EXPR_VARIABLE
+	      && arg->expr->ref->u.ar.type != AR_FULL)
 	{
-	  tmp = build_fold_addr_expr (argse.expr);
+	  tmp = gfc_build_addr_expr (NULL_TREE, argse.expr);
 
 	  if (gfc_option.warn_array_temp)
 	    gfc_warning ("Creating array temporary at %L", &expr->where);
@@ -3750,6 +3778,8 @@ gfc_conv_intrinsic_array_transfer (gfc_se * se, gfc_expr * expr)
   gfc_init_se (&argse, NULL);
   ss = gfc_walk_expr (arg->expr);
 
+  scalar_mold = arg->expr->rank == 0;
+
   if (ss == gfc_ss_terminator)
     {
       gfc_conv_expr_reference (&argse, arg->expr);
@@ -3762,6 +3792,9 @@ gfc_conv_intrinsic_array_transfer (gfc_se * se, gfc_expr * expr)
       gfc_conv_expr_descriptor (&argse, arg->expr, ss);
       mold_type = gfc_get_element_type (TREE_TYPE (argse.expr));
     }
+
+  gfc_add_block_to_block (&se->pre, &argse.pre);
+  gfc_add_block_to_block (&se->post, &argse.post);
 
   if (strcmp (expr->value.function.name, "__transfer_in_transfer") == 0)
     {
@@ -3799,14 +3832,14 @@ gfc_conv_intrinsic_array_transfer (gfc_se * se, gfc_expr * expr)
   else
     tmp = NULL_TREE;
 
+  /* Separate array and scalar results.  */
+  if (scalar_mold && tmp == NULL_TREE)
+    goto scalar_transfer;
+
   size_bytes = gfc_create_var (gfc_array_index_type, NULL);
   if (tmp != NULL_TREE)
-    {
-      tmp = fold_build2 (MULT_EXPR, gfc_array_index_type,
-			 tmp, dest_word_len);
-      tmp = fold_build2 (MIN_EXPR, gfc_array_index_type,
-			 tmp, source_bytes);
-    }
+    tmp = fold_build2 (MULT_EXPR, gfc_array_index_type,
+		       tmp, dest_word_len);
   else
     tmp = source_bytes;
 
@@ -3847,9 +3880,7 @@ gfc_conv_intrinsic_array_transfer (gfc_se * se, gfc_expr * expr)
   se->loop->to[n] = upper;
 
   /* Build a destination descriptor, using the pointer, source, as the
-     data field.  This is already allocated so set callee_alloc.
-     FIXME callee_alloc is not set!  */
-
+     data field.  */
   gfc_trans_create_temp_array (&se->pre, &se->post, se->loop,
 			       info, mold_type, NULL_TREE, false, true, false,
 			       &expr->where);
@@ -3863,72 +3894,71 @@ gfc_conv_intrinsic_array_transfer (gfc_se * se, gfc_expr * expr)
 			 3,
 			 tmp,
 			 fold_convert (pvoid_type_node, source),
-			 size_bytes);
+			 fold_build2 (MIN_EXPR, gfc_array_index_type,
+				      size_bytes, source_bytes));
   gfc_add_expr_to_block (&se->pre, tmp);
 
   se->expr = info->descriptor;
   if (expr->ts.type == BT_CHARACTER)
     se->string_length = dest_word_len;
-}
 
+  return;
 
-/* Scalar transfer statement.
-   TRANSFER (source, mold) = memcpy(&tmpdecl, &source, size), tmpdecl.  */
-
-static void
-gfc_conv_intrinsic_transfer (gfc_se * se, gfc_expr * expr)
-{
-  gfc_actual_arglist *arg;
-  gfc_se argse;
-  tree type;
-  tree ptr;
-  gfc_ss *ss;
-  tree tmpdecl, tmp;
-
-  /* Get a pointer to the source.  */
-  arg = expr->value.function.actual;
-  ss = gfc_walk_expr (arg->expr);
-  gfc_init_se (&argse, NULL);
-  if (ss == gfc_ss_terminator)
-    gfc_conv_expr_reference (&argse, arg->expr);
-  else
-    gfc_conv_array_parameter (&argse, arg->expr, ss, 1, NULL, NULL);
-  gfc_add_block_to_block (&se->pre, &argse.pre);
-  gfc_add_block_to_block (&se->post, &argse.post);
-  ptr = argse.expr;
-
-  arg = arg->next;
-  type = gfc_typenode_for_spec (&expr->ts);
-  if (strcmp (expr->value.function.name, "__transfer_in_transfer") == 0)
-    {
-      /* If this TRANSFER is nested in another TRANSFER, use a type
-	 that preserves all bits.  */
-      if (expr->ts.type == BT_LOGICAL)
-	type = gfc_get_int_type (expr->ts.kind);
-    }
+/* Deal with scalar results.  */
+scalar_transfer:
+  extent = fold_build2 (MIN_EXPR, gfc_array_index_type,
+			dest_word_len, source_bytes);
 
   if (expr->ts.type == BT_CHARACTER)
     {
-      ptr = convert (build_pointer_type (type), ptr);
-      gfc_init_se (&argse, NULL);
-      gfc_conv_expr (&argse, arg->expr);
-      gfc_add_block_to_block (&se->pre, &argse.pre);
-      gfc_add_block_to_block (&se->post, &argse.post);
-      se->expr = ptr;
-      se->string_length = argse.string_length;
+      tree direct;
+      tree indirect;
+
+      ptr = convert (gfc_get_pchar_type (expr->ts.kind), source);
+      tmpdecl = gfc_create_var (gfc_get_pchar_type (expr->ts.kind),
+				"transfer");
+
+      /* If source is longer than the destination, use a pointer to
+	 the source directly.  */
+      gfc_init_block (&block);
+      gfc_add_modify (&block, tmpdecl, ptr);
+      direct = gfc_finish_block (&block);
+
+      /* Otherwise, allocate a string with the length of the destination
+	 and copy the source into it.  */
+      gfc_init_block (&block);
+      tmp = gfc_get_pchar_type (expr->ts.kind);
+      tmp = gfc_call_malloc (&block, tmp, dest_word_len);
+      gfc_add_modify (&block, tmpdecl,
+		      fold_convert (TREE_TYPE (ptr), tmp));
+      tmp = build_call_expr (built_in_decls[BUILT_IN_MEMCPY], 3,
+			     fold_convert (pvoid_type_node, tmpdecl),
+			     fold_convert (pvoid_type_node, ptr),
+			     extent);
+      gfc_add_expr_to_block (&block, tmp);
+      indirect = gfc_finish_block (&block);
+
+      /* Wrap it up with the condition.  */
+      tmp = fold_build2 (LE_EXPR, boolean_type_node,
+			 dest_word_len, source_bytes);
+      tmp = build3_v (COND_EXPR, tmp, direct, indirect);
+      gfc_add_expr_to_block (&se->pre, tmp);
+
+      se->expr = tmpdecl;
+      se->string_length = dest_word_len;
     }
   else
     {
-      tree moldsize;
-      tmpdecl = gfc_create_var (type, "transfer");
-      moldsize = size_in_bytes (type);
+      tmpdecl = gfc_create_var (mold_type, "transfer");
+
+      ptr = convert (build_pointer_type (mold_type), source);
 
       /* Use memcpy to do the transfer.  */
-      tmp = build_fold_addr_expr (tmpdecl);
+      tmp = gfc_build_addr_expr (NULL_TREE, tmpdecl);
       tmp = build_call_expr (built_in_decls[BUILT_IN_MEMCPY], 3,
 			     fold_convert (pvoid_type_node, tmp),
 			     fold_convert (pvoid_type_node, ptr),
-			     moldsize);
+			     extent);
       gfc_add_expr_to_block (&se->pre, tmp);
 
       se->expr = tmpdecl;
@@ -4097,7 +4127,7 @@ gfc_conv_intrinsic_si_kind (gfc_se *se, gfc_expr *expr)
 
   /* The argument to SELECTED_INT_KIND is INTEGER(4).  */
   type = gfc_get_int_type (4); 
-  arg = build_fold_addr_expr (fold_convert (type, arg));
+  arg = gfc_build_addr_expr (NULL_TREE, fold_convert (type, arg));
 
   /* Convert it to the required type.  */
   type = gfc_typenode_for_spec (&expr->ts);
@@ -4173,7 +4203,7 @@ gfc_conv_intrinsic_trim (gfc_se * se, gfc_expr * expr)
   len = gfc_create_var (gfc_get_int_type (4), "len");
 
   gfc_conv_intrinsic_function_args (se, expr, &args[2], num_args - 2);
-  args[0] = build_fold_addr_expr (len);
+  args[0] = gfc_build_addr_expr (NULL_TREE, len);
   args[1] = addr;
 
   if (expr->ts.kind == 1)
@@ -4828,23 +4858,7 @@ gfc_conv_intrinsic_function (gfc_se * se, gfc_expr * expr)
 	  gfc_advance_se_ss_chain (se);
 	}
       else
-	{
-	  /* Ensure double transfer through LOGICAL preserves all
-	     the needed bits.  */
-	  gfc_expr *source = expr->value.function.actual->expr;
-	  if (source->expr_type == EXPR_FUNCTION
-	      && source->value.function.esym == NULL
-	      && source->value.function.isym != NULL
-	      && source->value.function.isym->id == GFC_ISYM_TRANSFER
-	      && source->ts.type == BT_LOGICAL
-	      && expr->ts.type != source->ts.type)
-	    source->value.function.name = "__transfer_in_transfer";
-
-	  if (se->ss)
-	    gfc_conv_intrinsic_array_transfer (se, expr);
-	  else
-	    gfc_conv_intrinsic_transfer (se, expr);
-	}
+	gfc_conv_intrinsic_transfer (se, expr);
       break;
 
     case GFC_ISYM_TTYNAM:

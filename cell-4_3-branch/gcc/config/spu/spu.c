@@ -52,13 +52,79 @@
 #include "machmode.h"
 #include "tree-gimple.h"
 #include "tm-constrs.h"
-#include "spu-builtins.h"
 #include "ddg.h"
 #include "sbitmap.h"
 #include "timevar.h"
 #include "df.h"
 
 /* Builtin types, data and prototypes. */
+
+enum spu_builtin_type_index
+{
+  SPU_BTI_END_OF_PARAMS,
+
+  /* We create new type nodes for these. */
+  SPU_BTI_V16QI,
+  SPU_BTI_V8HI,
+  SPU_BTI_V4SI,
+  SPU_BTI_V2DI,
+  SPU_BTI_V4SF,
+  SPU_BTI_V2DF,
+  SPU_BTI_UV16QI,
+  SPU_BTI_UV8HI,
+  SPU_BTI_UV4SI,
+  SPU_BTI_UV2DI,
+
+  /* A 16-byte type. (Implemented with V16QI_type_node) */
+  SPU_BTI_QUADWORD,
+
+  /* These all correspond to intSI_type_node */
+  SPU_BTI_7,
+  SPU_BTI_S7,
+  SPU_BTI_U7,
+  SPU_BTI_S10,
+  SPU_BTI_S10_4,
+  SPU_BTI_U14,
+  SPU_BTI_16,
+  SPU_BTI_S16,
+  SPU_BTI_S16_2,
+  SPU_BTI_U16,
+  SPU_BTI_U16_2,
+  SPU_BTI_U18,
+
+  /* These correspond to the standard types */
+  SPU_BTI_INTQI, 
+  SPU_BTI_INTHI, 
+  SPU_BTI_INTSI, 
+  SPU_BTI_INTDI, 
+
+  SPU_BTI_UINTQI,
+  SPU_BTI_UINTHI,
+  SPU_BTI_UINTSI,
+  SPU_BTI_UINTDI,
+
+  SPU_BTI_FLOAT, 
+  SPU_BTI_DOUBLE,
+
+  SPU_BTI_VOID,   
+  SPU_BTI_PTR,   
+
+  SPU_BTI_MAX
+};
+
+#define V16QI_type_node               (spu_builtin_types[SPU_BTI_V16QI])
+#define V8HI_type_node                (spu_builtin_types[SPU_BTI_V8HI])
+#define V4SI_type_node                (spu_builtin_types[SPU_BTI_V4SI])
+#define V2DI_type_node                (spu_builtin_types[SPU_BTI_V2DI])
+#define V4SF_type_node                (spu_builtin_types[SPU_BTI_V4SF])
+#define V2DF_type_node                (spu_builtin_types[SPU_BTI_V2DF])
+#define unsigned_V16QI_type_node      (spu_builtin_types[SPU_BTI_UV16QI])
+#define unsigned_V8HI_type_node       (spu_builtin_types[SPU_BTI_UV8HI])
+#define unsigned_V4SI_type_node       (spu_builtin_types[SPU_BTI_UV4SI])
+#define unsigned_V2DI_type_node       (spu_builtin_types[SPU_BTI_UV2DI])
+
+static GTY(()) tree spu_builtin_types[SPU_BTI_MAX];
+
 struct spu_builtin_range
 {
   int low, high;
@@ -155,6 +221,7 @@ static int spu_builtin_vectorization_cost (bool);
 static bool spu_vector_alignment_reachable (const_tree, bool);
 static int spu_sms_res_mii (struct ddg *g);
 static void asm_file_start (void);
+static unsigned int spu_section_type_flags (tree, const char *, int);
 
 extern const char *reg_names[];
 rtx spu_compare_op0, spu_compare_op1, spu_expect_op0, spu_expect_op1;
@@ -213,8 +280,6 @@ spu_libgcc_cmp_return_mode (void);
 static enum machine_mode
 spu_libgcc_shift_count_mode (void);
 
-/* Built in types.  */
-tree spu_builtin_types[SPU_BTI_MAX];
 
 /*  TARGET overrides.  */
 
@@ -233,10 +298,6 @@ static unsigned char spu_addr_space_number (const tree);
 static rtx (* spu_addr_space_conversion_rtl (int, int)) (rtx, rtx);
 #undef TARGET_ADDR_SPACE_CONVERSION_RTL
 #define TARGET_ADDR_SPACE_CONVERSION_RTL spu_addr_space_conversion_rtl
-
-static unsigned int spu_section_type_flags (tree, const char *, int);
-#undef TARGET_SECTION_TYPE_FLAGS
-#define TARGET_SECTION_TYPE_FLAGS spu_section_type_flags
 
 static bool spu_valid_pointer_mode (enum machine_mode mode);
 #undef TARGET_VALID_POINTER_MODE
@@ -363,6 +424,9 @@ const struct attribute_spec spu_attribute_table[];
 
 #undef TARGET_ASM_FILE_START
 #define TARGET_ASM_FILE_START asm_file_start
+
+#undef TARGET_SECTION_TYPE_FLAGS
+#define TARGET_SECTION_TYPE_FLAGS spu_section_type_flags
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
@@ -5583,6 +5647,16 @@ spu_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 
 /* Create the built-in types and functions */
 
+enum spu_function_code
+{
+#define DEF_BUILTIN(fcode, icode, name, type, params) fcode,
+#include "spu-builtins.def"
+#undef DEF_BUILTIN
+   NUM_SPU_BUILTINS
+};
+
+extern GTY(()) struct spu_builtin_description spu_builtins[NUM_SPU_BUILTINS];
+
 struct spu_builtin_description spu_builtins[] = {
 #define DEF_BUILTIN(fcode, icode, name, type, params) \
   {fcode, icode, name, type, params, NULL_TREE},
@@ -6690,14 +6764,6 @@ spu_valid_pointer_mode (enum machine_mode mode)
   return (mode == ptr_mode || mode == Pmode || mode == spu_ea_pointer_mode (1));
 }
 
-static unsigned int
-spu_section_type_flags (tree decl, const char *name, int reloc)
-{
-  if (strcmp (name, "._ea") == 0)
-    return SECTION_WRITE | SECTION_DEBUG;
-  return default_section_type_flags (decl, name, reloc);
-}
-
 /* Count the total number of instructions in each pipe and return the
    maximum, which is used as the Minimum Iteration Interval (MII)
    in the modulo scheduler.  get_pipe() will return -2, -1, 0, or 1.
@@ -6784,6 +6850,18 @@ asm_file_start (void)
   default_file_start ();
 }
 
+/* Implement targetm.section_type_flags.  */
+static unsigned int
+spu_section_type_flags (tree decl, const char *name, int reloc)
+{
+  /* .toe needs to have type @nobits.  */
+  if (strcmp (name, ".toe") == 0)
+    return SECTION_BSS;
+  if (strcmp (name, "._ea") == 0)
+    return SECTION_WRITE | SECTION_DEBUG;
+  return default_section_type_flags (decl, name, reloc);
+}
+
 const char *
 spu_addr_space_name (int addrspace)
 {
@@ -6862,3 +6940,6 @@ spu_gen_exp2 (enum machine_mode mode, rtx scale)
       return array_to_constant (mode, arr);
     }
 }
+
+#include "gt-spu.h"
+

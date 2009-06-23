@@ -1,24 +1,23 @@
 /* Code to decode tree flags. 
 
-   Copyright (C) 2006 Free Software Foundation, Inc.
+   Copyright (C) 2009 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
 
-   This file is part of GCC.
+This file is part of GCC.
 
-   GCC is free software; you can redistribute it and/or modify it under
-   the terms of the GNU General Public License as published by the Free
-   Software Foundation; either version 2, or (at your option) any later
-   version.
+GCC is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3, or (at your option) any later
+version.
 
-   GCC is distributed in the hope that it will be useful, but WITHOUT
-   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
-   License for more details.
+GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the Free
-   Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.  */
+You should have received a copy of the GNU General Public License
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* This file is designed to be inlined into both the writing and the
    reading of the lto information.  What it does depends on the glue
@@ -115,10 +114,10 @@
       ADD_CLASS_EXPR_FLAG (unsigned_flag)
       ADD_CLASS_EXPR_FLAG (nothrow_flag)
       ADD_CLASS_EXPR_FLAG (saturating_flag)
+      ADD_CLASS_EXPR_FLAG (packed_flag)
+      ADD_CLASS_EXPR_FLAG (user_align)
       ADD_CLASS_TYPE_FLAG (needs_constructing_flag)
-      ADD_CLASS_TYPE_FLAG (packed_flag)
       ADD_CLASS_TYPE_FLAG (restrict_flag)
-      ADD_CLASS_TYPE_FLAG (user_align)
     END_CLASS_CASE (tcc_type)
 
     START_CLASS_CASE (tcc_unary)
@@ -193,7 +192,6 @@
     END_EXPR_CASE (BIT_XOR_EXPR)
       
     START_EXPR_CASE (BLOCK)
-      ADD_EXPR_FLAG (asm_written_flag)
     END_EXPR_CASE (BLOCK)
       
     START_EXPR_CASE (BOOLEAN_TYPE)
@@ -218,9 +216,6 @@
     START_EXPR_CASE (CEIL_MOD_EXPR)
     END_EXPR_CASE (CEIL_MOD_EXPR)
       
-    START_EXPR_CASE (CHANGE_DYNAMIC_TYPE_EXPR)
-    END_EXPR_CASE (CHANGE_DYNAMIC_TYPE_EXPR)
-
     START_EXPR_CASE (CLEANUP_POINT_EXPR)
     END_EXPR_CASE (CLEANUP_POINT_EXPR)
       
@@ -251,7 +246,7 @@
     END_EXPR_CASE (CONJ_EXPR)
       
     START_EXPR_CASE (CONST_DECL)
-      ADD_DECL_FLAG (decl_flag_2)
+      ADD_DECL_FLAG (decl_flag_1)
       ADD_EXPR_FLAG (addressable_flag)
       ADD_EXPR_FLAG (public_flag)
       ADD_EXPR_FLAG (readonly_flag)
@@ -300,18 +295,16 @@
       
     START_EXPR_CASE (FIELD_DECL)
       ADD_EXPR_FLAG (addressable_flag)
+      ADD_EXPR_FLAG (user_align)
       ADD_DECL_FLAG (nonlocal_flag)		/* ??? */
       ADD_DECL_FLAG (virtual_flag)
       ADD_DECL_FLAG (ignored_flag)
       ADD_DECL_FLAG (abstract_flag)
       ADD_DECL_FLAG (artificial_flag)
-      ADD_DECL_FLAG (user_align)
       ADD_DECL_FLAG (preserve_flag)		/* ??? */
       ADD_DECL_FLAG (debug_expr_is_from)	/* ??? */
       ADD_DECL_FLAG (decl_flag_1)
-      ADD_DECL_FLAG (decl_flag_2) 
-      ADD_DECL_FLAG (decl_flag_3)
-      ADD_DECL_FLAG (no_tbaa_flag)		/* ??? */
+      ADD_DECL_FLAG (decl_flag_2)
     END_EXPR_CASE (FIELD_DECL)
       
     START_EXPR_CASE (FILTER_EXPR)
@@ -344,19 +337,17 @@
       ADD_EXPR_FLAG (addressable_flag)
       ADD_EXPR_FLAG (static_flag)
       ADD_EXPR_FLAG (public_flag)
-      ADD_EXPR_FLAG (asm_written_flag)
       ADD_EXPR_FLAG (nothrow_flag)
       ADD_EXPR_FLAG (readonly_flag)
+      ADD_EXPR_FLAG (user_align)
       ADD_DECL_FLAG (nonlocal_flag)
       ADD_DECL_FLAG (virtual_flag)
       ADD_DECL_FLAG (ignored_flag)
       ADD_DECL_FLAG (abstract_flag)
       ADD_DECL_FLAG (artificial_flag)
-      ADD_DECL_FLAG (user_align)
       ADD_DECL_FLAG (preserve_flag)
       ADD_DECL_FLAG (debug_expr_is_from)  	/* ??? */
-      ADD_DECL_FLAG (decl_flag_2)
-      ADD_DECL_FLAG (no_tbaa_flag)		/* ??? */
+      ADD_DECL_FLAG (decl_flag_1)
       ADD_VIS_FLAG (weak_flag)
       ADD_VIS_FLAG (comdat_flag)
       ADD_VIS_FLAG_SIZE (visibility, 2);
@@ -416,6 +407,7 @@
       
     START_EXPR_CASE (INTEGER_CST)
       ADD_EXPR_FLAG (static_flag)
+      ADD_EXPR_FLAG (public_flag)
     END_EXPR_CASE (INTEGER_CST)
       
     START_EXPR_CASE (INTEGER_TYPE)
@@ -457,9 +449,6 @@
     START_EXPR_CASE (MAX_EXPR)
     END_EXPR_CASE (MAX_EXPR)
       
-    START_EXPR_CASE (MEMORY_PARTITION_TAG)
-    END_EXPR_CASE (MEMORY_PARTITION_TAG)
-
     START_EXPR_CASE (METHOD_TYPE)
     END_EXPR_CASE (METHOD_TYPE)
       
@@ -478,9 +467,6 @@
       
     START_EXPR_CASE (MULT_EXPR)
     END_EXPR_CASE (MULT_EXPR)
-      
-    START_EXPR_CASE (NAME_MEMORY_TAG)
-    END_EXPR_CASE (NAME_MEMORY_TAG)
       
     START_EXPR_CASE (NAMESPACE_DECL)
       ADD_EXPR_FLAG (public_flag)
@@ -557,15 +543,16 @@
       
     START_EXPR_CASE (PARM_DECL)
       ADD_EXPR_FLAG (addressable_flag)
-      ADD_EXPR_FLAG (private_flag)	/* DECL_BY_REFERENCE */
+      ADD_EXPR_FLAG (private_flag)
       ADD_DECL_FLAG (nonlocal_flag)
       ADD_DECL_FLAG (virtual_flag)
       ADD_DECL_FLAG (abstract_flag)
       ADD_DECL_FLAG (artificial_flag)
       ADD_DECL_FLAG (decl_flag_0)
+      ADD_DECL_FLAG (decl_flag_1)
       ADD_DECL_FLAG (decl_flag_2)
-      ADD_DECL_FLAG (decl_flag_3)
       ADD_DECL_FLAG (gimple_reg_flag)
+      ADD_DECL_FLAG (decl_by_reference_flag)
     END_EXPR_CASE (PARM_DECL)
       
     START_EXPR_CASE (PLACEHOLDER_EXPR)
@@ -603,7 +590,6 @@
     END_EXPR_CASE (PREINCREMENT_EXPR)
       
     START_EXPR_CASE (QUAL_UNION_TYPE)
-      ADD_EXPR_FLAG (asm_written_flag)
       ADD_TYPE_FLAG (no_force_blk_flag)
     END_EXPR_CASE (QUAL_UNION_TYPE)
       
@@ -628,7 +614,6 @@
     END_EXPR_CASE (REAL_TYPE)
       
     START_EXPR_CASE (RECORD_TYPE)
-      ADD_EXPR_FLAG (asm_written_flag)
       ADD_TYPE_FLAG (no_force_blk_flag)
     END_EXPR_CASE (RECORD_TYPE)
       
@@ -646,10 +631,8 @@
     END_EXPR_CASE (REFERENCE_TYPE)
       
     START_EXPR_CASE (RESULT_DECL)
-      /* ### Missing flags when used as declaration, not expression. */
-      ADD_EXPR_FLAG (private_flag)	/* DECL_BY_REFERENCE */
+      ADD_DECL_FLAG (decl_by_reference_flag)
       ADD_DECL_FLAG (gimple_reg_flag)
-
     END_EXPR_CASE (RESULT_DECL)
       
     START_EXPR_CASE (RESX_EXPR)
@@ -695,9 +678,6 @@
       
     START_EXPR_CASE (SWITCH_EXPR)
     END_EXPR_CASE (SWITCH_EXPR)
-      
-    START_EXPR_CASE (SYMBOL_MEMORY_TAG)
-    END_EXPR_CASE (SYMBOL_MEMORY_TAG)
       
     START_EXPR_CASE (TARGET_EXPR)
       ADD_EXPR_FLAG (static_flag)
@@ -769,8 +749,7 @@
       ADD_DECL_FLAG (abstract_flag)
       ADD_DECL_FLAG (artificial_flag)
       /* ### Do we need  user_align, preserve_flag, debug_expr_is_from ??? */
-      ADD_DECL_FLAG (decl_flag_2)
-      ADD_DECL_FLAG (no_tbaa_flag)   /* ??? */
+      ADD_DECL_FLAG (decl_flag_1)
       /* ### Do we need weak_flag, visibility_specified, visibility ??? */
     END_EXPR_CASE (TYPE_DECL)
       
@@ -784,7 +763,6 @@
     END_EXPR_CASE (UNGT_EXPR)
       
     START_EXPR_CASE (UNION_TYPE)
-      ADD_EXPR_FLAG (asm_written_flag)
       ADD_TYPE_FLAG (no_force_blk_flag)
       ADD_TYPE_FLAG (transparent_union_flag)
     END_EXPR_CASE (UNION_TYPE)
@@ -805,16 +783,15 @@
       ADD_EXPR_FLAG (addressable_flag)
       ADD_EXPR_FLAG (static_flag)
       ADD_EXPR_FLAG (public_flag)
-      ADD_EXPR_FLAG (asm_written_flag)
       ADD_DECL_FLAG (nonlocal_flag)
       ADD_DECL_FLAG (virtual_flag)
       ADD_DECL_FLAG (abstract_flag)
       ADD_DECL_FLAG (artificial_flag)
       ADD_DECL_FLAG (decl_flag_0)
+      ADD_DECL_FLAG (decl_flag_1)
       ADD_DECL_FLAG (decl_flag_2)
-      ADD_DECL_FLAG (decl_flag_3)
       ADD_DECL_FLAG (gimple_reg_flag)
-      /* ### no_tbaa_flag ??? */
+      ADD_DECL_FLAG (decl_by_reference_flag)
       ADD_VIS_FLAG (defer_output)
       ADD_VIS_FLAG (hard_register)
       ADD_VIS_FLAG (thread_local)
@@ -829,7 +806,7 @@
       ADD_VIS_FLAG (visibility_specified)
       /* ### We need to serialize the init priority itself.  */
       ADD_VIS_FLAG (init_priority_p)
-      ADD_VIS_FLAG_SIZE (tls_model, 3)
+      ADD_TLS_FLAG (tls_model, 3)
       ADD_EXPR_FLAG (readonly_flag)
       ADD_EXPR_FLAG (volatile_flag)
     END_EXPR_CASE (VAR_DECL)

@@ -1,6 +1,6 @@
 /* Tree lowering pass.  This pass converts the GENERIC functions-as-trees
    tree representation into the GIMPLE form.
-   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Major work done by Sebastian Pop <s.pop@laposte.net>,
    Diego Novillo <dnovillo@redhat.com> and Jason Merrill <jason@redhat.com>.
@@ -1240,6 +1240,9 @@ gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
 	    omp_add_variable (gimplify_omp_ctxp, t, GOVD_LOCAL | GOVD_SEEN);
 
 	  DECL_SEEN_IN_BIND_EXPR_P (t) = 1;
+
+	  if (DECL_HARD_REGISTER (t) && !is_global_var (t) && cfun)
+	    cfun->has_local_explicit_reg_vars = true;
 	}
 
       /* Preliminarily mark non-addressed complex variables as eligible
@@ -1625,20 +1628,63 @@ gimplify_switch_expr (tree *expr_p, gimple_seq *pre_p)
 	}
       len = i;
 
-      if (!default_case)
-	{
-	  gimple new_default;
-
-	  /* If the switch has no default label, add one, so that we jump
-	     around the switch body.  */
-	  default_case = build3 (CASE_LABEL_EXPR, void_type_node, NULL_TREE,
-	                         NULL_TREE, create_artificial_label ());
-	  new_default = gimple_build_label (CASE_LABEL (default_case));
-	  gimplify_seq_add_stmt (&switch_body_seq, new_default);
-	}
-
       if (!VEC_empty (tree, labels))
 	sort_case_labels (labels);
+
+      if (!default_case)
+	{
+	  tree type = TREE_TYPE (switch_expr);
+
+	  /* If the switch has no default label, add one, so that we jump
+	     around the switch body.  If the labels already cover the whole
+	     range of type, add the default label pointing to one of the
+	     existing labels.  */
+	  if (type == void_type_node)
+	    type = TREE_TYPE (SWITCH_COND (switch_expr));
+	  if (len
+	      && INTEGRAL_TYPE_P (type)
+	      && TYPE_MIN_VALUE (type)
+	      && TYPE_MAX_VALUE (type)
+	      && tree_int_cst_equal (CASE_LOW (VEC_index (tree, labels, 0)),
+				     TYPE_MIN_VALUE (type)))
+	    {
+	      tree low, high = CASE_HIGH (VEC_index (tree, labels, len - 1));
+	      if (!high)
+		high = CASE_LOW (VEC_index (tree, labels, len - 1));
+	      if (tree_int_cst_equal (high, TYPE_MAX_VALUE (type)))
+		{
+		  for (i = 1; i < len; i++)
+		    {
+		      high = CASE_LOW (VEC_index (tree, labels, i));
+		      low = CASE_HIGH (VEC_index (tree, labels, i - 1));
+		      if (!low)
+			low = CASE_LOW (VEC_index (tree, labels, i - 1));
+		      if ((TREE_INT_CST_LOW (low) + 1
+			   != TREE_INT_CST_LOW (high))
+			  || (TREE_INT_CST_HIGH (low)
+			      + (TREE_INT_CST_LOW (high) == 0)
+			      != TREE_INT_CST_HIGH (high)))
+			break;
+		    }
+		  if (i == len)
+		    default_case = build3 (CASE_LABEL_EXPR, void_type_node,
+					   NULL_TREE, NULL_TREE,
+					   CASE_LABEL (VEC_index (tree,
+								  labels, 0)));
+		}
+	    }
+
+	  if (!default_case)
+	    {
+	      gimple new_default;
+
+	      default_case = build3 (CASE_LABEL_EXPR, void_type_node,
+				     NULL_TREE, NULL_TREE,
+				     create_artificial_label ());
+	      new_default = gimple_build_label (CASE_LABEL (default_case));
+	      gimplify_seq_add_stmt (&switch_body_seq, new_default);
+	    }
+	}
 
       gimple_switch = gimple_build_switch_vec (SWITCH_COND (switch_expr), 
                                                default_case, labels);
@@ -2352,11 +2398,7 @@ gimplify_call_expr (tree *expr_p, gimple_seq *pre_p, bool want_value)
   else if (parms)
     p = parms;
   else
-    {
-      if (nargs != 0)
-	CALL_CANNOT_INLINE_P (*expr_p) = 1;
-      p = NULL_TREE;
-    }
+    p = NULL_TREE;
   for (i = 0; i < nargs && p; i++, p = TREE_CHAIN (p))
     ;
 
@@ -5305,6 +5347,20 @@ omp_notice_variable (struct gimplify_omp_ctx *ctx, tree decl, bool in_code)
       goto do_outer;
     }
 
+  if ((n->value & (GOVD_SEEN | GOVD_LOCAL)) == 0
+      && (flags & (GOVD_SEEN | GOVD_LOCAL)) == GOVD_SEEN
+      && DECL_SIZE (decl)
+      && TREE_CODE (DECL_SIZE (decl)) != INTEGER_CST)
+    {
+      splay_tree_node n2;
+      tree t = DECL_VALUE_EXPR (decl);
+      gcc_assert (TREE_CODE (t) == INDIRECT_REF);
+      t = TREE_OPERAND (t, 0);
+      gcc_assert (DECL_P (t));
+      n2 = splay_tree_lookup (ctx->variables, (splay_tree_key) t);
+      n2->value |= GOVD_SEEN;
+    }
+
   shared = ((flags | n->value) & GOVD_SHARED) != 0;
   ret = lang_hooks.decls.omp_disregard_value_expr (decl, shared);
 
@@ -6030,11 +6086,26 @@ goa_stabilize_expr (tree *expr_p, gimple_seq *pre_p, tree lhs_addr,
   switch (TREE_CODE_CLASS (TREE_CODE (expr)))
     {
     case tcc_binary:
+    case tcc_comparison:
       saw_lhs |= goa_stabilize_expr (&TREE_OPERAND (expr, 1), pre_p, lhs_addr,
 				     lhs_var);
     case tcc_unary:
       saw_lhs |= goa_stabilize_expr (&TREE_OPERAND (expr, 0), pre_p, lhs_addr,
 				     lhs_var);
+      break;
+    case tcc_expression:
+      switch (TREE_CODE (expr))
+	{
+	case TRUTH_ANDIF_EXPR:
+	case TRUTH_ORIF_EXPR:
+	  saw_lhs |= goa_stabilize_expr (&TREE_OPERAND (expr, 1), pre_p,
+					 lhs_addr, lhs_var);
+	  saw_lhs |= goa_stabilize_expr (&TREE_OPERAND (expr, 0), pre_p,
+					 lhs_addr, lhs_var);
+	  break;
+	default:
+	  break;
+	}
       break;
     default:
       break;
@@ -7109,6 +7180,8 @@ gimplify_type_sizes (tree type, gimple_seq *list_p)
 	if (TREE_CODE (field) == FIELD_DECL)
 	  {
 	    gimplify_one_sizepos (&DECL_FIELD_OFFSET (field), list_p);
+	    gimplify_one_sizepos (&DECL_SIZE (field), list_p);
+	    gimplify_one_sizepos (&DECL_SIZE_UNIT (field), list_p);
 	    gimplify_type_sizes (TREE_TYPE (field), list_p);
 	  }
       break;
@@ -7459,9 +7532,9 @@ gimple_regimplify_operands (gimple stmt, gimple_stmt_iterator *gsi_p)
 	}
 
       lhs = gimple_get_lhs (stmt);
-      /* If regimplification of the LHS changed it in a way that requires
-	 a simple RHS, create temporary.  */
-      if (orig_lhs != lhs && !is_gimple_formal_tmp_var (lhs))
+      /* If the LHS changed it in a way that requires a simple RHS,
+	 create temporary.  */
+      if (lhs && !is_gimple_formal_tmp_var (lhs))
 	{
 	  bool need_temp = false;
 

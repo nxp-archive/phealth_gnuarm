@@ -1,5 +1,5 @@
 /* CFG cleanup for trees.
-   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -221,9 +221,6 @@ static bool
 tree_forwarder_block_p (basic_block bb, bool phi_wanted)
 {
   gimple_stmt_iterator gsi;
-  edge_iterator ei;
-  edge e, succ;
-  basic_block dest;
 
   /* BB must have a single outgoing edge.  */
   if (single_succ_p (bb) != 1
@@ -274,23 +271,6 @@ tree_forwarder_block_p (basic_block bb, bool phi_wanted)
       if (dest->loop_father->header == dest)
 	return false;
     }
-
-  /* If we have an EH edge leaving this block, make sure that the
-     destination of this block has only one predecessor.  This ensures
-     that we don't get into the situation where we try to remove two
-     forwarders that go to the same basic block but are handlers for
-     different EH regions.  */
-  succ = single_succ_edge (bb);
-  dest = succ->dest;
-  FOR_EACH_EDGE (e, ei, bb->preds)
-    {
-      if (e->flags & EDGE_EH)
-        {
-	  if (!single_pred_p (dest))
-	    return false;
-	}
-    }
-
   return true;
 }
 
@@ -813,6 +793,27 @@ remove_forwarder_block_with_phi (basic_block bb)
   delete_basic_block (bb);
 }
 
+/* Return true if PHI computing RESULT is ok to be merged into PHI
+   in BB DEST.  */
+
+static bool
+result_ok_for_phi_merging (tree result, basic_block dest, int dest_idx)
+{
+  use_operand_p imm_use;
+  gimple use_stmt;
+
+  /* If the PHI's result is never used, then we can just
+     ignore it.  */
+  if (has_zero_uses (result))
+    return true;
+
+  return (single_imm_use (result, &imm_use, &use_stmt)
+	  && gimple_code (use_stmt) == GIMPLE_PHI
+	  && gimple_bb (use_stmt) == dest
+	  && gimple_phi_arg_def (use_stmt, dest_idx) == result);
+}
+
+
 /* This pass merges PHI nodes if one feeds into another.  For example,
    suppose we have the following:
 
@@ -844,6 +845,7 @@ merge_phi_nodes (void)
   basic_block *worklist = XNEWVEC (basic_block, n_basic_blocks);
   basic_block *current = worklist;
   basic_block bb;
+  bool update_ssa = false;
 
   calculate_dominance_info (CDI_DOMINATORS);
 
@@ -883,31 +885,53 @@ merge_phi_nodes (void)
 	     can handle.  If the result of every PHI in BB is used
 	     only by a PHI in DEST, then we can trivially merge the
 	     PHI nodes from BB into DEST.  */
-	  for (gsi = gsi_start_phis (bb); !gsi_end_p (gsi);
-	       gsi_next (&gsi))
+	  for (gsi = gsi_start_phis (bb); !gsi_end_p (gsi); gsi_next (&gsi))
 	    {
 	      gimple phi = gsi_stmt (gsi);
 	      tree result = gimple_phi_result (phi);
-	      use_operand_p imm_use;
-	      gimple use_stmt;
-
-	      /* If the PHI's result is never used, then we can just
-		 ignore it.  */
-	      if (has_zero_uses (result))
-		continue;
-
-	      /* Get the single use of the result of this PHI node.  */
-  	      if (!single_imm_use (result, &imm_use, &use_stmt)
-		  || gimple_code (use_stmt) != GIMPLE_PHI
-		  || gimple_bb (use_stmt) != dest
-		  || gimple_phi_arg_def (use_stmt, dest_idx) != result)
+	      if (!result_ok_for_phi_merging (result, dest, dest_idx)
+		  /* Virtuals can be handled by
+		     re-doing SSA form on them.  This is very common
+		     for abnormal control flows constructed by EH,
+		     like main function of tramp3d benchmark.  */
+		  && is_gimple_reg (SSA_NAME_VAR (result)))
 		break;
 	    }
-
 	  /* If the loop above iterated through all the PHI nodes
 	     in BB, then we can merge the PHIs from BB into DEST.  */
 	  if (gsi_end_p (gsi))
-	    *current++ = bb;
+	    {
+	      *current++ = bb;
+	      for (gsi = gsi_start_phis (bb); !gsi_end_p (gsi);)
+		{
+		  gimple phi = gsi_stmt (gsi);
+		  tree result = gimple_phi_result (phi);
+		  if (!result_ok_for_phi_merging (result, dest, dest_idx))
+		    {
+	   	      imm_use_iterator iter;
+	  	      use_operand_p use_p;
+		      gimple stmt;
+
+		      gcc_assert (!is_gimple_reg (result));
+		      /* As we are going to delete this block we will release all
+			 defs which makes the immediate uses on use stmts invalid.
+			 Avoid that by replacing all uses with the bare variable
+			 and updating the stmts.  */
+		      FOR_EACH_IMM_USE_STMT (stmt, iter, result)
+			{
+			  FOR_EACH_IMM_USE_ON_STMT (use_p, iter)
+			    SET_USE (use_p, SSA_NAME_VAR (result));
+			  update_stmt (stmt);
+			}
+		      update_ssa = true;
+		      mark_sym_for_renaming (SSA_NAME_VAR
+					     (PHI_RESULT (gsi_stmt (gsi))));
+		      remove_phi_node (&gsi, true);
+		    }
+		  else
+		    gsi_next (&gsi);
+		}
+	    }
 	}
     }
 
@@ -919,7 +943,7 @@ merge_phi_nodes (void)
     }
 
   free (worklist);
-  return 0;
+  return update_ssa ? (TODO_update_ssa | TODO_cleanup_cfg) : 0;
 }
 
 static bool

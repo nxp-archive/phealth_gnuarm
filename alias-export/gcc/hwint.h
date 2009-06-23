@@ -1,5 +1,5 @@
 /* HOST_WIDE_INT definitions for the GNU compiler.
-   Copyright (C) 1998, 2002, 2004 Free Software Foundation, Inc.
+   Copyright (C) 1998, 2002, 2004, 2008 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -99,6 +99,7 @@ extern char sizeof_long_long_must_be_8[sizeof(long long) == 8 ? 1 : -1];
     || (HOST_BITS_PER_LONGLONG < 64 && HOST_BITS_PER___INT64 < 64)
 # define HOST_WIDEST_INT		      HOST_WIDE_INT
 # define HOST_BITS_PER_WIDEST_INT	      HOST_BITS_PER_WIDE_INT
+# define HOST_WIDEST_INT_PRINT                HOST_WIDE_INT_PRINT
 # define HOST_WIDEST_INT_PRINT_DEC	      HOST_WIDE_INT_PRINT_DEC
 # define HOST_WIDEST_INT_PRINT_DEC_C	      HOST_WIDE_INT_PRINT_DEC_C
 # define HOST_WIDEST_INT_PRINT_UNSIGNED	      HOST_WIDE_INT_PRINT_UNSIGNED
@@ -116,6 +117,7 @@ extern char sizeof_long_long_must_be_8[sizeof(long long) == 8 ? 1 : -1];
     #error "This line should be impossible to reach"
 #  endif
 # endif
+# define HOST_WIDEST_INT_PRINT                HOST_LONG_LONG_FORMAT
 # define HOST_WIDEST_INT_PRINT_DEC	      "%" HOST_LONG_LONG_FORMAT "d"
 # define HOST_WIDEST_INT_PRINT_DEC_C	      "%" HOST_LONG_LONG_FORMAT "dLL"
 # define HOST_WIDEST_INT_PRINT_UNSIGNED	      "%" HOST_LONG_LONG_FORMAT "u"
@@ -139,7 +141,7 @@ extern char sizeof_long_long_must_be_8[sizeof(long long) == 8 ? 1 : -1];
 #    define HOST_WIDEST_FAST_INT __int64
 #    define HOST_BITS_PER_WIDEST_FAST_INT HOST_BITS_PER___INT64
 #  else
-#    error "Your host said it wantted to use long long or __int64 but neither"
+#    error "Your host said it wanted to use long long or __int64 but neither"
 #    error "exist"
 #  endif
 #else

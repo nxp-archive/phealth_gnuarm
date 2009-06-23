@@ -1,5 +1,6 @@
 /* Chains of recurrences.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
 This file is part of GCC.
@@ -219,16 +220,16 @@ chrec_fold_multiply_poly_poly (tree type,
   /* "a*c".  */
   t0 = chrec_fold_multiply (type, CHREC_LEFT (poly0), CHREC_LEFT (poly1));
 
-  /* "a*d + b*c + b*d".  */
+  /* "a*d + b*c".  */
   t1 = chrec_fold_multiply (type, CHREC_LEFT (poly0), CHREC_RIGHT (poly1));
   t1 = chrec_fold_plus (type, t1, chrec_fold_multiply (type,
 						       CHREC_RIGHT (poly0),
 						       CHREC_LEFT (poly1)));
-  t1 = chrec_fold_plus (type, t1, chrec_fold_multiply (type,
-						       CHREC_RIGHT (poly0),
-						       CHREC_RIGHT (poly1)));
-  /* "2*b*d".  */
+  /* "b*d".  */
   t2 = chrec_fold_multiply (type, CHREC_RIGHT (poly0), CHREC_RIGHT (poly1));
+  /* "a*d + b*c + b*d".  */
+  t1 = chrec_fold_plus (type, t1, t2);
+  /* "2*b*d".  */
   t2 = chrec_fold_multiply (type, SCALAR_FLOAT_TYPE_P (type)
 			    ? build_real (type, dconst2)
 			    : build_int_cst (type, 2), t2);

@@ -1,0 +1,252 @@
+2009-06-03  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r148125.
+
+2009-04-11  Richard Guenther  <rguenther@suse.de>
+
+	* c-common.c (c_fully_fold_internal): Handle *NV_EXPR.
+
+2009-04-11  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r145957.
+
+2009-04-03  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r145507.
+
+2009-03-18  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (extract_muldiv_1): Retain NV arithmetic
+	variants in some cases.
+	* c-common.c (pointer_int_sum): Remove re-association
+	optimization.  Do the multiplication with the element sign
+	with the same sign as the offset expression.
+	* tree-ssa-forwprop.c
+	(forward_propagate_addr_into_variable_array_index): Look
+	through widening conversions.
+
+	testsuite/
+	* gcc.dg/fold-extendmult-1.c: New testcase.
+
+2009-03-18  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (extract_muldiv_1): Handle *NV_EXPR where
+	appropriate.  Remove TYPE_OVERFLOW_* checks.
+
+2009-03-16  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (fold_binary): Fold (T1)X +- (T1)Y to (T1)(X +- Y)
+	if the cast is only a sign change.
+
+2009-03-12  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (split_tree): Handle *NV_EXPR.
+	(associate_trees): Likewise.
+	(fold_binary): Re-enable reassociation.  Remove restriction
+	for reassociating signed integers or pointers.
+
+2009-03-12  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (fold_plusminus_mult_expr): Handle *NV_EXPR.
+	(fold_binary): Complete PLUS_EXPR, MINUS_EXPR and MULT_EXPR
+	auditing.
+
+2009-03-12  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (may_negate_without_overflow_p): Unsigned zero
+	can be negated without overflow.
+	(negate_expr_p): Handle *NV_EXPR.
+	(fold_negate_expr): Likewise.
+	(fold_binary): Avoid loosing non-overflow flag during
+	A - B -> A + (-B) folding with constant B.
+
+2009-03-10  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (fold_comparison): Adjust address comparison
+	folding.
+	* tree.h (strip_nv): Also strip POINTER_PLUSNV_EXPR.
+	* tree-ssa-dom.c (initialize_hash_element): Treat *NV_EXPR the
+	same as non-NV_EXPR variants for value-numbering.
+	(simple_iv_increment_p): Handle *NV_EXPR.
+
+2009-03-10  Richard Guenther  <rguenther@suse.de>
+
+	* builtins.c (get_pointer_alignment): Handle POINTER_PLUSNV_EXPR.
+	(get_memory_rtx): Likewise.
+	* expr.c (string_constant): Likewise.
+	* tree-object-size.c (plus_stmt_object_size): Likewise.
+	(collect_object_sizes_for): Likewise.
+	(check_for_plus_in_loops_1): Likewise.
+
+2009-03-09  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (try_move_mult_to_index): Only move idx * size
+	in &x[i] + idx * size into the index if the multiplication
+	does not overflow.
+	(fold_unary): Always fold (T1)(X p+ Y) to ((T1)X p+ Y).
+	Simplify that folding.
+	Fold abs(NEGATENV_EXPR) the same as abs(NEGATE_EXPR).
+	(fold_binary): Audit all pointer-plus folding.  Preserve
+	non-wrapping variants where that is easily correct.
+	(tree_unary_nonnegative_warnv_p): Remove dead TYPE_OVERFLOW_UNDEFINED
+	case.  Handle CONVERT_EXPR the same as NOP_EXPR.
+	(tree_binary_nonnegative_warnv_p): POINTER_PLUS*_EXPR are not
+	handled at all.  Handle PLUSNV_EXPR and MULTNV_EXPR specially.
+	* tree-ssa-ccp.c (likely_value): Handle *NV_EXPR.
+	(ccp_fold): Also fold POINTER_PLUSNV_EXPR.
+	(maybe_fold_stmt_indirect): Also fold POINTER_PLUSNV_EXPR.
+	(fold_stmt_r): Likewise.
+	* tree-ssa-forwprop.c (forward_propagate_addr_into_variable_arr):
+	Only fold non-overflowed multiplications.
+	(forward_propagate_addr_expr_1): Handle POINTER_PLUSNV_EXPR.
+	* tree-vrp.c (supports_overflow_infinity): The assert that the
+	type needs overflow infinity is bogus now.
+
+2009-03-09  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-loop-niter.c (split_to_var_and_offset): Handle *NV_EXPR.
+	(expand_simple_operations): Likewise.
+	(derive_constant_upper_bound_ops): Likewise.
+	* tree-scalar-evolution.c (add_to_evolution): Handle MINUSNV_EXPR.
+	(follow_ssa_edge_binary): Handle *NV_EXPR.
+	(follow_ssa_edge_expr): Likewise.
+	(interpret_rhs_expr): Likewise.
+	(instantiate_scev_1): Likewise.
+	* tree-chrec.c (chrec_fold_poly_cst): Likewise.
+	(chrec_fold_plus_poly_poly): Likewise.
+	(chrec_fold_plus_1): Likewise.
+	(operator_is_linear): Likewise.
+	* tree-vectorizer.c (reduction_code_for_scalar_code):
+	Handle PLUSNV_EXPR.
+	* tree-vect-patterns.c (vect_recog_dot_prod_pattern): Handle
+	PLUSNV_EXPR.
+	(vect_recog_widen_mult_pattern): Handle MULTNV_EXPR.
+	(vect_recog_widen_sum_pattern): Handle PLUSNV_EXPR.
+	* tree-vect-transform.c (get_initial_def_for_reduction): Handle
+	PLUSNV_EXPR.
+	(vect_min_worthwhile_factor): Handle *NV_EXPR.
+	(vectorizable_operation): Treat POINTER_PLUSNV_EXPR as PLUS_EXPR.
+
+2009-03-09  Richard Guenther  <rguenther@suse.de>
+
+	* tree.h (int_const_binop_1): Declare.
+	* fold-const.c (add_double_with_sign): Fix unsigned overflow
+	detection.
+	(int_const_binop_1): Export.  Fix unsigned overflow detection.
+	* stor-layout.c (layout_type): Drop TREE_OVERFLOW on TYPE_SIZE
+	if appropriate.
+	* tree-vrp.c (integral_range_p): New helper.
+	(simplify_unary_for_nonwrapping): Likewise.
+	(simplify_binary_for_nonwrapping): Likewise.
+	(simplify_stmt_using_ranges): Call them.
+
+2009-03-06  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (maybe_canonicalize_comparison_1): Canonicalize
+	A +- CST code arg1 if A +- CST does not overflow.
+	(fold_comparison): Transform X +- C1 CMP Y +- C2 to
+	X CMP Y +- C2 +- C1 if X +- C1 does not overflow and C2 +- C1
+	is less in magnitude than C2.
+
+2009-03-06  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (int_const_binop_1): New worker function split
+	out from ...
+	(int_const_binop): ... here.
+	(fold_comparison): Adjust X +- C1 CMP C2 to X CMP C2 +- C1 folding
+	to always apply if X +- C1 does not overflow.
+
+2009-03-06  Richard Guenther  <rguenther@suse.de>
+
+	* tree.def (PLUSNV_EXPR, MINUSNV_EXPR, MULTNV_EXPR,
+	POINTER_PLUSNV_EXPR, NEGATENV_EXPR): Fix tree code name.
+
+2009-03-06  Richard Guenther  <rguenther@suse.de>
+
+	* c-typeck.c (build_unary_op): Treat flag_strict_overflow the
+	same as flag_wrapv.
+	(build_binary_op): Likewise.
+
+	cp/
+	* typeck.c (cp_build_binary_op): Deal with *NV_EXPR.  Build
+	*NV_EXPR variants for signed arithmetic with undefined overflow.
+	(cp_build_unary_op): Likewise.
+	* semantics.c (handle_omp_for_class_iterator): Deal with *NV_EXPR.
+
+2009-03-06  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (negate_expr_p): Only do not negate integer
+	constants if overflows on the type trap and the negation
+	might overflow.  Remove superfluous TYPE_OVERFLOW_WRAPS checks.
+	Do not negate divisions on integral types.
+	(fold_negate_expr): Do not negate divisions on integral types.
+	(build_range_check): Remove superfluous TYPE_OVERFLOW_WRAPS checks.
+	(extract_muldiv_1): Likewise.
+	(fold_unary): Likewise for (T1)(X * Y) to (T1)X * (T1)Y folding.
+	Adjust folding to also apply to MULTNV_EXPR if NV is dropped
+	on the result.
+
+2009-03-06  Richard Guenther  <rguenther@suse.de>
+
+	* fold-const.c (fold_binary): Enable pointer re-association
+	for POINTER_PLUSNV_EXPR.
+	* gimplify.c (gimplify_expr): Handle POINTER_PLUSNV_EXPR.
+	(gimplify_omp_for): Handle *NV_EXPR.
+	* convert.c (convert_to_integer): Handle PLUSNV_EXPR and
+	MINUSNV_EXPR in narrowing properly.  Remove use of
+	TYPE_OVERFLOW_WRAPS.
+	* omp-low.c (extract_omp_for_data): Handle *NV_EXPR.
+
+2009-03-05  Richard Guenther  <rguenther@suse.de>
+
+	* c-common.c (pointer_int_sum): Use *NV_EXPR codes for
+	pointer arithmetic.
+	* c-typeck.c (build_unary_op): Use NEGATENV_EXPR if
+	signed arithmetic has undefined overflow.
+	(build_binary_op): Handle *NV_EXPR for recursive invocations.
+	If signed arithmetic has undefined overflow use
+	PLUSNV_EXPR, MINUSNV_EXPR and MULTNV_EXPR.
+	* c-omp.c (c_finish_omp_for): Deal with *NV_EXPR for increments.
+
+2009-03-05  Richard Guenther  <rguenther@suse.de>
+
+	* expr.c (expand_expr_real_1): Handle POINTER_PLUSNV_EXPR,
+	PLUSNV_EXPR, MINUSNV_EXPR, MULTNV_EXPR and NEGATENV_EXPR.
+	* flags.h (TYPE_OVERFLOW_WRAPS): Define to always true.
+	(TYPE_OVERFLOW_UNDEFINED): Define to always false.
+	(POINTER_TYPE_OVERFLOW_UNDEFINED): Define to always false.
+	* optabs.c (optab_for_tree_code): Handle *NV_EXPR.
+	* tree-cfg.c (verify_gimple_assign_unary): Likewise.
+	(verify_gimple_assign_binary): Likewise.
+	* tree-inline.c (estimate_operator_cost): Likewise.
+	* tree-pretty-print.c (dump_generic_node): Likewise.
+	(op_code_prio): Likewise.
+	(op_symbol_code): Likewise.
+	* tree-ssa-structalias.c (find_func_aliases): Handle
+	POINTER_PLUSNV_EXPR.
+	* tree.c (build2_stat): Adjust checks.
+	(associative_tree_code): Add PLUSNV_EXPR and MULTNV_EXPR.
+	(commutative_tree_code): Add PLUSNV_EXPR and MULTNV_EXPR.
+	(undefined_overflow_used_p_1): New function.
+	* tree.def (PLUSNV_EXPR, MINUSNV_EXPR, MULTNV_EXPR,
+	POINTER_PLUSNV_EXPR, NEGATENV_EXPR): New tree codes for
+	operations that are known to not overflow.
+	* tree.h (NEGATE_EXPR_CODE_P, PLUS_EXPR_CODE_P,
+	POINTER_PLUS_EXPR_CODE_P, MINUS_EXPR_CODE_P, MULT_EXPR_CODE_P): New.
+	(NEGATE_EXPR_P, PLUS_EXPR_P, POINTER_PLUS_EXPR_P, MINUS_EXPR_P,
+	MULT_EXPR_P): Likewise.
+	(strip_nv): New inline function.
+	(undefined_overflow_used_p_1): Declare.
+	(undefined_overflow_used_p): New inline function.
+	* varasm.c (narrowing_initializer_constant_valid_p): Handle
+	MINUSNV_EXPR.
+	(initializer_constant_valid_p): Handle *NV_EXPR.
+	* omp-low.c (omp_reduction_init): Likewise.
+	* gimple-pretty-print.c (dump_unary_rhs): Handle NEGATENV_EXPR.
+	* fold-const.c (fold_negate_expr): Likewise.
+	(int_const_binop): Handle *NV_EXPR.
+	(fold_unary): Handle NEGATENV_EXPR.
+	(tree_binary_nonzero_warnv_p): The type argument is unused.
+	(fold_binary): Handle simple cases for POINTER_PLUSNV_EXPR,
+	PLUSNV_EXPR, MINUSNV_EXPR and MULTNV_EXPR.
+

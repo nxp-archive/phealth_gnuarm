@@ -1,5 +1,5 @@
 /* gfortran header file
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
@@ -1863,7 +1863,7 @@ typedef enum
   EXEC_ENTRY, EXEC_PAUSE, EXEC_STOP, EXEC_CONTINUE, EXEC_INIT_ASSIGN,
   EXEC_IF, EXEC_ARITHMETIC_IF, EXEC_DO, EXEC_DO_WHILE, EXEC_SELECT,
   EXEC_FORALL, EXEC_WHERE, EXEC_CYCLE, EXEC_EXIT,
-  EXEC_ALLOCATE, EXEC_DEALLOCATE,
+  EXEC_ALLOCATE, EXEC_DEALLOCATE, EXEC_END_PROCEDURE,
   EXEC_OPEN, EXEC_CLOSE, EXEC_WAIT,
   EXEC_READ, EXEC_WRITE, EXEC_IOLENGTH, EXEC_TRANSFER, EXEC_DT_END,
   EXEC_BACKSPACE, EXEC_ENDFILE, EXEC_INQUIRE, EXEC_REWIND, EXEC_FLUSH,
@@ -2516,6 +2516,9 @@ tree gfc_conv_array_initializer (tree type, gfc_expr *);
 gfc_try spec_size (gfc_array_spec *, mpz_t *);
 gfc_try spec_dimen_size (gfc_array_spec *, int, mpz_t *);
 int gfc_is_compile_time_shape (gfc_array_spec *);
+
+gfc_try gfc_ref_dimen_size (gfc_array_ref *, int dimen, mpz_t *);
+
 
 /* interface.c -- FIXME: some of these should be in symbol.c */
 void gfc_free_interface (gfc_interface *);

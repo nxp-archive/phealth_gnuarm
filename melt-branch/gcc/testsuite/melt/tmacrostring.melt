@@ -1,0 +1,22 @@
+;; -*- lisp -*-
+;; file tmacrostring.melt
+
+;;; this tests the macrostring read syntax
+#| 
+  ./cc1 -Wno-shadow -fmelt=runfile \
+  -fmelt-dynlibdir=. -fmelt-compile-script=./built-melt-cc-script \
+  -fmelt-gensrcdir=. -fmelt-tempdir=/tmp \
+  -fmelt-init="@warmelt2"  -fmelt-arg=tmacrostring.melt
+|#
+
+(defprimitive say (:cstring s) :void
+  #{ /*saying*/ printf("saying: %s\n", $s); 
+     fflush(stdout);
+  }#
+)
+
+(defun doit () (say "hello world"))
+
+(doit)
+
+

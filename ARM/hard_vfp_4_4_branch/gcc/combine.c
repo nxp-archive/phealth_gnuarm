@@ -8956,13 +8956,13 @@ merge_outer_ops (enum rtx_code *pop0, HOST_WIDE_INT *pconst0, enum rtx_code op1,
 	   && op0 == AND)
     op0 = UNKNOWN;
 
+  *pop0 = op0;
+
   /* ??? Slightly redundant with the above mask, but not entirely.
      Moving this above means we'd have to sign-extend the mode mask
      for the final test.  */
-  const0 = trunc_int_for_mode (const0, mode);
-
-  *pop0 = op0;
-  *pconst0 = const0;
+  if (op0 != UNKNOWN && op0 != NEG)
+    *pconst0 = trunc_int_for_mode (const0, mode);
 
   return 1;
 }
@@ -9685,7 +9685,8 @@ simplify_shift_const_1 (enum rtx_code code, enum machine_mode result_mode,
 
   if (outer_op != UNKNOWN)
     {
-      if (GET_MODE_BITSIZE (result_mode) < HOST_BITS_PER_WIDE_INT)
+      if (GET_RTX_CLASS (outer_op) != RTX_UNARY
+	  && GET_MODE_BITSIZE (result_mode) < HOST_BITS_PER_WIDE_INT)
 	outer_const = trunc_int_for_mode (outer_const, result_mode);
 
       if (outer_op == AND)
@@ -9973,7 +9974,7 @@ gen_lowpart_for_combine (enum machine_mode omode, rtx x)
     }
 
  fail:
-  return gen_rtx_CLOBBER (imode, const0_rtx);
+  return gen_rtx_CLOBBER (omode, const0_rtx);
 }
 
 /* Simplify a comparison between *POP0 and *POP1 where CODE is the

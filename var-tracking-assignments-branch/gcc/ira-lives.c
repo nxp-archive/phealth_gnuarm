@@ -1,5 +1,5 @@
 /* IRA processing allocno lives to build allocno live ranges.
-   Copyright (C) 2006, 2007, 2008
+   Copyright (C) 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
@@ -28,6 +28,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm_p.h"
 #include "target.h"
 #include "flags.h"
+#include "except.h"
 #include "hard-reg-set.h"
 #include "basic-block.h"
 #include "insn-config.h"
@@ -781,10 +782,11 @@ process_single_reg_class_operands (bool in_p, int freq)
 		  [ira_class_hard_regs[cl][0]]) >= 0
 	      && reg_class_size[cl] <= (unsigned) CLASS_MAX_NREGS (cl, mode))
 	    {
-	      /* ??? FREQ */
-	      cost = freq * (in_p
-			     ? ira_register_move_cost[mode][cover_class][cl]
-			     : ira_register_move_cost[mode][cl][cover_class]);
+	      cost
+		= (freq
+		   * (in_p
+		      ? ira_get_register_move_cost (mode, cover_class, cl)
+		      : ira_get_register_move_cost (mode, cl, cover_class)));
 	      ira_allocate_and_set_costs
 		(&ALLOCNO_CONFLICT_HARD_REG_COSTS (operand_a), cover_class, 0);
 	      ALLOCNO_CONFLICT_HARD_REG_COSTS (operand_a)
@@ -892,7 +894,7 @@ process_bb_node_lives (ira_loop_tree_node_t loop_tree_node)
 	  df_ref *def_rec, *use_rec;
 	  bool call_p;
 	  
-	  if (! INSN_P (insn) || DEBUG_INSN_P (insn))
+	  if (!NONDEBUG_INSN_P (insn))
 	    continue;
 	  
 	  if (internal_flag_ira_verbose > 2 && ira_dump_file != NULL)
@@ -984,6 +986,13 @@ process_bb_node_lives (ira_loop_tree_node_t loop_tree_node)
 		    {
 		      SET_HARD_REG_SET (ALLOCNO_CONFLICT_HARD_REGS (a));
 		      SET_HARD_REG_SET (ALLOCNO_TOTAL_CONFLICT_HARD_REGS (a));
+		    }
+		  if (can_throw_internal (insn))
+		    {
+		      IOR_HARD_REG_SET (ALLOCNO_TOTAL_CONFLICT_HARD_REGS (a),
+					call_used_reg_set);
+		      IOR_HARD_REG_SET (ALLOCNO_CONFLICT_HARD_REGS (a),
+					call_used_reg_set);
 		    }
 		}
 	    }

@@ -1,5 +1,5 @@
 /* SCC value numbering for trees
-   Copyright (C) 2006, 2007, 2008
+   Copyright (C) 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dan@dberlin.org>
 
@@ -571,6 +571,8 @@ copy_reference_ops_from_ref (tree ref, VEC(vn_reference_op_s, heap) **result)
 	case CONST_DECL:
 	case RESULT_DECL:
 	case SSA_NAME:
+	case EXC_PTR_EXPR:
+	case FILTER_EXPR:
 	  temp.op0 = ref;
 	  break;
 	case ADDR_EXPR:
@@ -607,7 +609,7 @@ copy_reference_ops_from_ref (tree ref, VEC(vn_reference_op_s, heap) **result)
    Returns NULL_TREE if the ops were not handled.
    This routine needs to be kept in sync with copy_reference_ops_from_ref.  */
 
-static tree
+tree
 get_ref_from_reference_ops (VEC(vn_reference_op_s, heap) *ops)
 {
   vn_reference_op_t op;
@@ -663,6 +665,8 @@ get_ref_from_reference_ops (VEC(vn_reference_op_s, heap) *ops)
 	case CONST_DECL:
 	case RESULT_DECL:
 	case SSA_NAME:
+	case FILTER_EXPR:
+	case EXC_PTR_EXPR:
 	  *op0_p = op->op0;
 	  break;
 
@@ -2211,14 +2215,19 @@ visit_use (tree use)
 	      VN_INFO (lhs)->expr = NULL_TREE;
 	    }
 
-	  if (TREE_CODE (lhs) == SSA_NAME
-	      /* We can substitute SSA_NAMEs that are live over
-		 abnormal edges with their constant value.  */
-	      && !(gimple_assign_copy_p (stmt)
-		   && is_gimple_min_invariant (gimple_assign_rhs1 (stmt)))
-	      && !(simplified
-		   && is_gimple_min_invariant (simplified))
-	      && SSA_NAME_OCCURS_IN_ABNORMAL_PHI (lhs))
+	  if ((TREE_CODE (lhs) == SSA_NAME
+	       /* We can substitute SSA_NAMEs that are live over
+		  abnormal edges with their constant value.  */
+	       && !(gimple_assign_copy_p (stmt)
+		    && is_gimple_min_invariant (gimple_assign_rhs1 (stmt)))
+	       && !(simplified
+		    && is_gimple_min_invariant (simplified))
+	       && SSA_NAME_OCCURS_IN_ABNORMAL_PHI (lhs))
+	      /* Stores or copies from SSA_NAMEs that are live over
+		 abnormal edges are a problem.  */
+	      || (gimple_assign_single_p (stmt)
+		  && TREE_CODE (gimple_assign_rhs1 (stmt)) == SSA_NAME
+		  && SSA_NAME_OCCURS_IN_ABNORMAL_PHI (gimple_assign_rhs1 (stmt))))
 	    changed = defs_to_varying (stmt);
 	  else if (REFERENCE_CLASS_P (lhs) || DECL_P (lhs))
 	    {

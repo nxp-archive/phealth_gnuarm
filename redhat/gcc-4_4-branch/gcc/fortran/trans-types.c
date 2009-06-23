@@ -595,7 +595,7 @@ gfc_build_int_type (gfc_integer_info *info)
   return make_signed_type (mode_precision);
 }
 
-static tree
+tree
 gfc_build_uint_type (int size)
 {
   if (size == CHAR_TYPE_SIZE)
@@ -721,6 +721,9 @@ gfc_init_types (void)
   for (index = 0; gfc_integer_kinds[index].kind != 0; ++index)
     {
       type = gfc_build_int_type (&gfc_integer_kinds[index]);
+      /* Ensure integer(kind=1) doesn't have TYPE_STRING_FLAG set.  */
+      if (TYPE_STRING_FLAG (type))
+	type = make_signed_type (gfc_integer_kinds[index].bit_size);
       gfc_integer_types[index] = type;
       snprintf (name_buf, sizeof(name_buf), "integer(kind=%d)",
 		gfc_integer_kinds[index].kind);
@@ -1632,8 +1635,11 @@ gfc_sym_type (gfc_symbol * sym)
   if (sym->backend_decl && !sym->attr.function)
     return TREE_TYPE (sym->backend_decl);
 
-  if (sym->ts.type == BT_CHARACTER && sym->attr.is_bind_c
-      && (sym->attr.function || sym->attr.result))
+  if (sym->ts.type == BT_CHARACTER
+      && ((sym->attr.function && sym->attr.is_bind_c)
+	  || (sym->attr.result
+	      && sym->ns->proc_name
+	      && sym->ns->proc_name->attr.is_bind_c)))
     type = gfc_character1_type_node;
   else
     type = gfc_typenode_for_spec (&sym->ts);
@@ -1962,7 +1968,11 @@ gfc_return_by_reference (gfc_symbol * sym)
   if (sym->attr.dimension)
     return 1;
 
-  if (sym->ts.type == BT_CHARACTER && !sym->attr.is_bind_c)
+  if (sym->ts.type == BT_CHARACTER
+      && !sym->attr.is_bind_c
+      && (!sym->attr.result
+	  || !sym->ns->proc_name
+	  || !sym->ns->proc_name->attr.is_bind_c))
     return 1;
 
   /* Possibly return complex numbers by reference for g77 compatibility.

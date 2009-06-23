@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1991-2006, Free Software Foundation, Inc.         --
+--          Copyright (C) 1991-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -31,6 +30,7 @@ with Opt;      use Opt;
 with Output;   use Output;
 with Scans;    use Scans;
 with Sinput;   use Sinput;
+with Stylesw;  use Stylesw;
 
 package body Errutil is
 
@@ -549,13 +549,18 @@ package body Errutil is
          Set_Standard_Output;
       end if;
 
-      if Maximum_Errors /= 0
-        and then Total_Errors_Detected + Warnings_Detected = Maximum_Errors
-      then
-         Set_Standard_Error;
-         Write_Str ("fatal error: maximum errors reached");
-         Write_Eol;
-         Set_Standard_Output;
+      if Maximum_Messages /= 0 then
+         if Warnings_Detected >= Maximum_Messages then
+            Set_Standard_Error;
+            Write_Line ("maximum number of warnings detected");
+            Warning_Mode := Suppress;
+         end if;
+
+         if Total_Errors_Detected >= Maximum_Messages then
+            Set_Standard_Error;
+            Write_Line ("fatal error: maximum errors reached");
+            Set_Standard_Output;
+         end if;
       end if;
 
       if Warning_Mode = Treat_As_Error then
@@ -654,7 +659,7 @@ package body Errutil is
 
    procedure Set_Msg_Insertion_Column is
    begin
-      if Style.RM_Column_Check then
+      if RM_Column_Check then
          Set_Msg_Str (" in column ");
          Set_Msg_Int (Int (Error_Msg_Col) + 1);
       end if;
@@ -681,7 +686,12 @@ package body Errutil is
          --  Check for insertion character
 
          if C = '%' then
-            Set_Msg_Insertion_Name;
+            if P <= Text'Last and then Text (P) = '%' then
+               P := P + 1;
+               Set_Msg_Insertion_Name_Literal;
+            else
+               Set_Msg_Insertion_Name;
+            end if;
 
          elsif C = '$' then
 

@@ -22,16 +22,24 @@
 
 #include "basic-block.h"
 
-extern rtx cfg_layout_function_footer;
+#ifdef EXTRA_TARGET
+namespace EXTRA_TARGET {
+#endif
+
+extern GTY(()) rtx cfg_layout_function_footer;
+extern GTY(()) rtx cfg_layout_function_header;
 
 extern void cfg_layout_initialize (unsigned int);
 extern void cfg_layout_finalize (void);
-extern unsigned int insn_locators_initialize (void);
 extern void reemit_insn_block_notes (void);
 extern bool can_copy_bbs_p (basic_block *, unsigned);
 extern void copy_bbs (basic_block *, unsigned, basic_block *,
 		      edge *, unsigned, edge *, struct loop *,
 		      basic_block);
 extern rtx duplicate_insn_chain (rtx, rtx);
+
+#ifdef EXTRA_TARGET
+} /* Close EXTRA_TARGET namespace.  */
+#endif
 
 #endif /* GCC_CFGLAYOUT_H */

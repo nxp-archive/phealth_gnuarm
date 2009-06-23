@@ -1,5 +1,5 @@
 /* Callgraph based interprocedural optimizations.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
@@ -126,7 +126,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "timevar.h"
 #include "params.h"
 #include "fibheap.h"
-#include "c-common.h"
 #include "intl.h"
 #include "function.h"
 #include "ipa-prop.h"
@@ -134,6 +133,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-iterator.h"
 #include "tree-pass.h"
 #include "output.h"
+#include "coverage.h"
 
 static void cgraph_expand_all_functions (void);
 static void cgraph_mark_functions_to_output (void);
@@ -311,10 +311,8 @@ cgraph_build_cdtor_fns (void)
    configury.  */
 
 bool
-cgraph_decide_is_function_needed (struct cgraph_node *node)
+cgraph_decide_is_function_needed (struct cgraph_node *node, tree decl)
 {
-  tree decl = node->decl;
-
   if (MAIN_NAME_P (DECL_NAME (decl))
       && TREE_PUBLIC (decl))
     {
@@ -428,7 +426,7 @@ cgraph_process_new_functions (void)
 	case CGRAPH_STATE_EXPANSION:
 	  /* Functions created during expansion shall be compiled
 	     directly.  */
-	  node->output = 0;
+	  node->process = 0;
 	  cgraph_expand_function (node);
 	  break;
 
@@ -454,12 +452,12 @@ cgraph_process_new_functions (void)
 static void
 cgraph_reset_node (struct cgraph_node *node)
 {
-  /* If node->output is set, then we have already begun whole-unit analysis.
+  /* If node->process is set, then we have already begun whole-unit analysis.
      This is *not* testing for whether we've already emitted the function.
      That case can be sort-of legitimately seen with real function redefinition
      errors.  I would argue that the front end should never present us with
      such a case, but don't enforce that for now.  */
-  gcc_assert (!node->output);
+  gcc_assert (!node->process);
 
   /* Reset our data structures so we can analyze the function again.  */
   memset (&node->local, 0, sizeof (node->local));
@@ -512,24 +510,13 @@ cgraph_finalize_function (tree decl, bool nested)
   notice_global_symbol (decl);
   node->local.finalized = true;
   node->lowered = DECL_STRUCT_FUNCTION (decl)->cfg != NULL;
-  if (node->lowered)
-    {
-      tree old_decl = current_function_decl;
-      current_function_decl = decl;
-      push_cfun (DECL_STRUCT_FUNCTION (decl));
-      build_cgraph_edges ();
-      pop_cfun ();
-      DECL_STRUCT_FUNCTION (decl)->curr_properties
-	|= (PROP_gimple_leh | PROP_cfg | PROP_referenced_vars 
-	    | PROP_gimple_lomp | PROP_gimple_any | PROP_gimple_lcf);
-      current_function_decl = old_decl;
-    }
+  node->finalized_by_frontend = true;
   record_cdtor_fn (node->decl);
   if (node->nested)
     lower_nested_functions (decl);
   gcc_assert (!node->nested);
 
-  if (cgraph_decide_is_function_needed (node))
+  if (cgraph_decide_is_function_needed (node, decl))
     cgraph_mark_needed_node (node);
 
   /* Since we reclaim unreachable nodes at the end of every language
@@ -558,8 +545,17 @@ void
 cgraph_mark_if_needed (tree decl)
 {
   struct cgraph_node *node = cgraph_node (decl);
-  if (node->local.finalized && cgraph_decide_is_function_needed (node))
+  if (node->local.finalized && cgraph_decide_is_function_needed (node, decl))
     cgraph_mark_needed_node (node);
+}
+
+/* Return TRUE if NODE2 is equivalent to NODE or its clone.  */
+static bool
+clone_of_p (struct cgraph_node *node, struct cgraph_node *node2)
+{
+  while (node != node2 && node2)
+    node2 = node2->clone_of;
+  return node2 != NULL;
 }
 
 /* Verify cgraph nodes of given cgraph node.  */
@@ -567,7 +563,6 @@ void
 verify_cgraph_node (struct cgraph_node *node)
 {
   struct cgraph_edge *e;
-  struct cgraph_node *main_clone;
   struct function *this_cfun = DECL_STRUCT_FUNCTION (node->decl);
   struct function *saved_cfun = cfun;
   basic_block this_block;
@@ -584,7 +579,8 @@ verify_cgraph_node (struct cgraph_node *node)
     if (e->aux)
       {
 	error ("aux field set for edge %s->%s",
-	       cgraph_node_name (e->caller), cgraph_node_name (e->callee));
+	       identifier_to_locale (cgraph_node_name (e->caller)),
+	       identifier_to_locale (cgraph_node_name (e->callee)));
 	error_found = true;
       }
   if (node->count < 0)
@@ -642,19 +638,53 @@ verify_cgraph_node (struct cgraph_node *node)
       error_found = true;
     }
 
-  for (main_clone = cgraph_node (node->decl); main_clone;
-       main_clone = main_clone->next_clone)
-    if (main_clone == node)
-      break;
   if (!cgraph_node (node->decl))
     {
       error ("node not found in cgraph_hash");
       error_found = true;
     }
 
-  /* We cannot do the following check in WPA mode as the function body
-     is not available in memory.  */
-  if (node->analyzed
+  if (node->clone_of)
+    {
+      struct cgraph_node *n;
+      for (n = node->clone_of->clones; n; n = n->next_sibling_clone)
+        if (n == node)
+	  break;
+      if (!n)
+	{
+	  error ("node has wrong clone_of");
+	  error_found = true;
+	}
+    }
+  if (node->clones)
+    {
+      struct cgraph_node *n;
+      for (n = node->clones; n; n = n->next_sibling_clone)
+        if (n->clone_of != node)
+	  break;
+      if (n)
+	{
+	  error ("node has wrong clone list");
+	  error_found = true;
+	}
+    }
+  if ((node->prev_sibling_clone || node->next_sibling_clone) && !node->clone_of)
+    {
+       error ("node is in clone list but it is not clone");
+       error_found = true;
+    }
+  if (!node->prev_sibling_clone && node->clone_of && node->clone_of->clones != node)
+    {
+      error ("node has wrong prev_clone pointer");
+      error_found = true;
+    }
+  if (node->prev_sibling_clone && node->prev_sibling_clone->next_sibling_clone != node)
+    {
+      error ("double linked list of clones corrupted");
+      error_found = true;
+    }
+
+  if (node->analyzed && gimple_has_body_p (node->decl)
       && !TREE_ASM_WRITTEN (node->decl)
       && (!DECL_EXTERNAL (node->decl) || node->global.inlined_to)
       && !flag_wpa)
@@ -684,8 +714,8 @@ verify_cgraph_node (struct cgraph_node *node)
 			    debug_gimple_stmt (stmt);
 			    error_found = true;
 			  }
-			if (e->callee->decl != cgraph_node (decl)->decl
-			    && e->inline_failed)
+			if (!clone_of_p (cgraph_node (decl), e->callee)
+			    && !e->callee->global.inlined_to)
 			  {
 			    error ("edge points to wrong declaration:");
 			    debug_tree (e->callee->decl);
@@ -713,8 +743,8 @@ verify_cgraph_node (struct cgraph_node *node)
 	  if (!e->aux && !e->indirect_call)
 	    {
 	      error ("edge %s->%s has no corresponding call_stmt",
-		     cgraph_node_name (e->caller),
-		     cgraph_node_name (e->callee));
+		     identifier_to_locale (cgraph_node_name (e->caller)),
+		     identifier_to_locale (cgraph_node_name (e->callee)));
 	      debug_gimple_stmt (e->call_stmt);
 	      error_found = true;
 	    }
@@ -910,7 +940,7 @@ cgraph_analyze_functions (void)
 #endif
 
       if (!node->analyzed)
-        cgraph_analyze_function (node);
+	cgraph_analyze_function (node);
 
       for (edge = node->callees; edge; edge = edge->next_callee)
 	if (!edge->callee->reachable)
@@ -998,7 +1028,7 @@ cgraph_finalize_compilation_unit (void)
   cgraph_analyze_functions ();
   timevar_pop (TV_CGRAPH);
 }
- 
+
 
 /* Figure out what functions we want to assemble.  */
 
@@ -1012,7 +1042,7 @@ cgraph_mark_functions_to_output (void)
       tree decl = node->decl;
       struct cgraph_edge *e;
 
-      gcc_assert (!node->output);
+      gcc_assert (!node->process);
 
       for (e = node->callers; e; e = e->next_caller)
 	if (e->inline_failed)
@@ -1027,7 +1057,7 @@ cgraph_mark_functions_to_output (void)
 	      || (e && node->reachable))
 	  && !TREE_ASM_WRITTEN (decl)
 	  && !DECL_EXTERNAL (decl))
-	node->output = 1;
+	node->process = 1;
       else
 	{
 	  /* We should've reclaimed all functions that are not needed.  */
@@ -1060,6 +1090,7 @@ cgraph_expand_function (struct cgraph_node *node)
   gcc_assert (!node->global.inlined_to);
 
   announce_function (decl);
+  node->process = 0;
 
   gcc_assert (node->lowered);
 
@@ -1113,16 +1144,16 @@ cgraph_expand_all_functions (void)
   /* Garbage collector may remove inline clones we eliminate during
      optimization.  So we must be sure to not reference them.  */
   for (i = 0; i < order_pos; i++)
-    if (order[i]->output)
+    if (order[i]->process)
       order[new_order_pos++] = order[i];
 
   for (i = new_order_pos - 1; i >= 0; i--)
     {
       node = order[i];
-      if (node->output)
+      if (node->process)
 	{
 	  gcc_assert (node->reachable);
-	  node->output = 0;
+	  node->process = 0;
 	  cgraph_expand_function (node);
 	}
     }
@@ -1134,9 +1165,17 @@ cgraph_expand_all_functions (void)
 
 /* This is used to sort the node types by the cgraph order number.  */
 
+enum cgraph_order_sort_kind
+{
+  ORDER_UNDEFINED = 0,
+  ORDER_FUNCTION,
+  ORDER_VAR,
+  ORDER_ASM
+};
+
 struct cgraph_order_sort
 {
-  enum { ORDER_UNDEFINED = 0, ORDER_FUNCTION, ORDER_VAR, ORDER_ASM } kind;
+  enum cgraph_order_sort_kind kind;
   union
   {
     struct cgraph_node *f;
@@ -1171,7 +1210,7 @@ cgraph_output_in_order (void)
 
   for (pf = cgraph_nodes; pf; pf = pf->next)
     {
-      if (pf->output)
+      if (pf->process)
 	{
 	  i = pf->order;
 	  gcc_assert (nodes[i].kind == ORDER_UNDEFINED);
@@ -1211,7 +1250,7 @@ cgraph_output_in_order (void)
       switch (nodes[i].kind)
 	{
 	case ORDER_FUNCTION:
-	  nodes[i].u.f->output = 0;
+	  nodes[i].u.f->process = 0;
 	  cgraph_expand_function (nodes[i].u.f);
 	  break;
 
@@ -1243,9 +1282,9 @@ cgraph_preserve_function_body_p (tree decl)
 
   gcc_assert (cgraph_global_info_ready);
   /* Look if there is any clone around.  */
-  for (node = cgraph_node (decl); node; node = node->next_clone)
-    if (node->global.inlined_to)
-      return true;
+  node = cgraph_node (decl);
+  if (node->clones)
+    return true;
   return false;
 }
 
@@ -1258,14 +1297,31 @@ ipa_passes (void)
   bitmap_obstack_initialize (NULL);
   execute_ipa_pass_list (all_small_ipa_passes);
 
-  /* This pass removes bodies of extern inline functions that we never
+  /* If pass_all_early_optimizations was not scheduled, the state of
+     the cgraph will not be properly updated.  Update it now.  */
+  if (cgraph_state < CGRAPH_STATE_IPA_SSA)
+    cgraph_state = CGRAPH_STATE_IPA_SSA;
+
+  /* Remove the bodies of extern inline functions that we never
      inlined.  */
   cgraph_remove_unreachable_nodes (false, dump_file);
 
-  execute_ipa_summary_passes ((struct ipa_opt_pass *) all_regular_ipa_passes);
-  execute_ipa_summary_passes ((struct ipa_opt_pass *) all_lto_gen_passes);
+  if (!in_lto_p)
+    {
+      /* Generate coverage variables and constructors.  */
+      coverage_finish ();
 
-  ipa_write_summaries ();
+      /* Process new functions added.  */
+      set_cfun (NULL);
+      current_function_decl = NULL;
+      cgraph_process_new_functions ();
+    }
+
+  execute_ipa_summary_passes ((struct ipa_opt_pass_d *) all_regular_ipa_passes);
+  execute_ipa_summary_passes ((struct ipa_opt_pass_d *) all_lto_gen_passes);
+
+  if (!in_lto_p)
+    ipa_write_summaries ();
 
   execute_ipa_pass_list (all_regular_ipa_passes);
 
@@ -1273,7 +1329,8 @@ ipa_passes (void)
 }
 
 
-/* Emit thunks for every node in the cgraph.  */
+/* Emit thunks for every node in the cgraph.
+   FIXME: We really ought to emit thunks only for functions that are needed.  */
 
 static void
 cgraph_emit_thunks (void)
@@ -1363,6 +1420,7 @@ cgraph_optimize (void)
   verify_cgraph ();
 #endif
 
+  cgraph_materialize_all_clones ();
   cgraph_mark_functions_to_output ();
 
   cgraph_state = CGRAPH_STATE_EXPANSION;
@@ -1377,7 +1435,6 @@ cgraph_optimize (void)
 
       varpool_assemble_pending_decls ();
     }
-  varpool_output_debug_info ();
   cgraph_process_new_functions ();
   cgraph_state = CGRAPH_STATE_FINISHED;
 
@@ -1426,13 +1483,15 @@ cgraph_build_static_cdtor (char which, tree body, int priority)
   sprintf (which_buf, "%c_%.5d_%d", which, priority, counter++);
   name = get_file_function_name (which_buf);
 
-  decl = build_decl (FUNCTION_DECL, name,
+  decl = build_decl (input_location, FUNCTION_DECL, name,
 		     build_function_type (void_type_node, void_list_node));
   current_function_decl = decl;
 
-  resdecl = build_decl (RESULT_DECL, NULL_TREE, void_type_node);
+  resdecl = build_decl (input_location,
+			RESULT_DECL, NULL_TREE, void_type_node);
   DECL_ARTIFICIAL (resdecl) = 1;
   DECL_RESULT (decl) = resdecl;
+  DECL_CONTEXT (resdecl) = decl;
 
   allocate_struct_function (decl, false);
 
@@ -1580,7 +1639,7 @@ cgraph_copy_node_for_versioning (struct cgraph_node *old_version,
 struct cgraph_node *
 cgraph_function_versioning (struct cgraph_node *old_version_node,
 			    VEC(cgraph_edge_p,heap) *redirect_callers,
-			    varray_type tree_map,
+			    VEC (ipa_replace_map_p,gc)* tree_map,
 			    bitmap args_to_skip)
 {
   tree old_decl = old_version_node->decl;
@@ -1616,10 +1675,11 @@ cgraph_function_versioning (struct cgraph_node *old_version_node,
   TREE_PUBLIC (new_version_node->decl) = 0;
   DECL_COMDAT (new_version_node->decl) = 0;
   DECL_WEAK (new_version_node->decl) = 0;
+  DECL_VIRTUAL_P (new_version_node->decl) = 0;
   new_version_node->local.externally_visible = 0;
   new_version_node->local.local = 1;
   new_version_node->lowered = true;
-  
+
   /* Update the call_expr on the edges to call the new version node. */
   update_call_expr (new_version_node);
   
@@ -1632,19 +1692,50 @@ cgraph_function_versioning (struct cgraph_node *old_version_node,
 struct cgraph_node *
 save_inline_function_body (struct cgraph_node *node)
 {
-  struct cgraph_node *first_clone;
+  struct cgraph_node *first_clone, *n;
 
   gcc_assert (node == cgraph_node (node->decl));
 
   cgraph_lower_function (node);
 
-  first_clone = node->next_clone;
+  first_clone = node->clones;
 
   first_clone->decl = copy_node (node->decl);
-  node->next_clone = NULL;
-  first_clone->prev_clone = NULL;
   cgraph_insert_node_to_hashtable (first_clone);
   gcc_assert (first_clone == cgraph_node (first_clone->decl));
+  if (first_clone->next_sibling_clone)
+    {
+      for (n = first_clone->next_sibling_clone; n->next_sibling_clone; n = n->next_sibling_clone)
+        n->clone_of = first_clone;
+      n->clone_of = first_clone;
+      n->next_sibling_clone = first_clone->clones;
+      if (first_clone->clones)
+        first_clone->clones->prev_sibling_clone = n;
+      first_clone->clones = first_clone->next_sibling_clone;
+      first_clone->next_sibling_clone->prev_sibling_clone = NULL;
+      first_clone->next_sibling_clone = NULL;
+      gcc_assert (!first_clone->prev_sibling_clone);
+    }
+  first_clone->clone_of = NULL;
+  node->clones = NULL;
+
+  if (first_clone->clones)
+    for (n = first_clone->clones; n != first_clone;)
+      {
+        gcc_assert (n->decl == node->decl);
+	n->decl = first_clone->decl;
+	if (n->clones)
+	  n = n->clones;
+	else if (n->next_sibling_clone)
+	  n = n->next_sibling_clone;
+	else
+	  {
+	    while (n != first_clone && !n->next_sibling_clone)
+	      n = n->clone_of;
+	    if (n != first_clone)
+	      n = n->next_sibling_clone;
+	  }
+      }
 
   /* Copy the OLD_VERSION_NODE function tree to the new version.  */
   tree_function_versioning (node->decl, first_clone->decl, NULL, true, NULL);
@@ -1653,13 +1744,148 @@ save_inline_function_body (struct cgraph_node *node)
   DECL_COMDAT_GROUP (first_clone->decl) = NULL_TREE;
   TREE_PUBLIC (first_clone->decl) = 0;
   DECL_COMDAT (first_clone->decl) = 0;
+  VEC_free (ipa_opt_pass, heap,
+            DECL_STRUCT_FUNCTION (first_clone->decl)->ipa_transforms_to_apply);
+  DECL_STRUCT_FUNCTION (first_clone->decl)->ipa_transforms_to_apply = NULL;
 
-  for (node = first_clone->next_clone; node; node = node->next_clone)
-    node->decl = first_clone->decl;
 #ifdef ENABLE_CHECKING
   verify_cgraph_node (first_clone);
 #endif
   return first_clone;
+}
+
+/* Given virtual clone, turn it into actual clone.  */
+static void
+cgraph_materialize_clone (struct cgraph_node *node)
+{
+  bitmap_obstack_initialize (NULL);
+  /* Copy the OLD_VERSION_NODE function tree to the new version.  */
+  tree_function_versioning (node->clone_of->decl, node->decl,
+  			    node->clone.tree_map, true,
+			    node->clone.args_to_skip);
+
+  /* Function is no longer clone.  */
+  if (node->next_sibling_clone)
+    node->next_sibling_clone->prev_sibling_clone = node->prev_sibling_clone;
+  if (node->prev_sibling_clone)
+    node->prev_sibling_clone->next_sibling_clone = node->next_sibling_clone;
+  else
+    node->clone_of->clones = node->next_sibling_clone;
+  node->next_sibling_clone = NULL;
+  node->prev_sibling_clone = NULL;
+  node->clone_of = NULL;
+  bitmap_obstack_release (NULL);
+}
+
+/* Once all functions from compilation unit are in memory, produce all clones
+   and update all calls.
+   We might also do this on demand if we don't want to bring all functions to
+   memory prior compilation, but current WHOPR implementation does that and it is
+   is bit easier to keep everything right in this order.  */
+void
+cgraph_materialize_all_clones (void)
+{
+  struct cgraph_node *node;
+  bool stabilized = false;
+
+  if (cgraph_dump_file)
+    fprintf (cgraph_dump_file, "Materializing clones\n");
+#ifdef ENABLE_CHECKING
+  verify_cgraph ();
+#endif
+
+  /* We can also do topological order, but number of iterations should be
+     bounded by number of IPA passes since single IPA pass is probably not
+     going to create clones of clones it created itself.  */
+  while (!stabilized)
+    {
+      stabilized = true;
+      for (node = cgraph_nodes; node; node = node->next)
+        {
+	  if (node->clone_of && node->decl != node->clone_of->decl
+	      && !gimple_has_body_p (node->decl))
+	    {
+	      if (gimple_has_body_p (node->clone_of->decl))
+	        {
+		  if (cgraph_dump_file)
+		    fprintf (cgraph_dump_file, "  clonning %s to %s",
+			     cgraph_node_name (node->clone_of),
+			     cgraph_node_name (node));
+		  cgraph_materialize_clone (node);
+	        }
+	      else
+		stabilized = false;
+	    }
+	}
+    }
+  if (cgraph_dump_file)
+    fprintf (cgraph_dump_file, "Updating call sites\n");
+  for (node = cgraph_nodes; node; node = node->next)
+    if (node->analyzed && gimple_has_body_p (node->decl)
+        && (!node->clone_of || node->clone_of->decl != node->decl))
+      {
+        struct cgraph_edge *e;
+
+	current_function_decl = node->decl;
+        push_cfun (DECL_STRUCT_FUNCTION (node->decl));
+	for (e = node->callees; e; e = e->next_callee)
+	  {
+	    tree decl = gimple_call_fndecl (e->call_stmt);
+	    /* When function gets inlined, indirect inlining might've invented
+	       new edge for orginally indirect stmt.  Since we are not
+	       preserving clones in the original form, we must not update here
+	       since other inline clones don't need to contain call to the same
+	       call.  Inliner will do the substitution for us later.  */
+	    if (decl && decl != e->callee->decl)
+	      {
+		gimple new_stmt;
+		gimple_stmt_iterator gsi;
+		
+		if (cgraph_dump_file)
+		  {
+		    fprintf (cgraph_dump_file, "updating call of %s in %s:",
+		             cgraph_node_name (node),
+			     cgraph_node_name (e->callee));
+      		    print_gimple_stmt (cgraph_dump_file, e->call_stmt, 0, dump_flags);
+		  }
+
+		if (e->callee->clone.args_to_skip)
+		  new_stmt = gimple_call_copy_skip_args (e->call_stmt,
+							 e->callee->clone.args_to_skip);
+		else
+		  new_stmt = e->call_stmt;
+		if (gimple_vdef (new_stmt)
+		    && TREE_CODE (gimple_vdef (new_stmt)) == SSA_NAME)
+		  SSA_NAME_DEF_STMT (gimple_vdef (new_stmt)) = new_stmt;
+                gimple_call_set_fndecl (new_stmt, e->callee->decl);
+
+		gsi = gsi_for_stmt (e->call_stmt);
+		gsi_replace (&gsi, new_stmt, true);
+
+		/* Update EH information too, just in case.  */
+		if (!stmt_could_throw_p (new_stmt)
+		    && lookup_stmt_eh_region (new_stmt))
+		  remove_stmt_from_eh_region (new_stmt);
+
+		cgraph_set_call_stmt_including_clones (node, e->call_stmt, new_stmt);
+
+		if (cgraph_dump_file)
+		  {
+		    fprintf (cgraph_dump_file, "  updated to:");
+      		    print_gimple_stmt (cgraph_dump_file, e->call_stmt, 0, dump_flags);
+		  }
+	      }
+	  }
+	pop_cfun ();
+	current_function_decl = NULL;
+#ifdef ENABLE_CHECKING
+        verify_cgraph_node (node);
+#endif
+      }
+#ifdef ENABLE_CHECKING
+  verify_cgraph ();
+#endif
+  cgraph_remove_unreachable_nodes (false, cgraph_dump_file);
 }
 
 #include "gt-cgraphunit.h"

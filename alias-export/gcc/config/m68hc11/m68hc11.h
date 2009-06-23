@@ -1,6 +1,6 @@
 /* Definitions of target machine for GNU compiler.
    Motorola 68HC11 and 68HC12.
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
    Free Software Foundation, Inc.
    Contributed by Stephane Carrez (stcarrez@nerim.fr)
 
@@ -8,7 +8,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -17,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
 Note:
    A first 68HC11 port was made by Otto Lind (otto@coactive.com)
@@ -884,12 +883,6 @@ extern enum reg_class m68hc11_tmp_regs_class;
  {FRAME_POINTER_REGNUM, STACK_POINTER_REGNUM},		\
  {FRAME_POINTER_REGNUM, HARD_FRAME_POINTER_REGNUM}}
 
-/* Value should be nonzero if functions must have frame pointers.
-   Zero means the frame pointer need not be set up (and parms may be
-   accessed via the stack pointer) in functions that seem suitable.
-   This is computed in `reload', in reload1.c.  */
-#define FRAME_POINTER_REQUIRED	0
-
 /* Given FROM and TO register numbers, say whether this elimination is allowed.
    Frame pointer elimination is automatically handled.
 
@@ -1068,18 +1061,15 @@ extern enum reg_class m68hc11_index_reg_class;
    local-alloc.c.  */
 
 
-/* Internal macro, return 1 if REGNO is a valid base register.  */
-#define REG_VALID_P(REGNO) ((REGNO) >= 0)
-
 extern unsigned char m68hc11_reg_valid_for_base[FIRST_PSEUDO_REGISTER];
 #define REG_VALID_FOR_BASE_P(REGNO) \
-    (REG_VALID_P (REGNO) && (REGNO) < FIRST_PSEUDO_REGISTER \
+    ((REGNO) < FIRST_PSEUDO_REGISTER \
      && m68hc11_reg_valid_for_base[REGNO])
 
 /* Internal macro, return 1 if REGNO is a valid index register.  */
 extern unsigned char m68hc11_reg_valid_for_index[FIRST_PSEUDO_REGISTER];
 #define REG_VALID_FOR_INDEX_P(REGNO) \
-    (REG_VALID_P (REGNO) >= 0 && (REGNO) < FIRST_PSEUDO_REGISTER \
+    ((REGNO) < FIRST_PSEUDO_REGISTER \
      && m68hc11_reg_valid_for_index[REGNO])
 
 /* Internal macro, the nonstrict definition for REGNO_OK_FOR_BASE_P.  */
@@ -1142,7 +1132,7 @@ extern unsigned char m68hc11_reg_valid_for_index[FIRST_PSEUDO_REGISTER];
 /* Maximum number of registers that can appear in a valid memory address */
 #define MAX_REGS_PER_ADDRESS	2
 
-/* GO_IF_LEGITIMATE_ADDRESS recognizes an RTL expression that is a
+/* TARGET_LEGITIMATE_ADDRESS_P recognizes an RTL expression that is a
    valid memory address for an instruction. The MODE argument is the
    machine mode for the MEM expression that wants to use this address.  */
 
@@ -1179,19 +1169,6 @@ extern unsigned char m68hc11_reg_valid_for_index[FIRST_PSEUDO_REGISTER];
   (((GET_CODE (X) == PRE_DEC) || (GET_CODE (X) == POST_INC)) \
 	&& SP_REG_P (XEXP (X, 0)))
 
-/* Go to ADDR if X is a valid address.  */
-#ifndef REG_OK_STRICT
-#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR) \
-{ \
-  if (m68hc11_go_if_legitimate_address ((X), (MODE), 0)) goto ADDR; \
-}
-#else
-#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)		 \
-{							 \
-  if (m68hc11_go_if_legitimate_address ((X), (MODE), 1)) goto ADDR; \
-}
-#endif
-
 /* The macros REG_OK_FOR..._P assume that the arg is a REG rtx and check its
    validity for a certain class.  We have two alternate definitions for each
    of them.  The usual definition accepts all pseudo regs; the other rejects
@@ -1214,32 +1191,6 @@ extern unsigned char m68hc11_reg_valid_for_index[FIRST_PSEUDO_REGISTER];
 #define REG_OK_FOR_INDEX_P(X)  REG_OK_FOR_INDEX_STRICT_P(X)
 #endif
 
-
-/* Try machine-dependent ways of modifying an illegitimate address
-   to be legitimate.  If we find one, return the new, valid address.
-   This macro is used in only one place: `memory_address' in explow.c.
-  
-   OLDX is the address as it was before break_out_memory_refs was called.
-   In some cases it is useful to look at this to decide what needs to be done.
-  
-   MODE and WIN are passed so that this macro can use
-   GO_IF_LEGITIMATE_ADDRESS.
-  
-   It is always safe for this macro to do nothing.
-   It exists to recognize opportunities to optimize the output.  */
-
-#define LEGITIMIZE_ADDRESS(X,OLDX,MODE,WIN)                     \
-{ rtx operand = (X);                                            \
-  if (m68hc11_legitimize_address (&operand, (OLDX), (MODE)))	\
-    {                                                           \
-      (X) = operand;                                            \
-      GO_IF_LEGITIMATE_ADDRESS (MODE,X,WIN);                    \
-    }                                                           \
-}
-
-/* Go to LABEL if ADDR (a legitimate address expression)
-   has an effect that depends on the machine mode it is used for.  */
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
 
 /* Nonzero if the constant value X is a legitimate general operand.
    It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.  */
@@ -1267,7 +1218,7 @@ extern unsigned char m68hc11_reg_valid_for_index[FIRST_PSEUDO_REGISTER];
 
    Pretend branches are cheap because GCC generates sub-optimal code
    for the default value.  */
-#define BRANCH_COST 0
+#define BRANCH_COST(speed_p, predictable_p) 0
 
 /* Nonzero if access to memory by bytes is slow and undesirable.  */
 #define SLOW_BYTE_ACCESS	0
@@ -1408,6 +1359,7 @@ do {                                                                    \
 /* Output #ident as a .ident.  */
 
 /* output external reference */
+#undef ASM_OUTPUT_EXTERNAL
 #define ASM_OUTPUT_EXTERNAL(FILE,DECL,NAME) \
   {fputs ("\t; extern\t", FILE); \
   assemble_name (FILE, NAME); \
@@ -1508,7 +1460,7 @@ do {                                                                    \
 /* MOVE_RATIO is the number of move instructions that is better than a
    block move.  Make this small on 6811, since the code size grows very
    large with each move.  */
-#define MOVE_RATIO		3
+#define MOVE_RATIO(speed)	3
 
 /* Define if shifts truncate the shift count which implies one can omit
    a sign-extension or zero-extension of a shift count.  */
@@ -1533,8 +1485,6 @@ extern int current_function_interrupt;
 extern int current_function_trap;
 extern int current_function_far;
 
-extern GTY(()) rtx m68hc11_compare_op0;
-extern GTY(()) rtx m68hc11_compare_op1;
 extern GTY(()) rtx m68hc11_soft_tmp_reg;
 extern GTY(()) rtx ix_reg;
 extern GTY(()) rtx iy_reg;

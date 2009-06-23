@@ -553,7 +553,17 @@ static int min_labelno, max_labelno;
 int
 label_to_alignment (rtx label)
 {
-  return LABEL_TO_ALIGNMENT (label);
+  if (CODE_LABEL_NUMBER (label) <= max_labelno)
+    return LABEL_TO_ALIGNMENT (label);
+  return 0;
+}
+
+int
+label_to_max_skip (rtx label)
+{
+  if (CODE_LABEL_NUMBER (label) <= max_labelno)
+    return LABEL_TO_MAX_SKIP (label);
+  return 0;
 }
 
 #ifdef HAVE_ATTR_length
@@ -1869,7 +1879,17 @@ final_scan_insn (rtx insn, FILE *file, int optimize ATTRIBUTE_UNUSED,
 	  break;
 
 	case NOTE_INSN_EPILOGUE_BEG:
+#if defined (DWARF2_UNWIND_INFO) && defined (HAVE_epilogue)
+	  if (dwarf2out_do_frame ())
+	    dwarf2out_begin_epilogue (insn);
+#endif
 	  targetm.asm_out.function_begin_epilogue (file);
+	  break;
+
+	case NOTE_INSN_CFA_RESTORE_STATE:
+#if defined (DWARF2_UNWIND_INFO)
+	  dwarf2out_frame_debug_restore_state ();
+#endif
 	  break;
 
 	case NOTE_INSN_FUNCTION_BEG:

@@ -1246,10 +1246,11 @@ gfc_trans_array_constructor_value (stmtblock_t * pblock, tree type,
 		  gfc_init_se (&se, NULL);
 		  gfc_conv_constant (&se, p->expr);
 
+		  if (c->expr->ts.type != BT_CHARACTER)
+		    se.expr = fold_convert (type, se.expr);
 		  /* For constant character array constructors we build
 		     an array of pointers.  */
-		  if (p->expr->ts.type == BT_CHARACTER
-		      && POINTER_TYPE_P (type))
+		  else if (POINTER_TYPE_P (type))
 		    se.expr = gfc_build_addr_expr
 				(gfc_get_pchar_type (p->expr->ts.kind),
 				 se.expr);
@@ -1618,7 +1619,9 @@ gfc_build_constant_array_constructor (gfc_expr * expr, tree type)
     {
       gfc_init_se (&se, NULL);
       gfc_conv_constant (&se, c->expr);
-      if (c->expr->ts.type == BT_CHARACTER && POINTER_TYPE_P (type))
+      if (c->expr->ts.type != BT_CHARACTER)
+	se.expr = fold_convert (type, se.expr);
+      else if (POINTER_TYPE_P (type))
 	se.expr = gfc_build_addr_expr (gfc_get_pchar_type (c->expr->ts.kind),
 				       se.expr);
       list = tree_cons (build_int_cst (gfc_array_index_type, nelem),
@@ -4005,8 +4008,21 @@ gfc_conv_array_initializer (tree type, gfc_expr * expr)
 	      CONSTRUCTOR_APPEND_ELT (v, index, se.expr);
 	      break;
 
+
 	    default:
-	      gcc_unreachable ();
+	      /* Catch those occasional beasts that do not simplify
+		 for one reason or another, assuming that if they are
+		 standard defying the frontend will catch them.  */
+	      gfc_conv_expr (&se, c->expr);
+	      if (range == NULL_TREE)
+		CONSTRUCTOR_APPEND_ELT (v, index, se.expr);
+	      else
+		{
+		  if (index != NULL_TREE)
+		  CONSTRUCTOR_APPEND_ELT (v, index, se.expr);
+		  CONSTRUCTOR_APPEND_ELT (v, range, se.expr);
+		}
+	      break;
 	    }
         }
       break;

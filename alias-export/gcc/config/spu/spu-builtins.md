@@ -1,8 +1,8 @@
-;; Copyright (C) 2006 Free Software Foundation, Inc.
+;; Copyright (C) 2006, 2007 Free Software Foundation, Inc.
 
 ;; This file is free software; you can redistribute it and/or modify it under
 ;; the terms of the GNU General Public License as published by the Free
-;; Software Foundation; either version 2 of the License, or (at your option) 
+;; Software Foundation; either version 3 of the License, or (at your option) 
 ;; any later version.
 
 ;; This file is distributed in the hope that it will be useful, but WITHOUT
@@ -11,9 +11,8 @@
 ;; for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with this file; see the file COPYING.  If not, write to the Free
-;; Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-;; 02110-1301, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
 
 
 ;; This includes expands for all the intrinsics.
@@ -528,37 +527,119 @@
   [(set_attr "type" "br")])
 
 ;; float convert
-(define_insn "spu_csflt"
+(define_expand "spu_csflt"
+  [(set (match_operand:V4SF 0 "spu_reg_operand")
+	(unspec:V4SF [(match_operand:V4SI 1 "spu_reg_operand")
+		      (match_operand:SI 2 "spu_nonmem_operand")] 0 ))]
+  ""
+{
+  if (GET_CODE (operands[2]) == CONST_INT
+      && (INTVAL (operands[2]) < 0 || INTVAL (operands[2]) > 127))
+    {
+      error ("spu_convtf expects an integer literal in the range [0, 127].");
+      operands[2] = force_reg (SImode, operands[2]);
+    }
+  if (GET_CODE (operands[2]) != CONST_INT)
+    {
+      rtx exp2;
+      rtx cnv = gen_reg_rtx (V4SFmode);
+      rtx scale = gen_reg_rtx (SImode);
+      rtx op2 = force_reg (SImode, operands[2]);
+      rtx m1 = spu_gen_exp2 (V4SFmode, GEN_INT (-1));
+      emit_insn (gen_subsi3 (scale, const1_rtx, op2));
+      exp2 = spu_gen_exp2 (V4SFmode, scale);
+      emit_insn (gen_floatv4siv4sf2_mul (cnv, operands[1], m1));
+      emit_insn (gen_mulv4sf3 (operands[0], cnv, exp2));
+    }
+  else
+    {
+      rtx exp2 = spu_gen_exp2 (V4SFmode, operands[2]);
+      emit_insn (gen_floatv4siv4sf2_div (operands[0], operands[1], exp2));
+    }
+  DONE;
+})
+
+(define_expand "spu_cflts"
+  [(set (match_operand:V4SI 0 "spu_reg_operand")
+	(unspec:V4SI [(match_operand:V4SF 1 "spu_reg_operand")
+                      (match_operand:SI 2 "spu_nonmem_operand")] 0 ))]
+  ""
+{
+  rtx exp2;
+  if (GET_CODE (operands[2]) == CONST_INT
+      && (INTVAL (operands[2]) < 0 || INTVAL (operands[2]) > 127))
+    {
+      error ("spu_convts expects an integer literal in the range [0, 127].");
+      operands[2] = force_reg (SImode, operands[2]);
+    }
+  exp2 = spu_gen_exp2 (V4SFmode, operands[2]);
+  if (GET_CODE (operands[2]) != CONST_INT)
+    {
+      rtx mul = gen_reg_rtx (V4SFmode);
+      emit_insn (gen_mulv4sf3 (mul, operands[1], exp2));
+      emit_insn (gen_fix_truncv4sfv4si2 (operands[0], mul));
+    }
+  else 
+    emit_insn (gen_fix_truncv4sfv4si2_mul (operands[0], operands[1], exp2));
+  DONE;
+})
+
+(define_expand "spu_cuflt"
   [(set (match_operand:V4SF 0 "spu_reg_operand" "=r")
-	(unspec:V4SF [(match_operand:V4SI 1 "spu_reg_operand" "r")
-		      (match_operand:SI 2 "immediate_operand" "K")] UNSPEC_CSFLT ))]
+	(unspec:V4SF [(match_operand:V4SI 1 "spu_reg_operand")
+		      (match_operand:SI 2 "spu_nonmem_operand")] 0 ))]
   ""
-  "csflt\t%0,%1,%2"
-  [(set_attr "type" "fp7")])
+{
+  if (GET_CODE (operands[2]) == CONST_INT
+      && (INTVAL (operands[2]) < 0 || INTVAL (operands[2]) > 127))
+    {
+      error ("spu_convtf expects an integer literal in the range [0, 127].");
+      operands[2] = force_reg (SImode, operands[2]);
+    }
+  if (GET_CODE (operands[2]) != CONST_INT)
+    {
+      rtx exp2;
+      rtx cnv = gen_reg_rtx (V4SFmode);
+      rtx scale = gen_reg_rtx (SImode);
+      rtx op2 = force_reg (SImode, operands[2]);
+      rtx m1 = spu_gen_exp2 (V4SFmode, GEN_INT (-1));
+      emit_insn (gen_subsi3 (scale, const1_rtx, op2));
+      exp2 = spu_gen_exp2 (V4SFmode, scale);
+      emit_insn (gen_floatunsv4siv4sf2_mul (cnv, operands[1], m1));
+      emit_insn (gen_mulv4sf3 (operands[0], cnv, exp2));
+    }
+  else
+    {
+      rtx exp2 = spu_gen_exp2 (V4SFmode, operands[2]);
+      emit_insn (gen_floatunsv4siv4sf2_div (operands[0], operands[1], exp2));
+    }
+  DONE;
+})
 
-(define_insn "spu_cflts"
-  [(set (match_operand:V4SI 0 "spu_reg_operand" "=r")
-	(unspec:V4SI [(match_operand:V4SF 1 "spu_reg_operand" "r")
-                      (match_operand:SI 2 "immediate_operand" "J")] UNSPEC_CFLTS ))]
+(define_expand "spu_cfltu"
+  [(set (match_operand:V4SI 0 "spu_reg_operand")
+	(unspec:V4SI [(match_operand:V4SF 1 "spu_reg_operand")
+		      (match_operand:SI 2 "spu_nonmem_operand")] 0 ))]
   ""
-  "cflts\t%0,%1,%2"
-  [(set_attr "type" "fp7")])
-
-(define_insn "spu_cuflt"
-  [(set (match_operand:V4SF 0 "spu_reg_operand" "=r")
-	(unspec:V4SF [(match_operand:V4SI 1 "spu_reg_operand" "r")
-		      (match_operand:SI 2 "immediate_operand" "K")] UNSPEC_CUFLT ))]
-  ""
-  "cuflt\t%0,%1,%2"
-  [(set_attr "type" "fp7")])
-
-(define_insn "spu_cfltu"
-  [(set (match_operand:V4SI 0 "spu_reg_operand" "=r")
-	(unspec:V4SI [(match_operand:V4SF 1 "spu_reg_operand" "r")
-		      (match_operand:SI 2 "immediate_operand" "J")] UNSPEC_CFLTU ))]
-  ""
-  "cfltu\t%0,%1,%2"
-  [(set_attr "type" "fp7")])
+{
+  rtx exp2;
+  if (GET_CODE (operands[2]) == CONST_INT
+      && (INTVAL (operands[2]) < 0 || INTVAL (operands[2]) > 127))
+    {
+      error ("spu_convtu expects an integer literal in the range [0, 127].");
+      operands[2] = force_reg (SImode, operands[2]);
+    }
+  exp2 = spu_gen_exp2 (V4SFmode, operands[2]);
+  if (GET_CODE (operands[2]) != CONST_INT)
+    {
+      rtx mul = gen_reg_rtx (V4SFmode);
+      emit_insn (gen_mulv4sf3 (mul, operands[1], exp2));
+      emit_insn (gen_fixuns_truncv4sfv4si2 (operands[0], mul));
+    }
+  else 
+    emit_insn (gen_fixuns_truncv4sfv4si2_mul (operands[0], operands[1], exp2));
+  DONE;
+})
 
 (define_expand "spu_frds"
    [(set (match_operand:V4SF 0 "spu_reg_operand" "")

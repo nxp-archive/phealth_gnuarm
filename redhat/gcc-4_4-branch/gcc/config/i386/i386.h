@@ -1,6 +1,6 @@
 /* Definitions of target machine for GCC for IA-32.
    Copyright (C) 1988, 1992, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2004, 2005, 2006, 2007
+   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -15,8 +15,13 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING3.  If not see
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
+
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 <http://www.gnu.org/licenses/>.  */
 
 /* The purpose of this file is to define the characteristics of the i386,
@@ -54,6 +59,8 @@ along with GCC; see the file COPYING3.  If not see
 #define TARGET_ABM	OPTION_ISA_ABM
 #define TARGET_POPCNT	OPTION_ISA_POPCNT
 #define TARGET_SAHF	OPTION_ISA_SAHF
+#define TARGET_MOVBE	OPTION_ISA_MOVBE
+#define TARGET_CRC32	OPTION_ISA_CRC32
 #define TARGET_AES	OPTION_ISA_AES
 #define TARGET_PCLMUL	OPTION_ISA_PCLMUL
 #define TARGET_CMPXCHG16B OPTION_ISA_CX16
@@ -231,6 +238,7 @@ extern const struct processor_costs ix86_size_cost;
 #define TARGET_GENERIC64 (ix86_tune == PROCESSOR_GENERIC64)
 #define TARGET_GENERIC (TARGET_GENERIC32 || TARGET_GENERIC64)
 #define TARGET_AMDFAM10 (ix86_tune == PROCESSOR_AMDFAM10)
+#define TARGET_ATOM (ix86_tune == PROCESSOR_ATOM)
 
 /* Feature tests against the various tunings.  */
 enum ix86_tune_indices {
@@ -295,6 +303,7 @@ enum ix86_tune_indices {
   X86_TUNE_USE_VECTOR_FP_CONVERTS,
   X86_TUNE_USE_VECTOR_CONVERTS,
   X86_TUNE_FUSE_CMP_AND_BRANCH,
+  X86_TUNE_OPT_AGU,
 
   X86_TUNE_LAST
 };
@@ -382,6 +391,7 @@ extern unsigned char ix86_tune_features[X86_TUNE_LAST];
 	ix86_tune_features[X86_TUNE_USE_VECTOR_CONVERTS]
 #define TARGET_FUSE_CMP_AND_BRANCH \
 	ix86_tune_features[X86_TUNE_FUSE_CMP_AND_BRANCH]
+#define TARGET_OPT_AGU ix86_tune_features[X86_TUNE_OPT_AGU]
 
 /* Feature tests against the various architecture variations.  */
 enum ix86_arch_indices {
@@ -564,6 +574,7 @@ enum target_cpu_default
   TARGET_CPU_DEFAULT_prescott,
   TARGET_CPU_DEFAULT_nocona,
   TARGET_CPU_DEFAULT_core2,
+  TARGET_CPU_DEFAULT_atom,
 
   TARGET_CPU_DEFAULT_geode,
   TARGET_CPU_DEFAULT_k6,
@@ -791,6 +802,19 @@ enum target_cpu_default
 #define STACK_SLOT_ALIGNMENT(TYPE, MODE, ALIGN) \
   ix86_local_alignment ((TYPE), (MODE), (ALIGN))
 
+/* If defined, a C expression to compute the alignment for a local
+   variable DECL.
+
+   If this macro is not defined, then
+   LOCAL_ALIGNMENT (TREE_TYPE (DECL), DECL_ALIGN (DECL)) will be used.
+
+   One use of this macro is to increase alignment of medium-size
+   data to make it all fit in fewer cache lines.  */
+
+#define LOCAL_DECL_ALIGNMENT(DECL) \
+  ix86_local_alignment ((DECL), VOIDmode, DECL_ALIGN (DECL))
+
+
 /* If defined, a C expression that gives the alignment boundary, in
    bits, of an argument with the specified mode and type.  If it is
    not defined, `PARM_BOUNDARY' is used for all arguments.  */
@@ -859,7 +883,7 @@ enum target_cpu_default
     1,    1,   1,   1,    1,					\
 /*xmm0,xmm1,xmm2,xmm3,xmm4,xmm5,xmm6,xmm7*/			\
      0,   0,   0,   0,   0,   0,   0,   0,			\
-/*mmx0,mmx1,mmx2,mmx3,mmx4,mmx5,mmx6,mmx7*/			\
+/* mm0, mm1, mm2, mm3, mm4, mm5, mm6, mm7*/			\
      0,   0,   0,   0,   0,   0,   0,   0,			\
 /*  r8,  r9, r10, r11, r12, r13, r14, r15*/			\
      2,   2,   2,   2,   2,   2,   2,   2,			\
@@ -887,7 +911,7 @@ enum target_cpu_default
     1,   1,    1,   1,    1,					\
 /*xmm0,xmm1,xmm2,xmm3,xmm4,xmm5,xmm6,xmm7*/			\
      1,   1,   1,   1,   1,   1,   1,   1,			\
-/*mmx0,mmx1,mmx2,mmx3,mmx4,mmx5,mmx6,mmx7*/			\
+/* mm0, mm1, mm2, mm3, mm4, mm5, mm6, mm7*/			\
      1,   1,   1,   1,   1,   1,   1,   1,			\
 /*  r8,  r9, r10, r11, r12, r13, r14, r15*/			\
      1,   1,   1,   1,   2,   2,   2,   2,			\
@@ -933,51 +957,36 @@ do {									\
       }									\
     j = PIC_OFFSET_TABLE_REGNUM;					\
     if (j != INVALID_REGNUM)						\
+      fixed_regs[j] = call_used_regs[j] = 1;				\
+    if (TARGET_64BIT							\
+	&& ((cfun && cfun->machine->call_abi == MS_ABI)			\
+	    || (!cfun && DEFAULT_ABI == MS_ABI)))			\
       {									\
-	fixed_regs[j] = 1;						\
-	call_used_regs[j] = 1;						\
+	call_used_regs[SI_REG] = 0;					\
+	call_used_regs[DI_REG] = 0;					\
+	call_used_regs[XMM6_REG] = 0;					\
+	call_used_regs[XMM7_REG] = 0;					\
+	for (i = FIRST_REX_SSE_REG; i <= LAST_REX_SSE_REG; i++)		\
+	  call_used_regs[i] = 0;					\
       }									\
     if (! TARGET_MMX)							\
-      {									\
-	int i;								\
-        for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)			\
-          if (TEST_HARD_REG_BIT (reg_class_contents[(int)MMX_REGS], i))	\
-	    fixed_regs[i] = call_used_regs[i] = 1, reg_names[i] = "";	\
-      }									\
+      for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)			\
+	if (TEST_HARD_REG_BIT (reg_class_contents[(int)MMX_REGS], i))	\
+	  fixed_regs[i] = call_used_regs[i] = 1, reg_names[i] = "";	\
     if (! TARGET_SSE)							\
-      {									\
-	int i;								\
-        for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)			\
-          if (TEST_HARD_REG_BIT (reg_class_contents[(int)SSE_REGS], i))	\
-	    fixed_regs[i] = call_used_regs[i] = 1, reg_names[i] = "";	\
-      }									\
-    if (! TARGET_80387 && ! TARGET_FLOAT_RETURNS_IN_80387)		\
-      {									\
-	int i;								\
-	HARD_REG_SET x;							\
-        COPY_HARD_REG_SET (x, reg_class_contents[(int)FLOAT_REGS]);	\
-        for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)			\
-          if (TEST_HARD_REG_BIT (x, i)) 				\
-	    fixed_regs[i] = call_used_regs[i] = 1, reg_names[i] = "";	\
-      }									\
+      for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)			\
+	if (TEST_HARD_REG_BIT (reg_class_contents[(int)SSE_REGS], i))	\
+	  fixed_regs[i] = call_used_regs[i] = 1, reg_names[i] = "";	\
+    if (! (TARGET_80387 || TARGET_FLOAT_RETURNS_IN_80387))		\
+      for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)			\
+	if (TEST_HARD_REG_BIT (reg_class_contents[(int)FLOAT_REGS], i))	\
+	  fixed_regs[i] = call_used_regs[i] = 1, reg_names[i] = "";	\
     if (! TARGET_64BIT)							\
       {									\
-	int i;								\
 	for (i = FIRST_REX_INT_REG; i <= LAST_REX_INT_REG; i++)		\
 	  reg_names[i] = "";						\
 	for (i = FIRST_REX_SSE_REG; i <= LAST_REX_SSE_REG; i++)		\
 	  reg_names[i] = "";						\
-      }									\
-    if (TARGET_64BIT							\
-        && ((cfun && cfun->machine->call_abi == MS_ABI)			\
-            || (!cfun && DEFAULT_ABI == MS_ABI)))			\
-      {									\
-        int i;								\
-        call_used_regs[4 /*RSI*/] = 0;                                  \
-        call_used_regs[5 /*RDI*/] = 0;                                  \
-	for (i = 0; i < 8; i++)						\
-	  call_used_regs[45+i] = 0;					\
-	call_used_regs[27] = call_used_regs[28] = 0;			\
       }									\
   } while (0)
 
@@ -1088,7 +1097,7 @@ do {									\
    : (MODE) == VOIDmode && (NREGS) != 1 ? VOIDmode			\
    : (MODE) == VOIDmode ? choose_hard_reg_mode ((REGNO), (NREGS), false) \
    : (MODE) == HImode && !TARGET_PARTIAL_REG_STALL ? SImode		\
-   : (MODE) == QImode && (REGNO) >= 4 && !TARGET_64BIT ? SImode 	\
+   : (MODE) == QImode && (REGNO) > BX_REG && !TARGET_64BIT ? SImode 	\
    : (MODE))
 
 /* Specify the registers used for certain standard purposes.
@@ -1325,7 +1334,7 @@ enum reg_class
 
 #define SMALL_REGISTER_CLASSES 1
 
-#define QI_REG_P(X) (REG_P (X) && REGNO (X) < 4)
+#define QI_REG_P(X) (REG_P (X) && REGNO (X) <= BX_REG)
 
 #define GENERAL_REGNO_P(N) \
   ((N) <= STACK_POINTER_REGNUM || REX_INT_REGNO_P (N))
@@ -1472,6 +1481,7 @@ enum reg_class
    || ((CLASS) == AD_REGS)						\
    || ((CLASS) == SIREG)						\
    || ((CLASS) == DIREG)						\
+   || ((CLASS) == SSE_FIRST_REG)					\
    || ((CLASS) == FP_TOP_REG)						\
    || ((CLASS) == FP_SECOND_REG))
 
@@ -1523,7 +1533,8 @@ enum reg_class
    prologue and apilogue.  This is not possible without
    ACCUMULATE_OUTGOING_ARGS.  */
 
-#define ACCUMULATE_OUTGOING_ARGS (TARGET_ACCUMULATE_OUTGOING_ARGS || ix86_cfun_abi () == MS_ABI)
+#define ACCUMULATE_OUTGOING_ARGS \
+  (TARGET_ACCUMULATE_OUTGOING_ARGS || ix86_cfun_abi () == MS_ABI)
 
 /* If defined, a C expression whose value is nonzero when we want to use PUSH
    instructions to pass outgoing arguments.  */
@@ -2201,6 +2212,22 @@ do {									\
 #define ASM_OUTPUT_OPCODE(STREAM, PTR) \
   ASM_OUTPUT_AVX_PREFIX ((STREAM), (PTR))
 
+/* A C statement to output to the stdio stream FILE an assembler
+   command to pad the location counter to a multiple of 1<<LOG
+   bytes if it is within MAX_SKIP bytes.  */
+
+#ifdef HAVE_GAS_MAX_SKIP_P2ALIGN
+#undef  ASM_OUTPUT_MAX_SKIP_PAD
+#define ASM_OUTPUT_MAX_SKIP_PAD(FILE, LOG, MAX_SKIP)			\
+  if ((LOG) != 0)							\
+    {									\
+      if ((MAX_SKIP) == 0)						\
+        fprintf ((FILE), "\t.p2align %d\n", (LOG));			\
+      else								\
+        fprintf ((FILE), "\t.p2align %d,,%d\n", (LOG), (MAX_SKIP));	\
+    }
+#endif
+
 /* Under some conditions we need jump tables in the text section,
    because the assembler cannot handle label differences between
    sections.  This is the case for x86_64 on Mach-O for example.  */
@@ -2256,6 +2283,7 @@ enum processor_type
   PROCESSOR_GENERIC32,
   PROCESSOR_GENERIC64,
   PROCESSOR_AMDFAM10,
+  PROCESSOR_ATOM,
   PROCESSOR_max
 };
 
@@ -2402,6 +2430,15 @@ enum ix86_stack_slot
 
 #define FASTCALL_PREFIX '@'
 
+/* Machine specific CFA tracking during prologue/epilogue generation.  */
+
+#ifndef USED_FOR_TARGET
+struct machine_cfa_state GTY(())
+{
+  rtx reg;
+  HOST_WIDE_INT offset;
+};
+
 struct machine_function GTY(())
 {
   struct stack_local_entry *stack_locals;
@@ -2430,7 +2467,9 @@ struct machine_function GTY(())
   /* This value is used for amd64 targets and specifies the current abi
      to be used. MS_ABI means ms abi. Otherwise SYSV_ABI means sysv abi.  */
   int call_abi;
+  struct machine_cfa_state cfa;
 };
+#endif
 
 #define ix86_stack_locals (cfun->machine->stack_locals)
 #define ix86_varargs_gpr_size (cfun->machine->varargs_gpr_size)
@@ -2446,6 +2485,7 @@ struct machine_function GTY(())
    REG_SP is live.  */
 #define ix86_current_function_calls_tls_descriptor \
   (ix86_tls_descriptor_calls_expanded_in_cfun && df_regs_ever_live_p (SP_REG))
+#define ix86_cfa_state (&cfun->machine->cfa)
 
 /* Control behavior of x86_file_start.  */
 #define X86_FILE_START_VERSION_DIRECTIVE false

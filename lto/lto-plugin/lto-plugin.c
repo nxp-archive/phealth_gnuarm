@@ -30,8 +30,7 @@ Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA. 
    It also has 2 options of its own:
    -debug: Print the command line used to run lto-wrapper.
    -nop: Instead of running lto-wrapper, pass the original to the plugin. This
-   only works if the input files are hybrid.
-*/
+   only works if the input files are hybrid.  */
 
 #include <assert.h>
 #include <string.h>
@@ -47,15 +46,8 @@ Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA. 
 #include <stdbool.h>
 #include <libiberty.h>
 
-#ifdef HAVE_GELF_H
-# include <gelf.h>
-#else
-# if defined(HAVE_LIBELF_GELF_H)
-#   include <libelf/gelf.h>
-# else
-#  error "gelf.h not available"
-# endif
-#endif
+/* The presence of gelf.h is checked by the toplevel configure script.  */
+#include <gelf.h>
 
 #include "plugin-api.h"
 #include "../gcc/lto/common.h"
@@ -99,6 +91,8 @@ static unsigned int num_output_files = 0;
 static char **lto_wrapper_argv;
 static int lto_wrapper_num_args;
 
+static char *libgcc_filename = NULL;
+
 static bool debug;
 static bool nop;
 
@@ -139,7 +133,7 @@ parse_table_entry (char *p, struct ld_plugin_symbol *entry, uint32_t *slot)
     p++;
   p++;
 
-  if (strcmp (entry->comdat_key, "") == 0)
+  if (strlen (entry->comdat_key) == 0)
     entry->comdat_key = NULL;
   else
     entry->comdat_key = strdup (entry->comdat_key);
@@ -467,6 +461,12 @@ all_symbols_read_handler (void)
 
   free (lto_argv);
 
+  if (libgcc_filename)
+    add_input_file (libgcc_filename);
+
+  free (libgcc_filename);
+  libgcc_filename = NULL;
+
   return LDPS_OK;
 }
 
@@ -596,6 +596,8 @@ process_option (const char *option)
     debug = 1;
   else if (strcmp (option, "-nop") == 0)
     nop = 1;
+  else if (!strncmp (option, "-libgcc", strlen("-libgcc")))
+    libgcc_filename = strdup (option + strlen ("-libgcc="));
   else
     {
       int size;

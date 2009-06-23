@@ -7428,6 +7428,21 @@ restore_fpr (rtx base, int offset, int regnum)
   return emit_move_insn (gen_rtx_REG (DFmode, regnum), addr);
 }
 
+/* Return true if REGNO is a global register, but not one
+   of the special ones that need to be saved/restored in anyway.  */
+
+static inline bool
+global_not_special_regno_p (int regno)
+{
+  return (global_regs[regno]
+	  /* These registers are special and need to be
+	     restored in any case.  */
+	  && !(regno == STACK_POINTER_REGNUM
+	       || regno == RETURN_REGNUM
+	       || regno == BASE_REGNUM
+	       || (flag_pic && regno == (int)PIC_OFFSET_TABLE_REGNUM)));
+}
+
 /* Generate insn to save registers FIRST to LAST into
    the register save area located at offset OFFSET
    relative to register BASE.  */
@@ -7451,7 +7466,8 @@ save_gprs (rtx base, int offset, int first, int last)
       else
         insn = gen_movsi (addr, gen_rtx_REG (Pmode, first));
 
-      RTX_FRAME_RELATED_P (insn) = 1;
+      if (!global_not_special_regno_p (first))
+	RTX_FRAME_RELATED_P (insn) = 1;
       return insn;
     }
 
@@ -7481,30 +7497,41 @@ save_gprs (rtx base, int offset, int first, int last)
      set, even if it does not.  Therefore we emit a new pattern
      without those registers as REG_FRAME_RELATED_EXPR note.  */
 
-  if (first >= 6)
+  if (first >= 6 && !global_not_special_regno_p (first))
     {
       rtx pat = PATTERN (insn);
 
       for (i = 0; i < XVECLEN (pat, 0); i++)
-	if (GET_CODE (XVECEXP (pat, 0, i)) == SET)
+	if (GET_CODE (XVECEXP (pat, 0, i)) == SET
+	    && !global_not_special_regno_p (REGNO (SET_SRC (XVECEXP (pat,
+								     0, i)))))
 	  RTX_FRAME_RELATED_P (XVECEXP (pat, 0, i)) = 1;
 
       RTX_FRAME_RELATED_P (insn) = 1;
     }
   else if (last >= 6)
     {
-      addr = plus_constant (base, offset + (6 - first) * UNITS_PER_WORD);
+      int start;
+
+      for (start = first >= 6 ? first : 6; start <= last; start++)
+	if (!global_not_special_regno_p (start))
+	  break;
+
+      if (start > last)
+	return insn;
+
+      addr = plus_constant (base, offset + (start - first) * UNITS_PER_WORD);
       note = gen_store_multiple (gen_rtx_MEM (Pmode, addr),
-				 gen_rtx_REG (Pmode, 6),
-				 GEN_INT (last - 6 + 1));
+				 gen_rtx_REG (Pmode, start),
+				 GEN_INT (last - start + 1));
       note = PATTERN (note);
 
-      REG_NOTES (insn) =
-	gen_rtx_EXPR_LIST (REG_FRAME_RELATED_EXPR,
-			   note, REG_NOTES (insn));
+      add_reg_note (insn, REG_FRAME_RELATED_EXPR, note);
 
       for (i = 0; i < XVECLEN (note, 0); i++)
-	if (GET_CODE (XVECEXP (note, 0, i)) == SET)
+	if (GET_CODE (XVECEXP (note, 0, i)) == SET
+	    && !global_not_special_regno_p (REGNO (SET_SRC (XVECEXP (note,
+								     0, i)))))
 	  RTX_FRAME_RELATED_P (XVECEXP (note, 0, i)) = 1;
 
       RTX_FRAME_RELATED_P (insn) = 1;
@@ -7894,7 +7921,7 @@ s390_emit_prologue (void)
 void
 s390_emit_epilogue (bool sibcall)
 {
-  rtx frame_pointer, return_reg;
+  rtx frame_pointer, return_reg, cfa_restores = NULL_RTX;
   int area_bottom, area_top, offset = 0;
   int next_offset;
   rtvec p;
@@ -7936,11 +7963,13 @@ s390_emit_epilogue (bool sibcall)
     }
   else
     {
-      rtx insn, frame_off;
+      rtx insn, frame_off, cfa;
 
       offset = area_bottom < 0 ? -area_bottom : 0;
       frame_off = GEN_INT (cfun_frame_layout.frame_size - offset);
 
+      cfa = gen_rtx_SET (VOIDmode, frame_pointer,
+			 gen_rtx_PLUS (Pmode, frame_pointer, frame_off));
       if (DISP_IN_RANGE (INTVAL (frame_off)))
 	{
 	  insn = gen_rtx_SET (VOIDmode, frame_pointer,
@@ -7955,6 +7984,8 @@ s390_emit_epilogue (bool sibcall)
 	  insn = emit_insn (gen_add2_insn (frame_pointer, frame_off));
 	  annotate_constant_pool_refs (&PATTERN (insn));
 	}
+      add_reg_note (insn, REG_CFA_ADJUST_CFA, cfa);
+      RTX_FRAME_RELATED_P (insn) = 1;
     }
 
   /* Restore call saved fprs.  */
@@ -7970,6 +8001,9 @@ s390_emit_epilogue (bool sibcall)
 		{
 		  restore_fpr (frame_pointer,
 			       offset + next_offset, i);
+		  cfa_restores
+		    = alloc_EXPR_LIST (REG_CFA_RESTORE,
+				       gen_rtx_REG (DFmode, i), cfa_restores);
 		  next_offset += 8;
 		}
 	    }
@@ -7985,6 +8019,9 @@ s390_emit_epilogue (bool sibcall)
 	    {
 	      restore_fpr (frame_pointer,
 			   offset + next_offset, i);
+	      cfa_restores
+		= alloc_EXPR_LIST (REG_CFA_RESTORE,
+				   gen_rtx_REG (DFmode, i), cfa_restores);
 	      next_offset += 8;
 	    }
 	  else if (!TARGET_PACKED_STACK)
@@ -8011,15 +8048,7 @@ s390_emit_epilogue (bool sibcall)
 	   i <= cfun_frame_layout.last_restore_gpr;
 	   i++)
 	{
-	  /* These registers are special and need to be
-	     restored in any case.  */
-	  if (i == STACK_POINTER_REGNUM
-              || i == RETURN_REGNUM
-              || i == BASE_REGNUM
-              || (flag_pic && i == (int)PIC_OFFSET_TABLE_REGNUM))
-	    continue;
-
-	  if (global_regs[i])
+	  if (global_not_special_regno_p (i))
 	    {
 	      addr = plus_constant (frame_pointer,
 				    offset + cfun_frame_layout.gprs_offset 
@@ -8029,6 +8058,10 @@ s390_emit_epilogue (bool sibcall)
 	      set_mem_alias_set (addr, get_frame_alias_set ());
 	      emit_move_insn (addr, gen_rtx_REG (Pmode, i));
 	    }
+	  else
+	    cfa_restores
+	      = alloc_EXPR_LIST (REG_CFA_RESTORE,
+				 gen_rtx_REG (Pmode, i), cfa_restores);
 	}
 
       if (! sibcall)
@@ -8063,7 +8096,11 @@ s390_emit_epilogue (bool sibcall)
 			   * UNITS_PER_WORD,
 			   cfun_frame_layout.first_restore_gpr,
 			   cfun_frame_layout.last_restore_gpr);
-      emit_insn (insn);
+      insn = emit_insn (insn);
+      REG_NOTES (insn) = cfa_restores;
+      add_reg_note (insn, REG_CFA_DEF_CFA,
+		    plus_constant (stack_pointer_rtx, STACK_POINTER_OFFSET));
+      RTX_FRAME_RELATED_P (insn) = 1;
     }
 
   if (! sibcall)
@@ -9589,21 +9626,6 @@ s390_optimize_prologue (void)
     }
 }
 
-
-/* Exchange the two operands of COND, and swap its mask so that the
-   semantics does not change.  */
-static void 
-s390_swap_cmp (rtx cond)
-{
-  enum rtx_code code = swap_condition (GET_CODE (cond));
-  rtx tmp = XEXP (cond, 0);
-
-  XEXP (cond, 0) = XEXP (cond, 1);
-  XEXP (cond, 1) = tmp;
-  PUT_CODE (cond, code);
-}
-
-
 /* Returns 1 if INSN reads the value of REG for purposes not related
    to addressing of memory, and 0 otherwise.  */
 static int
@@ -9613,6 +9635,71 @@ s390_non_addr_reg_read_p (rtx reg, rtx insn)
     && !reg_used_in_mem_p (REGNO (reg), PATTERN (insn));
 }
 
+/* Starting from INSN find_cond_jump looks downwards in the insn
+   stream for a single jump insn which is the last user of the
+   condition code set in INSN.  */
+static rtx
+find_cond_jump (rtx insn)
+{
+  for (; insn; insn = NEXT_INSN (insn))
+    {
+      rtx ite, cc;
+
+      if (LABEL_P (insn))
+	break;
+
+      if (!JUMP_P (insn))
+	{
+	  if (reg_mentioned_p (gen_rtx_REG (CCmode, CC_REGNUM), insn))
+	    break;
+	  continue;
+	}
+
+      /* This will be triggered by a return.  */
+      if (GET_CODE (PATTERN (insn)) != SET)
+	break;
+
+      gcc_assert (SET_DEST (PATTERN (insn)) == pc_rtx);
+      ite = SET_SRC (PATTERN (insn));
+
+      if (GET_CODE (ite) != IF_THEN_ELSE)
+	break;
+
+      cc = XEXP (XEXP (ite, 0), 0);
+      if (!REG_P (cc) || !CC_REGNO_P (REGNO (cc)))
+	break;
+
+      if (find_reg_note (insn, REG_DEAD, cc))
+	return insn;
+      break;
+    }
+
+  return NULL_RTX;
+}
+
+/* Swap the condition in COND and the operands in OP0 and OP1 so that
+   the semantics does not change.  If NULL_RTX is passed as COND the
+   function tries to find the conditional jump starting with INSN.  */
+static void
+s390_swap_cmp (rtx cond, rtx *op0, rtx *op1, rtx insn)
+{
+  rtx tmp = *op0;
+
+  if (cond == NULL_RTX)
+    {
+      rtx jump = find_cond_jump (NEXT_INSN (insn));
+      jump = jump ? single_set (jump) : NULL_RTX;
+
+      if (jump == NULL_RTX)
+	return;
+
+      cond = XEXP (XEXP (jump, 1), 0);
+    }
+
+  *op0 = *op1;
+  *op1 = tmp;
+  PUT_CODE (cond, swap_condition (GET_CODE (cond)));
+}
 
 /* On z10, instructions of the compare-and-branch family have the
    property to access the register occurring as second operand with
@@ -9622,7 +9709,7 @@ s390_non_addr_reg_read_p (rtx reg, rtx insn)
    pipeline recycles, thereby causing significant performance decline.
    This function locates such situations and exchanges the two
    operands of the compare.  */
-static void 
+static void
 s390_z10_optimize_cmp (void)
 {
   rtx insn, prev_insn, next_insn;
@@ -9630,54 +9717,79 @@ s390_z10_optimize_cmp (void)
 
   for (insn = get_insns (); insn; insn = NEXT_INSN (insn))
     {
+      rtx cond, *op0, *op1;
+
       if (!INSN_P (insn) || INSN_CODE (insn) <= 0)
 	continue;
 
-      if (get_attr_z10prop (insn) == Z10PROP_Z10_COBRA)
+      if (GET_CODE (PATTERN (insn)) == PARALLEL)
 	{
-	  rtx op0, op1, pattern, jump_expr, cond;
+	  /* Handle compare and branch and branch on count
+	     instructions.  */
+	  rtx pattern = single_set (insn);
 
-	  /* Extract the comparison´s condition and its operands.  */
-	  pattern = single_set (insn);
-	  gcc_assert (GET_CODE (pattern) == SET);
-	  jump_expr = XEXP (pattern, 1);
-	  gcc_assert (GET_CODE (jump_expr) == IF_THEN_ELSE);
-	  cond = XEXP (jump_expr, 0);
-	  op0 = XEXP (cond, 0);
-	  op1 = XEXP (cond, 1);
+	  if (!pattern
+	      || SET_DEST (pattern) != pc_rtx
+	      || GET_CODE (SET_SRC (pattern)) != IF_THEN_ELSE)
+	    continue;
 
-	  /* Swap the COMPARE´s arguments and its mask if there is a
-	     conflicting access in the previous insn.  */
-	  prev_insn = PREV_INSN (insn);
-          if (prev_insn != NULL_RTX && INSN_P (prev_insn) 
-              && reg_referenced_p (op1, PATTERN (prev_insn)))
+	  cond = XEXP (SET_SRC (pattern), 0);
+	  op0 = &XEXP (cond, 0);
+	  op1 = &XEXP (cond, 1);
+	}
+      else if (GET_CODE (PATTERN (insn)) == SET)
+	{
+	  rtx src, dest;
+
+	  /* Handle normal compare instructions.  */
+	  src = SET_SRC (PATTERN (insn));
+	  dest = SET_DEST (PATTERN (insn));
+
+	  if (!REG_P (dest)
+	      || !CC_REGNO_P (REGNO (dest))
+	      || GET_CODE (src) != COMPARE)
+	    continue;
+
+	  /* s390_swap_cmp will try to find the conditional
+	     jump when passing NULL_RTX as condition.  */
+	  cond = NULL_RTX;
+	  op0 = &XEXP (src, 0);
+	  op1 = &XEXP (src, 1);
+	}
+      else
+	continue;
+
+      if (!REG_P (*op0) || !REG_P (*op1))
+	continue;
+
+      /* Swap the COMPARE arguments and its mask if there is a
+	 conflicting access in the previous insn.  */
+      prev_insn = PREV_INSN (insn);
+      if (prev_insn != NULL_RTX && INSN_P (prev_insn)
+	  && reg_referenced_p (*op1, PATTERN (prev_insn)))
+	s390_swap_cmp (cond, op0, op1, insn);
+
+      /* Check if there is a conflict with the next insn. If there
+	 was no conflict with the previous insn, then swap the
+	 COMPARE arguments and its mask.  If we already swapped
+	 the operands, or if swapping them would cause a conflict
+	 with the previous insn, issue a NOP after the COMPARE in
+	 order to separate the two instuctions.  */
+      next_insn = NEXT_INSN (insn);
+      if (next_insn != NULL_RTX && INSN_P (next_insn)
+	  && s390_non_addr_reg_read_p (*op1, next_insn))
+	{
+	  if (prev_insn != NULL_RTX && INSN_P (prev_insn)
+	      && s390_non_addr_reg_read_p (*op0, prev_insn))
 	    {
-	      s390_swap_cmp (cond);
-   	      op0 = XEXP (cond, 0);
-	      op1 = XEXP (cond, 1);
-	    }
-
-	  /* Check if there is a conflict with the next insn. If there
-	     was no conflict with the previous insn, then swap the
-	     COMPAREÂ´s arguments and its mask.  If we already swapped
-	     the operands, or if swapping them would cause a conflict
-	     with the previous insn, issue a NOP after the COMPARE in
-	     order to separate the two instuctions.  */
-	  next_insn = NEXT_INSN (insn);
-          if (next_insn != NULL_RTX && INSN_P (next_insn) 
-              && s390_non_addr_reg_read_p (op1, next_insn))
-            {
-	      if (s390_non_addr_reg_read_p (op0, prev_insn))
-		{
-                  if (REGNO(op1) == 0)
-		    emit_insn_after (gen_nop1 (), insn);
-                  else
-		    emit_insn_after (gen_nop (), insn);
-                  added_NOPs = 1;
-                }
+	      if (REGNO (*op1) == 0)
+		emit_insn_after (gen_nop1 (), insn);
 	      else
- 	        s390_swap_cmp (cond);
+		emit_insn_after (gen_nop (), insn);
+	      added_NOPs = 1;
 	    }
+	  else
+	    s390_swap_cmp (cond, op0, op1, insn);
 	}
     }
 
@@ -9799,7 +9911,7 @@ s390_reorg (void)
 
   /* Eliminate z10-specific pipeline recycles related to some compare
      instructions.  */
-  if (TARGET_Z10)
+  if (s390_tune == PROCESSOR_2097_Z10)
     s390_z10_optimize_cmp ();
 }
 

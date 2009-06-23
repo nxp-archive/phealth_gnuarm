@@ -1,5 +1,6 @@
 /* If-conversion for vectorizer.
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Devang Patel <dpatel@apple.com>
 
 This file is part of GCC.
@@ -84,7 +85,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tm.h"
 #include "tree.h"
-#include "c-common.h"
 #include "flags.h"
 #include "timevar.h"
 #include "varray.h"
@@ -241,7 +241,7 @@ tree_if_convert_stmt (struct loop *  loop, gimple t, tree cond,
 
     case GIMPLE_DEBUG:
       /* ??? Should there be conditional VAR_DEBUG_VALUEs?  */
-      if (IS_DEBUG_BIND (gsi_stmt (*gsi)))
+      if (gimple_debug_bind_p (gsi_stmt (*gsi)))
 	{
 	  VAR_DEBUG_VALUE_VALUE (gsi_stmt (*gsi)) = VAR_DEBUG_VALUE_NOVALUE;
 	  update_stmt (gsi_stmt (*gsi));
@@ -1173,8 +1173,8 @@ struct gimple_opt_pass pass_if_conversion =
   NULL,					/* sub */
   NULL,					/* next */
   0,					/* static_pass_number */
-  0,					/* tv_id */
-  PROP_cfg | PROP_ssa | PROP_alias,	/* properties_required */
+  TV_NONE,				/* tv_id */
+  PROP_cfg | PROP_ssa,			/* properties_required */
   0,					/* properties_provided */
   0,					/* properties_destroyed */
   0,					/* todo_flags_start */

@@ -1,4 +1,4 @@
-#   Copyright (C) 1999, 2001, 2003, 2004, 2005, 2006, 2007, 2008
+#   Copyright (C) 1999, 2001, 2003, 2004, 2005, 2006, 2007, 2008, 2009
 #    Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
@@ -466,6 +466,11 @@ proc check_profiling_available { test_what } {
 	return 0
     }
 
+    # cygwin does not support -p.
+    if { [istarget *-*-cygwin*] && [lindex $test_what 1] == "-p" } {
+	return 0
+    }
+
     # uClibc does not have gcrt1.o.
     if { [check_effective_target_uclibc]
 	 && ([lindex $test_what 1] == "-p"
@@ -544,8 +549,6 @@ proc check_effective_target_pcc_bitfield_type_matters { } {
 }
 
 # Return 1 if thread local storage (TLS) is supported, 0 otherwise.
-#
-# This won't change for different subtargets so cache the result.
 
 proc check_effective_target_tls {} {
     return [check_no_compiler_messages tls assembly {
@@ -556,8 +559,6 @@ proc check_effective_target_tls {} {
 }
 
 # Return 1 if *native* thread local storage (TLS) is supported, 0 otherwise.
-#
-# This won't change for different subtargets so cache the result.
 
 proc check_effective_target_tls_native {} {
     # VxWorks uses emulated TLS machinery, but with non-standard helper
@@ -575,8 +576,6 @@ proc check_effective_target_tls_native {} {
 }
 
 # Return 1 if TLS executables can run correctly, 0 otherwise.
-#
-# This won't change for different subtargets so cache the result.
 
 proc check_effective_target_tls_runtime {} {
     return [check_runtime tls_runtime {
@@ -1388,8 +1387,8 @@ proc check_effective_target_arm_vfp_ok { } {
 
 proc check_effective_target_arm_hard_vfp_ok { } {
     if { [check_effective_target_arm32] } {
-	return [check_no_compiler_messages arm_hard_vfp_ok object {
-	    int dummy;
+	return [check_no_compiler_messages arm_hard_vfp_ok executable {
+	    int main() { return 0;}
 	} "-mfpu=vfp -mfloat-abi=hard"]
     } else {
 	return 0
@@ -1403,7 +1402,7 @@ proc check_effective_target_arm_hard_vfp_ok { } {
 proc check_effective_target_arm_neon_ok { } {
     if { [check_effective_target_arm32] } {
         return [check_no_compiler_messages arm_neon_ok object {
-	    #include "arm-neon.h"
+	    #include "arm_neon.h"
             int dummy;
         } "-mfpu=neon -mfloat-abi=softfp"]
     } else {
@@ -1462,6 +1461,19 @@ proc check_effective_target_mips_loongson { } {
     return [check_no_compiler_messages loongson assembly {
 	#if !defined(__mips_loongson_vector_rev)
 	#error FOO
+	#endif
+    }]
+}
+
+# Return 1 if this is an ARM target that adheres to the ABI for the ARM
+# Architecture.
+
+proc check_effective_target_arm_eabi { } {
+    return [check_no_compiler_messages arm_eabi object {
+	#ifndef __ARM_EABI__
+	#error not EABI
+	#else
+	int dummy;
 	#endif
     }]
 }
@@ -2290,7 +2302,8 @@ proc check_effective_target_vect_short_mult { } {
 	     || [istarget spu-*-*]
 	     || [istarget i?86-*-*]
 	     || [istarget x86_64-*-*] 
-             || [istarget powerpc*-*-*] } {
+             || [istarget powerpc*-*-*] 
+             || [check_effective_target_arm32] } {
 	   set et_vect_short_mult_saved 1
 	}
     }
@@ -2828,5 +2841,22 @@ proc check_effective_target_hard_dfp {} {
     return [check_no_messages_and_pattern hard_dfp "!adddd3" assembly {
 	_Decimal64 x, y, z;
 	void foo (void) { z = x + y; }
+    }]
+}
+
+# Return 1 if string.h and wchar.h headers provide C++ requires overloads
+# for strchr etc. functions.
+
+proc check_effective_target_correct_iso_cpp_string_wchar_protos { } {
+    return [check_no_compiler_messages correct_iso_cpp_string_wchar_protos assembly {
+	#include <string.h>
+	#include <wchar.h>
+	#if !defined(__cplusplus) \
+	    || !defined(__CORRECT_ISO_CPP_STRING_H_PROTO) \
+	    || !defined(__CORRECT_ISO_CPP_WCHAR_H_PROTO)
+	ISO C++ correct string.h and wchar.h protos not supported.
+	#else
+	int i;
+	#endif
     }]
 }

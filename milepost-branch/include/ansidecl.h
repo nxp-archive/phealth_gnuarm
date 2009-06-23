@@ -173,7 +173,7 @@ So instead we use the macro below and test it against specific values.  */
 /* inline requires special treatment; it's in C99, and GCC >=2.7 supports
    it too, but it's not in C89.  */
 #undef inline
-#if __STDC_VERSION__ > 199901L
+#if __STDC_VERSION__ > 199901L || defined(__cplusplus)
 /* it's a keyword */
 #else
 # if GCC_VERSION >= 2007
@@ -256,13 +256,13 @@ So instead we use the macro below and test it against specific values.  */
 # endif /* GNUC >= 2.96 */
 #endif /* ATTRIBUTE_MALLOC */
 
-/* Attributes on labels were valid as of gcc 2.93. */
+/* Attributes on labels were valid as of gcc 2.93 and as of g++ 4.5. */
 #ifndef ATTRIBUTE_UNUSED_LABEL
-# if (!defined (__cplusplus) && GCC_VERSION >= 2093)
+# if (defined (__cplusplus) ? GCC_VERSION >= 4004 : GCC_VERSION >= 2093)
 #  define ATTRIBUTE_UNUSED_LABEL ATTRIBUTE_UNUSED
 # else
 #  define ATTRIBUTE_UNUSED_LABEL
-# endif /* !__cplusplus && GNUC >= 2.93 */
+# endif
 #endif /* ATTRIBUTE_UNUSED_LABEL */
 
 #ifndef ATTRIBUTE_UNUSED
@@ -360,6 +360,28 @@ So instead we use the macro below and test it against specific values.  */
 #  define ATTRIBUTE_ALIGNED_ALIGNOF(m)
 # endif /* GNUC >= 3.0 */
 #endif /* ATTRIBUTE_ALIGNED_ALIGNOF */
+
+/* Useful for structures whose layout must much some binary specification
+   regardless of the alignment and padding qualities of the compiler.  */
+#ifndef ATTRIBUTE_PACKED
+# define ATTRIBUTE_PACKED __attribute__ ((packed))
+#endif
+
+/* Attribute `hot' and `cold' was valid as of gcc 4.3.  */
+#ifndef ATTRIBUTE_COLD
+# if (GCC_VERSION >= 4003)
+#  define ATTRIBUTE_COLD __attribute__ ((__cold__))
+# else
+#  define ATTRIBUTE_COLD
+# endif /* GNUC >= 4.3 */
+#endif /* ATTRIBUTE_COLD */
+#ifndef ATTRIBUTE_HOT
+# if (GCC_VERSION >= 4003)
+#  define ATTRIBUTE_HOT __attribute__ ((__hot__))
+# else
+#  define ATTRIBUTE_HOT
+# endif /* GNUC >= 4.3 */
+#endif /* ATTRIBUTE_HOT */
 
 /* We use __extension__ in some places to suppress -pedantic warnings
    about GCC extensions.  This feature didn't work properly before

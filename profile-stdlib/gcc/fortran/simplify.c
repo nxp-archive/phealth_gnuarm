@@ -1,5 +1,5 @@
 /* Simplify intrinsic functions at compile-time.
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Andy Vaught & Katherine Holcomb
 
@@ -210,6 +210,24 @@ convert_mpz_to_signed (mpz_t x, int bitsize)
     }
 }
 
+/* Helper function to convert to/from mpfr_t & mpc_t and call the
+   supplied mpc function on the respective values.  */
+
+#ifdef HAVE_mpc
+static void
+call_mpc_func (mpfr_ptr result_re, mpfr_ptr result_im,
+	       mpfr_srcptr input_re, mpfr_srcptr input_im,
+	       int (*func)(mpc_ptr, mpc_srcptr, mpc_rnd_t))
+{
+  mpc_t c;
+  mpc_init2 (c, mpfr_get_default_prec());
+  mpc_set_fr_fr (c, input_re, input_im, GFC_MPC_RND_MODE);
+  func (c, c, GFC_MPC_RND_MODE);
+  mpfr_set (result_re, MPC_RE (c), GFC_RND_MODE);
+  mpfr_set (result_im, MPC_IM (c), GFC_RND_MODE);
+  mpc_clear (c);
+}
+#endif
 
 /********************** Simplification functions *****************************/
 
@@ -668,7 +686,6 @@ gfc_simplify_atan2 (gfc_expr *y, gfc_expr *x)
 gfc_expr *
 gfc_simplify_bessel_j0 (gfc_expr *x ATTRIBUTE_UNUSED)
 {
-#if MPFR_VERSION >= MPFR_VERSION_NUM(2,3,0)
   gfc_expr *result;
 
   if (x->expr_type != EXPR_CONSTANT)
@@ -678,16 +695,12 @@ gfc_simplify_bessel_j0 (gfc_expr *x ATTRIBUTE_UNUSED)
   mpfr_j0 (result->value.real, x->value.real, GFC_RND_MODE);
 
   return range_check (result, "BESSEL_J0");
-#else
-  return NULL;
-#endif
 }
 
 
 gfc_expr *
 gfc_simplify_bessel_j1 (gfc_expr *x ATTRIBUTE_UNUSED)
 {
-#if MPFR_VERSION >= MPFR_VERSION_NUM(2,3,0)
   gfc_expr *result;
 
   if (x->expr_type != EXPR_CONSTANT)
@@ -697,9 +710,6 @@ gfc_simplify_bessel_j1 (gfc_expr *x ATTRIBUTE_UNUSED)
   mpfr_j1 (result->value.real, x->value.real, GFC_RND_MODE);
 
   return range_check (result, "BESSEL_J1");
-#else
-  return NULL;
-#endif
 }
 
 
@@ -707,7 +717,6 @@ gfc_expr *
 gfc_simplify_bessel_jn (gfc_expr *order ATTRIBUTE_UNUSED,
 			gfc_expr *x ATTRIBUTE_UNUSED)
 {
-#if MPFR_VERSION >= MPFR_VERSION_NUM(2,3,0)
   gfc_expr *result;
   long n;
 
@@ -719,16 +728,12 @@ gfc_simplify_bessel_jn (gfc_expr *order ATTRIBUTE_UNUSED,
   mpfr_jn (result->value.real, n, x->value.real, GFC_RND_MODE);
 
   return range_check (result, "BESSEL_JN");
-#else
-  return NULL;
-#endif
 }
 
 
 gfc_expr *
 gfc_simplify_bessel_y0 (gfc_expr *x ATTRIBUTE_UNUSED)
 {
-#if MPFR_VERSION >= MPFR_VERSION_NUM(2,3,0)
   gfc_expr *result;
 
   if (x->expr_type != EXPR_CONSTANT)
@@ -738,16 +743,12 @@ gfc_simplify_bessel_y0 (gfc_expr *x ATTRIBUTE_UNUSED)
   mpfr_y0 (result->value.real, x->value.real, GFC_RND_MODE);
 
   return range_check (result, "BESSEL_Y0");
-#else
-  return NULL;
-#endif
 }
 
 
 gfc_expr *
 gfc_simplify_bessel_y1 (gfc_expr *x ATTRIBUTE_UNUSED)
 {
-#if MPFR_VERSION >= MPFR_VERSION_NUM(2,3,0)
   gfc_expr *result;
 
   if (x->expr_type != EXPR_CONSTANT)
@@ -757,9 +758,6 @@ gfc_simplify_bessel_y1 (gfc_expr *x ATTRIBUTE_UNUSED)
   mpfr_y1 (result->value.real, x->value.real, GFC_RND_MODE);
 
   return range_check (result, "BESSEL_Y1");
-#else
-  return NULL;
-#endif
 }
 
 
@@ -767,7 +765,6 @@ gfc_expr *
 gfc_simplify_bessel_yn (gfc_expr *order ATTRIBUTE_UNUSED,
 			gfc_expr *x ATTRIBUTE_UNUSED)
 {
-#if MPFR_VERSION >= MPFR_VERSION_NUM(2,3,0)
   gfc_expr *result;
   long n;
 
@@ -779,9 +776,6 @@ gfc_simplify_bessel_yn (gfc_expr *order ATTRIBUTE_UNUSED,
   mpfr_yn (result->value.real, n, x->value.real, GFC_RND_MODE);
 
   return range_check (result, "BESSEL_YN");
-#else
-  return NULL;
-#endif
 }
 
 
@@ -832,7 +826,7 @@ gfc_simplify_ceiling (gfc_expr *e, gfc_expr *k)
   ceil = gfc_copy_expr (e);
 
   mpfr_ceil (ceil->value.real, e->value.real);
-  gfc_mpfr_to_mpz (result->value.integer, ceil->value.real);
+  gfc_mpfr_to_mpz (result->value.integer, ceil->value.real, &e->where);
 
   gfc_free_expr (ceil);
 
@@ -1009,7 +1003,6 @@ gfc_expr *
 gfc_simplify_cos (gfc_expr *x)
 {
   gfc_expr *result;
-  mpfr_t xp, xq;
 
   if (x->expr_type != EXPR_CONSTANT)
     return NULL;
@@ -1023,6 +1016,12 @@ gfc_simplify_cos (gfc_expr *x)
       break;
     case BT_COMPLEX:
       gfc_set_model_kind (x->ts.kind);
+#ifdef HAVE_mpc
+      call_mpc_func (result->value.complex.r, result->value.complex.i,
+		     x->value.complex.r, x->value.complex.i, mpc_cos);
+#else
+    {
+      mpfr_t xp, xq;
       mpfr_init (xp);
       mpfr_init (xq);
 
@@ -1036,6 +1035,8 @@ gfc_simplify_cos (gfc_expr *x)
       mpfr_neg (result->value.complex.i, xp, GFC_RND_MODE );
 
       mpfr_clears (xp, xq, NULL);
+    }
+#endif
       break;
     default:
       gfc_internal_error ("in gfc_simplify_cos(): Bad type");
@@ -1237,6 +1238,143 @@ gfc_simplify_erfc (gfc_expr *x)
 }
 
 
+/* Helper functions to simplify ERFC_SCALED(x) = ERFC(x) * EXP(X**2).  */
+
+#define MAX_ITER 200
+#define ARG_LIMIT 12
+
+/* Calculate ERFC_SCALED directly by its definition:
+
+     ERFC_SCALED(x) = ERFC(x) * EXP(X**2)
+
+   using a large precision for intermediate results.  This is used for all
+   but large values of the argument.  */
+static void
+fullprec_erfc_scaled (mpfr_t res, mpfr_t arg)
+{
+  mp_prec_t prec;
+  mpfr_t a, b;
+
+  prec = mpfr_get_default_prec ();
+  mpfr_set_default_prec (10 * prec);
+
+  mpfr_init (a);
+  mpfr_init (b);
+
+  mpfr_set (a, arg, GFC_RND_MODE);
+  mpfr_sqr (b, a, GFC_RND_MODE);
+  mpfr_exp (b, b, GFC_RND_MODE);
+  mpfr_erfc (a, a, GFC_RND_MODE);
+  mpfr_mul (a, a, b, GFC_RND_MODE);
+
+  mpfr_set (res, a, GFC_RND_MODE);
+  mpfr_set_default_prec (prec);
+
+  mpfr_clear (a);
+  mpfr_clear (b);
+}
+
+/* Calculate ERFC_SCALED using a power series expansion in 1/arg:
+
+    ERFC_SCALED(x) = 1 / (x * sqrt(pi))
+                     * (1 + Sum_n (-1)**n * (1 * 3 * 5 * ... * (2n-1))
+                                          / (2 * x**2)**n)
+
+  This is used for large values of the argument.  Intermediate calculations
+  are performed with twice the precision.  We don't do a fixed number of
+  iterations of the sum, but stop when it has converged to the required
+  precision.  */
+static void
+asympt_erfc_scaled (mpfr_t res, mpfr_t arg)
+{
+  mpfr_t sum, x, u, v, w, oldsum, sumtrunc;
+  mpz_t num;
+  mp_prec_t prec;
+  unsigned i;
+
+  prec = mpfr_get_default_prec ();
+  mpfr_set_default_prec (2 * prec);
+
+  mpfr_init (sum);
+  mpfr_init (x);
+  mpfr_init (u);
+  mpfr_init (v);
+  mpfr_init (w);
+  mpz_init (num);
+
+  mpfr_init (oldsum);
+  mpfr_init (sumtrunc);
+  mpfr_set_prec (oldsum, prec);
+  mpfr_set_prec (sumtrunc, prec);
+
+  mpfr_set (x, arg, GFC_RND_MODE);
+  mpfr_set_ui (sum, 1, GFC_RND_MODE);
+  mpz_set_ui (num, 1);
+
+  mpfr_set (u, x, GFC_RND_MODE);
+  mpfr_sqr (u, u, GFC_RND_MODE);
+  mpfr_mul_ui (u, u, 2, GFC_RND_MODE);
+  mpfr_pow_si (u, u, -1, GFC_RND_MODE);
+
+  for (i = 1; i < MAX_ITER; i++)
+  {
+    mpfr_set (oldsum, sum, GFC_RND_MODE);
+
+    mpz_mul_ui (num, num, 2 * i - 1);
+    mpz_neg (num, num);
+
+    mpfr_set (w, u, GFC_RND_MODE);
+    mpfr_pow_ui (w, w, i, GFC_RND_MODE);
+
+    mpfr_set_z (v, num, GFC_RND_MODE);
+    mpfr_mul (v, v, w, GFC_RND_MODE);
+
+    mpfr_add (sum, sum, v, GFC_RND_MODE);
+
+    mpfr_set (sumtrunc, sum, GFC_RND_MODE);
+    if (mpfr_cmp (sumtrunc, oldsum) == 0)
+      break;
+  }
+
+  /* We should have converged by now; otherwise, ARG_LIMIT is probably
+     set too low.  */
+  gcc_assert (i < MAX_ITER);
+
+  /* Divide by x * sqrt(Pi).  */
+  mpfr_const_pi (u, GFC_RND_MODE);
+  mpfr_sqrt (u, u, GFC_RND_MODE);
+  mpfr_mul (u, u, x, GFC_RND_MODE);
+  mpfr_div (sum, sum, u, GFC_RND_MODE);
+
+  mpfr_set (res, sum, GFC_RND_MODE);
+  mpfr_set_default_prec (prec);
+
+  mpfr_clears (sum, x, u, v, w, oldsum, sumtrunc, NULL);
+  mpz_clear (num);
+}
+
+
+gfc_expr *
+gfc_simplify_erfc_scaled (gfc_expr *x)
+{
+  gfc_expr *result;
+
+  if (x->expr_type != EXPR_CONSTANT)
+    return NULL;
+
+  result = gfc_constant_result (x->ts.type, x->ts.kind, &x->where);
+  if (mpfr_cmp_d (x->value.real, ARG_LIMIT) >= 0)
+    asympt_erfc_scaled (result->value.real, x->value.real);
+  else
+    fullprec_erfc_scaled (result->value.real, x->value.real);
+
+  return range_check (result, "ERFC_SCALED");
+}
+
+#undef MAX_ITER
+#undef ARG_LIMIT
+
+
 gfc_expr *
 gfc_simplify_epsilon (gfc_expr *e)
 {
@@ -1257,7 +1395,6 @@ gfc_expr *
 gfc_simplify_exp (gfc_expr *x)
 {
   gfc_expr *result;
-  mpfr_t xp, xq;
 
   if (x->expr_type != EXPR_CONSTANT)
     return NULL;
@@ -1272,6 +1409,12 @@ gfc_simplify_exp (gfc_expr *x)
 
     case BT_COMPLEX:
       gfc_set_model_kind (x->ts.kind);
+#ifdef HAVE_mpc
+      call_mpc_func (result->value.complex.r, result->value.complex.i,
+		     x->value.complex.r, x->value.complex.i, mpc_exp);
+#else
+    {
+      mpfr_t xp, xq;
       mpfr_init (xp);
       mpfr_init (xq);
       mpfr_exp (xq, x->value.complex.r, GFC_RND_MODE);
@@ -1280,6 +1423,8 @@ gfc_simplify_exp (gfc_expr *x)
       mpfr_sin (xp, x->value.complex.i, GFC_RND_MODE);
       mpfr_mul (result->value.complex.i, xq, xp, GFC_RND_MODE);
       mpfr_clears (xp, xq, NULL);
+    }
+#endif
       break;
 
     default:
@@ -1365,7 +1510,7 @@ gfc_simplify_floor (gfc_expr *e, gfc_expr *k)
   mpfr_init (floor);
   mpfr_floor (floor, e->value.real);
 
-  gfc_mpfr_to_mpz (result->value.integer, floor);
+  gfc_mpfr_to_mpz (result->value.integer, floor, &e->where);
 
   mpfr_clear (floor);
 
@@ -1949,7 +2094,7 @@ gfc_simplify_ifix (gfc_expr *e)
   rtrunc = gfc_copy_expr (e);
 
   mpfr_trunc (rtrunc->value.real, e->value.real);
-  gfc_mpfr_to_mpz (result->value.integer, rtrunc->value.real);
+  gfc_mpfr_to_mpz (result->value.integer, rtrunc->value.real, &e->where);
 
   gfc_free_expr (rtrunc);
   return range_check (result, "IFIX");
@@ -1970,7 +2115,7 @@ gfc_simplify_idint (gfc_expr *e)
   rtrunc = gfc_copy_expr (e);
 
   mpfr_trunc (rtrunc->value.real, e->value.real);
-  gfc_mpfr_to_mpz (result->value.integer, rtrunc->value.real);
+  gfc_mpfr_to_mpz (result->value.integer, rtrunc->value.real, &e->where);
 
   gfc_free_expr (rtrunc);
   return range_check (result, "IDINT");
@@ -2202,7 +2347,7 @@ gfc_simplify_kind (gfc_expr *e)
 
 static gfc_expr *
 simplify_bound_dim (gfc_expr *array, gfc_expr *kind, int d, int upper,
-		    gfc_array_spec *as)
+		    gfc_array_spec *as, gfc_ref *ref)
 {
   gfc_expr *l, *u, *result;
   int k;
@@ -2216,13 +2361,6 @@ simplify_bound_dim (gfc_expr *array, gfc_expr *kind, int d, int upper,
 	return NULL;
     }
 
-  /* Then, we need to know the extent of the given dimension.  */
-  l = as->lower[d-1];
-  u = as->upper[d-1];
-
-  if (l->expr_type != EXPR_CONSTANT || u->expr_type != EXPR_CONSTANT)
-    return NULL;
-
   k = get_kind (BT_INTEGER, kind, upper ? "UBOUND" : "LBOUND",
 		gfc_default_integer_kind); 
   if (k == -1)
@@ -2230,21 +2368,43 @@ simplify_bound_dim (gfc_expr *array, gfc_expr *kind, int d, int upper,
 
   result = gfc_constant_result (BT_INTEGER, k, &array->where);
 
-  if (mpz_cmp (l->value.integer, u->value.integer) > 0)
+
+  /* Then, we need to know the extent of the given dimension.  */
+  if (ref->u.ar.type == AR_FULL)
     {
-      /* Zero extent.  */
-      if (upper)
-	mpz_set_si (result->value.integer, 0);
+      l = as->lower[d-1];
+      u = as->upper[d-1];
+
+      if (l->expr_type != EXPR_CONSTANT || u->expr_type != EXPR_CONSTANT)
+	return NULL;
+
+      if (mpz_cmp (l->value.integer, u->value.integer) > 0)
+	{
+	  /* Zero extent.  */
+	  if (upper)
+	    mpz_set_si (result->value.integer, 0);
+	  else
+	    mpz_set_si (result->value.integer, 1);
+	}
       else
-	mpz_set_si (result->value.integer, 1);
+	{
+	  /* Nonzero extent.  */
+	  if (upper)
+	    mpz_set (result->value.integer, u->value.integer);
+	  else
+	    mpz_set (result->value.integer, l->value.integer);
+	}
     }
   else
     {
-      /* Nonzero extent.  */
       if (upper)
-	mpz_set (result->value.integer, u->value.integer);
+	{
+	  if (gfc_ref_dimen_size (&ref->u.ar, d-1, &result->value.integer)
+	      != SUCCESS)
+	    return NULL;
+	}
       else
-	mpz_set (result->value.integer, l->value.integer);
+	mpz_set_si (result->value.integer, (long int) 1);
     }
 
   return range_check (result, upper ? "UBOUND" : "LBOUND");
@@ -2277,11 +2437,17 @@ simplify_bound (gfc_expr *array, gfc_expr *dim, gfc_expr *kind, int upper)
 	    case AR_FULL:
 	      /* We're done because 'as' has already been set in the
 		 previous iteration.  */
-	      goto done;
+	      if (!ref->next)
+	        goto done;
 
-	    case AR_SECTION:
+	    /* Fall through.  */
+
 	    case AR_UNKNOWN:
 	      return NULL;
+
+	    case AR_SECTION:
+	      as = ref->u.ar.as;
+	      goto done;
 	    }
 
 	  gcc_unreachable ();
@@ -2321,7 +2487,7 @@ simplify_bound (gfc_expr *array, gfc_expr *dim, gfc_expr *kind, int upper)
       /* Simplify the bounds for each dimension.  */
       for (d = 0; d < array->rank; d++)
 	{
-	  bounds[d] = simplify_bound_dim (array, kind, d + 1, upper, as);
+	  bounds[d] = simplify_bound_dim (array, kind, d + 1, upper, as, ref);
 	  if (bounds[d] == NULL || bounds[d] == &gfc_bad_expr)
 	    {
 	      int j;
@@ -2387,7 +2553,7 @@ simplify_bound (gfc_expr *array, gfc_expr *dim, gfc_expr *kind, int upper)
 	  return &gfc_bad_expr;
 	}
 
-      return simplify_bound_dim (array, kind, d, upper, as);
+      return simplify_bound_dim (array, kind, d, upper, as, ref);
     }
 }
 
@@ -2436,7 +2602,13 @@ gfc_simplify_len (gfc_expr *e, gfc_expr *kind)
     {
       result = gfc_constant_result (BT_INTEGER, k, &e->where);
       mpz_set_si (result->value.integer, e->value.character.length);
-      return range_check (result, "LEN");
+      if (gfc_range_check (result) == ARITH_OK)
+	return result;
+      else
+	{
+	  gfc_free_expr (result);
+	  return NULL;
+	}
     }
 
   if (e->ts.cl != NULL && e->ts.cl->length != NULL
@@ -2445,7 +2617,13 @@ gfc_simplify_len (gfc_expr *e, gfc_expr *kind)
     {
       result = gfc_constant_result (BT_INTEGER, k, &e->where);
       mpz_set (result->value.integer, e->ts.cl->length->value.integer);
-      return range_check (result, "LEN");
+      if (gfc_range_check (result) == ARITH_OK)
+	return result;
+      else
+	{
+	  gfc_free_expr (result);
+	  return NULL;
+	}
     }
 
   return NULL;
@@ -2483,7 +2661,6 @@ gfc_simplify_len_trim (gfc_expr *e, gfc_expr *kind)
 gfc_expr *
 gfc_simplify_lgamma (gfc_expr *x ATTRIBUTE_UNUSED)
 {
-#if MPFR_VERSION >= MPFR_VERSION_NUM(2,3,0)
   gfc_expr *result;
   int sg;
 
@@ -2495,9 +2672,6 @@ gfc_simplify_lgamma (gfc_expr *x ATTRIBUTE_UNUSED)
   mpfr_lgamma (result->value.real, &sg, x->value.real, GFC_RND_MODE);
 
   return range_check (result, "LGAMMA");
-#else
-  return NULL;
-#endif
 }
 
 
@@ -2546,7 +2720,6 @@ gfc_expr *
 gfc_simplify_log (gfc_expr *x)
 {
   gfc_expr *result;
-  mpfr_t xr, xi;
 
   if (x->expr_type != EXPR_CONSTANT)
     return NULL;
@@ -2579,6 +2752,12 @@ gfc_simplify_log (gfc_expr *x)
 	}
 
       gfc_set_model_kind (x->ts.kind);
+#ifdef HAVE_mpc
+      call_mpc_func (result->value.complex.r, result->value.complex.i,
+		     x->value.complex.r, x->value.complex.i, mpc_log);
+#else
+    {
+      mpfr_t xr, xi;
       mpfr_init (xr);
       mpfr_init (xi);
 
@@ -2592,7 +2771,8 @@ gfc_simplify_log (gfc_expr *x)
       mpfr_log (result->value.complex.r, xr, GFC_RND_MODE);
 
       mpfr_clears (xr, xi, NULL);
-
+    }
+#endif
       break;
 
     default:
@@ -2647,6 +2827,78 @@ gfc_simplify_logical (gfc_expr *e, gfc_expr *k)
 }
 
 
+gfc_expr *
+gfc_simplify_merge (gfc_expr *tsource, gfc_expr *fsource, gfc_expr *mask)
+{
+  if (tsource->expr_type != EXPR_CONSTANT
+      || fsource->expr_type != EXPR_CONSTANT
+      || mask->expr_type != EXPR_CONSTANT)
+    return NULL;
+
+  return gfc_copy_expr (mask->value.logical ? tsource : fsource);
+}
+
+
+/* Selects bewteen current value and extremum for simplify_min_max
+   and simplify_minval_maxval.  */
+static void
+min_max_choose (gfc_expr *arg, gfc_expr *extremum, int sign)
+{
+  switch (arg->ts.type)
+    {
+      case BT_INTEGER:
+	if (mpz_cmp (arg->value.integer,
+			extremum->value.integer) * sign > 0)
+	mpz_set (extremum->value.integer, arg->value.integer);
+	break;
+
+      case BT_REAL:
+	/* We need to use mpfr_min and mpfr_max to treat NaN properly.  */
+	if (sign > 0)
+	  mpfr_max (extremum->value.real, extremum->value.real,
+		      arg->value.real, GFC_RND_MODE);
+	else
+	  mpfr_min (extremum->value.real, extremum->value.real,
+		      arg->value.real, GFC_RND_MODE);
+	break;
+
+      case BT_CHARACTER:
+#define LENGTH(x) ((x)->value.character.length)
+#define STRING(x) ((x)->value.character.string)
+	if (LENGTH(extremum) < LENGTH(arg))
+	  {
+	    gfc_char_t *tmp = STRING(extremum);
+
+	    STRING(extremum) = gfc_get_wide_string (LENGTH(arg) + 1);
+	    memcpy (STRING(extremum), tmp,
+		      LENGTH(extremum) * sizeof (gfc_char_t));
+	    gfc_wide_memset (&STRING(extremum)[LENGTH(extremum)], ' ',
+			       LENGTH(arg) - LENGTH(extremum));
+	    STRING(extremum)[LENGTH(arg)] = '\0';  /* For debugger  */
+	    LENGTH(extremum) = LENGTH(arg);
+	    gfc_free (tmp);
+	  }
+
+	if (gfc_compare_string (arg, extremum) * sign > 0)
+	  {
+	    gfc_free (STRING(extremum));
+	    STRING(extremum) = gfc_get_wide_string (LENGTH(extremum) + 1);
+	    memcpy (STRING(extremum), STRING(arg),
+		      LENGTH(arg) * sizeof (gfc_char_t));
+	    gfc_wide_memset (&STRING(extremum)[LENGTH(arg)], ' ',
+			       LENGTH(extremum) - LENGTH(arg));
+	    STRING(extremum)[LENGTH(extremum)] = '\0';  /* For debugger  */
+	  }
+#undef LENGTH
+#undef STRING
+	break;
+	      
+      default:
+	gfc_internal_error ("simplify_min_max(): Bad type in arglist");
+    }
+}
+
+
 /* This function is special since MAX() can take any number of
    arguments.  The simplified expression is a rewritten version of the
    argument list containing at most one constant element.  Other
@@ -2677,59 +2929,7 @@ simplify_min_max (gfc_expr *expr, int sign)
 	  continue;
 	}
 
-      switch (arg->expr->ts.type)
-	{
-	case BT_INTEGER:
-	  if (mpz_cmp (arg->expr->value.integer,
-		       extremum->expr->value.integer) * sign > 0)
-	    mpz_set (extremum->expr->value.integer, arg->expr->value.integer);
-	  break;
-
-	case BT_REAL:
-	  /* We need to use mpfr_min and mpfr_max to treat NaN properly.  */
-	  if (sign > 0)
-	    mpfr_max (extremum->expr->value.real, extremum->expr->value.real,
-		      arg->expr->value.real, GFC_RND_MODE);
-	  else
-	    mpfr_min (extremum->expr->value.real, extremum->expr->value.real,
-		      arg->expr->value.real, GFC_RND_MODE);
-	  break;
-
-	case BT_CHARACTER:
-#define LENGTH(x) ((x)->expr->value.character.length)
-#define STRING(x) ((x)->expr->value.character.string)
-	  if (LENGTH(extremum) < LENGTH(arg))
-	    {
-	      gfc_char_t *tmp = STRING(extremum);
-
-	      STRING(extremum) = gfc_get_wide_string (LENGTH(arg) + 1);
-	      memcpy (STRING(extremum), tmp,
-		      LENGTH(extremum) * sizeof (gfc_char_t));
-	      gfc_wide_memset (&STRING(extremum)[LENGTH(extremum)], ' ',
-			       LENGTH(arg) - LENGTH(extremum));
-	      STRING(extremum)[LENGTH(arg)] = '\0';  /* For debugger  */
-	      LENGTH(extremum) = LENGTH(arg);
-	      gfc_free (tmp);
-	    }
-
-	  if (gfc_compare_string (arg->expr, extremum->expr) * sign > 0)
-	    {
-	      gfc_free (STRING(extremum));
-	      STRING(extremum) = gfc_get_wide_string (LENGTH(extremum) + 1);
-	      memcpy (STRING(extremum), STRING(arg),
-		      LENGTH(arg) * sizeof (gfc_char_t));
-	      gfc_wide_memset (&STRING(extremum)[LENGTH(arg)], ' ',
-			       LENGTH(extremum) - LENGTH(arg));
-	      STRING(extremum)[LENGTH(extremum)] = '\0';  /* For debugger  */
-	    }
-#undef LENGTH
-#undef STRING
-	  break;
-	      
-
-	default:
-	  gfc_internal_error ("simplify_min_max(): Bad type in arglist");
-	}
+      min_max_choose (arg->expr, extremum->expr, sign);
 
       /* Delete the extra constant argument.  */
       if (last == NULL)
@@ -2771,6 +2971,69 @@ gfc_expr *
 gfc_simplify_max (gfc_expr *e)
 {
   return simplify_min_max (e, 1);
+}
+
+
+/* This is a simplified version of simplify_min_max to provide
+   simplification of minval and maxval for a vector.  */
+
+static gfc_expr *
+simplify_minval_maxval (gfc_expr *expr, int sign)
+{
+  gfc_constructor *ctr, *extremum;
+  gfc_intrinsic_sym * specific;
+
+  extremum = NULL;
+  specific = expr->value.function.isym;
+
+  ctr = expr->value.constructor;
+
+  for (; ctr; ctr = ctr->next)
+    {
+      if (ctr->expr->expr_type != EXPR_CONSTANT)
+	return NULL;
+
+      if (extremum == NULL)
+	{
+	  extremum = ctr;
+	  continue;
+	}
+
+      min_max_choose (ctr->expr, extremum->expr, sign);
+     }
+
+  if (extremum == NULL)
+    return NULL;
+
+  /* Convert to the correct type and kind.  */
+  if (expr->ts.type != BT_UNKNOWN) 
+    return gfc_convert_constant (extremum->expr,
+	expr->ts.type, expr->ts.kind);
+
+  if (specific->ts.type != BT_UNKNOWN) 
+    return gfc_convert_constant (extremum->expr,
+	specific->ts.type, specific->ts.kind); 
+ 
+  return gfc_copy_expr (extremum->expr);
+}
+
+
+gfc_expr *
+gfc_simplify_minval (gfc_expr *array, gfc_expr* dim, gfc_expr *mask)
+{
+  if (array->expr_type != EXPR_ARRAY || array->rank != 1 || dim || mask)
+    return NULL;
+  
+  return simplify_minval_maxval (array, -1);
+}
+
+
+gfc_expr *
+gfc_simplify_maxval (gfc_expr *array, gfc_expr* dim, gfc_expr *mask)
+{
+  if (array->expr_type != EXPR_ARRAY || array->rank != 1 || dim || mask)
+    return NULL;
+  return simplify_minval_maxval (array, 1);
 }
 
 
@@ -2950,6 +3213,7 @@ gfc_simplify_nearest (gfc_expr *x, gfc_expr *s)
   mpfr_set_emin ((mp_exp_t) gfc_real_kinds[kind].min_exponent -
 		mpfr_get_prec(result->value.real) + 1);
   mpfr_set_emax ((mp_exp_t) gfc_real_kinds[kind].max_exponent - 1);
+  mpfr_check_range (result->value.real, 0, GMP_RNDU);
 
   if (mpfr_sgn (s->value.real) > 0)
     {
@@ -2997,7 +3261,7 @@ simplify_nint (const char *name, gfc_expr *e, gfc_expr *k)
 
   mpfr_round (itrunc->value.real, e->value.real);
 
-  gfc_mpfr_to_mpz (result->value.integer, itrunc->value.real);
+  gfc_mpfr_to_mpz (result->value.integer, itrunc->value.real, &e->where);
 
   gfc_free_expr (itrunc);
 
@@ -3365,9 +3629,6 @@ is_constant_array_expr (gfc_expr *e)
     return true;
 
   if (e->expr_type != EXPR_ARRAY || !gfc_is_constant_expr (e))
-    return false;
-  
-  if (e->value.constructor == NULL)
     return false;
   
   for (c = e->value.constructor; c; c = c->next)
@@ -4091,7 +4352,6 @@ gfc_expr *
 gfc_simplify_sin (gfc_expr *x)
 {
   gfc_expr *result;
-  mpfr_t xp, xq;
 
   if (x->expr_type != EXPR_CONSTANT)
     return NULL;
@@ -4106,6 +4366,12 @@ gfc_simplify_sin (gfc_expr *x)
 
     case BT_COMPLEX:
       gfc_set_model (x->value.real);
+#ifdef HAVE_mpc
+      call_mpc_func (result->value.complex.r, result->value.complex.i,
+		     x->value.complex.r, x->value.complex.i, mpc_sin);
+#else
+    {
+      mpfr_t xp, xq;
       mpfr_init (xp);
       mpfr_init (xq);
 
@@ -4118,6 +4384,8 @@ gfc_simplify_sin (gfc_expr *x)
       mpfr_mul (result->value.complex.i, xp, xq, GFC_RND_MODE);
 
       mpfr_clears (xp, xq, NULL);
+    }
+#endif
       break;
 
     default:
@@ -4202,7 +4470,6 @@ gfc_expr *
 gfc_simplify_sqrt (gfc_expr *e)
 {
   gfc_expr *result;
-  mpfr_t ac, ad, s, t, w;
 
   if (e->expr_type != EXPR_CONSTANT)
     return NULL;
@@ -4219,10 +4486,16 @@ gfc_simplify_sqrt (gfc_expr *e)
       break;
 
     case BT_COMPLEX:
+      gfc_set_model (e->value.real);
+#ifdef HAVE_mpc
+      call_mpc_func (result->value.complex.r, result->value.complex.i,
+		     e->value.complex.r, e->value.complex.i, mpc_sqrt);
+#else
+    {
       /* Formula taken from Numerical Recipes to avoid over- and
 	 underflow.  */
 
-      gfc_set_model (e->value.real);
+      mpfr_t ac, ad, s, t, w;
       mpfr_init (ac);
       mpfr_init (ad);
       mpfr_init (s);
@@ -4294,7 +4567,8 @@ gfc_simplify_sqrt (gfc_expr *e)
 			    &e->where);
 
       mpfr_clears (s, t, ac, ad, w, NULL);
-
+    }
+#endif
       break;
 
     default:
@@ -4467,6 +4741,7 @@ gfc_simplify_transfer (gfc_expr *source, gfc_expr *mold, gfc_expr *size)
   /* Allocate the buffer to store the binary version of the source.  */
   buffer_size = MAX (source_size, result_size);
   buffer = (unsigned char*)alloca (buffer_size);
+  memset (buffer, 0, buffer_size);
 
   /* Now write source to the buffer.  */
   gfc_target_encode_expr (source, buffer, buffer_size);

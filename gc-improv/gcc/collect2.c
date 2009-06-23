@@ -1,7 +1,8 @@
 /* Collect static initialization info into data structures that can be
    traversed by C++ initialization and finalization routines.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Chris Smith (csmith@convex.com).
    Heavily modified by Michael Meissner (meissner@cygnus.com),
    Per Bothner (bothner@cygnus.com), and John Gilmore (gnu@cygnus.com).
@@ -41,6 +42,7 @@ along with GCC; see the file COPYING3.  If not see
 #define COLLECT
 
 #include "collect2.h"
+#include "collect2-aix.h"
 #include "demangle.h"
 #include "obstack.h"
 #include "intl.h"
@@ -53,7 +55,9 @@ along with GCC; see the file COPYING3.  If not see
    cross-versions are in the proper directories.  */
 
 #ifdef CROSS_DIRECTORY_STRUCTURE
+#ifndef CROSS_AIX_SUPPORT
 #undef OBJECT_FORMAT_COFF
+#endif
 #undef MD_EXEC_PREFIX
 #undef REAL_LD_FILE_NAME
 #undef REAL_NM_FILE_NAME
@@ -71,6 +75,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #ifdef OBJECT_FORMAT_COFF
 
+#ifndef CROSS_DIRECTORY_STRUCTURE
 #include <a.out.h>
 #include <ar.h>
 
@@ -85,6 +90,7 @@ along with GCC; see the file COPYING3.  If not see
 #endif
 
 #include <ldfcn.h>
+#endif
 
 /* Some systems have an ISCOFF macro, but others do not.  In some cases
    the macro may be wrong.  MY_ISCOFF is defined in tm.h files for machines
@@ -127,6 +133,10 @@ along with GCC; see the file COPYING3.  If not see
 
 #ifdef LDD_SUFFIX
 #define SCAN_LIBRARIES
+#endif
+
+#ifndef SHLIB_SUFFIX
+#define SHLIB_SUFFIX ".so"
 #endif
 
 #ifdef USE_COLLECT2
@@ -207,6 +217,14 @@ static char *response_file;		/* Name of any current response file */
 struct obstack temporary_obstack;
 char * temporary_firstobj;
 
+/* A string that must be prepended to a target OS path in order to find
+   it on the host system.  */
+#ifdef TARGET_SYSTEM_ROOT
+static const char *target_system_root = TARGET_SYSTEM_ROOT;
+#else
+static const char *target_system_root = "";
+#endif
+
 /* Structure to hold all the directories in which to search for files to
    execute.  */
 
@@ -232,8 +250,21 @@ static struct path_prefix *libpaths[3] = {&cmdline_lib_dirs,
 					  &libpath_lib_dirs, NULL};
 #endif
 
+/* Special kinds of symbols that a name may denote.  */
+
+typedef enum {
+  SYM_REGULAR = 0,  /* nothing special  */
+
+  SYM_CTOR = 1,  /* constructor */
+  SYM_DTOR = 2,  /* destructor  */
+  SYM_INIT = 3,  /* shared object routine that calls all the ctors  */
+  SYM_FINI = 4,  /* shared object routine that calls all the dtors  */
+  SYM_DWEH = 5   /* DWARF exception handling table  */
+} symkind;
+
+static symkind is_ctor_dtor (const char *);
+
 static void handler (int);
-static int is_ctor_dtor (const char *);
 static char *find_a_file (struct path_prefix *, const char *);
 static void add_prefix (struct path_prefix *, const char *);
 static void prefix_from_env (const char *, struct path_prefix *);
@@ -487,8 +518,18 @@ dump_file (const char *name, FILE *to)
 	      diff = strlen (word) - strlen (result);
 	      while (diff > 0 && c == ' ')
 		--diff, putc (' ', to);
-	      while (diff < 0 && c == ' ')
-		++diff, c = getc (stream);
+	      if (diff < 0 && c == ' ')
+		{
+		  while (diff < 0 && c == ' ')
+		    ++diff, c = getc (stream);
+		  if (!ISSPACE (c))
+		    {
+		      /* Make sure we output at least one space, or
+			 the demangled symbol name will run into
+			 whatever text follows.  */
+		      putc (' ', to);
+		    }
+		}
 
 	      free (result);
 	    }
@@ -505,15 +546,12 @@ dump_file (const char *name, FILE *to)
   fclose (stream);
 }
 
-/* Decide whether the given symbol is: a constructor (1), a destructor
-   (2), a routine in a shared object that calls all the constructors
-   (3) or destructors (4), a DWARF exception-handling table (5), or
-   nothing special (0).  */
+/* Return the kind of symbol denoted by name S.  */
 
-static int
+static symkind
 is_ctor_dtor (const char *s)
 {
-  struct names { const char *const name; const int len; const int ret;
+  struct names { const char *const name; const int len; symkind ret;
     const int two_underscores; };
 
   const struct names *p;
@@ -522,27 +560,27 @@ is_ctor_dtor (const char *s)
 
   static const struct names special[] = {
 #ifndef NO_DOLLAR_IN_LABEL
-    { "GLOBAL__I$", sizeof ("GLOBAL__I$")-1, 1, 0 },
-    { "GLOBAL__D$", sizeof ("GLOBAL__D$")-1, 2, 0 },
+    { "GLOBAL__I$", sizeof ("GLOBAL__I$")-1, SYM_CTOR, 0 },
+    { "GLOBAL__D$", sizeof ("GLOBAL__D$")-1, SYM_DTOR, 0 },
 #else
 #ifndef NO_DOT_IN_LABEL
-    { "GLOBAL__I.", sizeof ("GLOBAL__I.")-1, 1, 0 },
-    { "GLOBAL__D.", sizeof ("GLOBAL__D.")-1, 2, 0 },
+    { "GLOBAL__I.", sizeof ("GLOBAL__I.")-1, SYM_CTOR, 0 },
+    { "GLOBAL__D.", sizeof ("GLOBAL__D.")-1, SYM_DTOR, 0 },
 #endif /* NO_DOT_IN_LABEL */
 #endif /* NO_DOLLAR_IN_LABEL */
-    { "GLOBAL__I_", sizeof ("GLOBAL__I_")-1, 1, 0 },
-    { "GLOBAL__D_", sizeof ("GLOBAL__D_")-1, 2, 0 },
-    { "GLOBAL__F_", sizeof ("GLOBAL__F_")-1, 5, 0 },
-    { "GLOBAL__FI_", sizeof ("GLOBAL__FI_")-1, 3, 0 },
-    { "GLOBAL__FD_", sizeof ("GLOBAL__FD_")-1, 4, 0 },
-    { NULL, 0, 0, 0 }
+    { "GLOBAL__I_", sizeof ("GLOBAL__I_")-1, SYM_CTOR, 0 },
+    { "GLOBAL__D_", sizeof ("GLOBAL__D_")-1, SYM_DTOR, 0 },
+    { "GLOBAL__F_", sizeof ("GLOBAL__F_")-1, SYM_DWEH, 0 },
+    { "GLOBAL__FI_", sizeof ("GLOBAL__FI_")-1, SYM_INIT, 0 },
+    { "GLOBAL__FD_", sizeof ("GLOBAL__FD_")-1, SYM_FINI, 0 },
+    { NULL, 0, SYM_REGULAR, 0 }
   };
 
   while ((ch = *s) == '_')
     ++s;
 
   if (s == orig_s)
-    return 0;
+    return SYM_REGULAR;
 
   for (p = &special[0]; p->len > 0; p++)
     {
@@ -553,7 +591,7 @@ is_ctor_dtor (const char *s)
 	  return p->ret;
 	}
     }
-  return 0;
+  return SYM_REGULAR;
 }
 
 /* We maintain two prefix lists: one from COMPILER_PATH environment variable
@@ -591,11 +629,7 @@ find_a_file (struct path_prefix *pprefix, const char *name)
 
   /* Determine the filename to execute (special case for absolute paths).  */
 
-  if (*name == '/'
-#ifdef HAVE_DOS_BASED_FILE_SYSTEM
-      || (*name && name[1] == ':')
-#endif
-      )
+  if (IS_ABSOLUTE_PATH (name))
     {
       if (access (name, X_OK) == 0)
 	{
@@ -836,9 +870,12 @@ main (int argc, char **argv)
   /* Do not invoke xcalloc before this point, since locale needs to be
      set first, in case a diagnostic is issued.  */
 
-  ld1 = (const char **)(ld1_argv = xcalloc(sizeof (char *), argc+4));
-  ld2 = (const char **)(ld2_argv = xcalloc(sizeof (char *), argc+11));
-  object = (const char **)(object_lst = xcalloc(sizeof (char *), argc));
+  ld1_argv = XCNEWVEC (char *, argc + 4);
+  ld1 = CONST_CAST2 (const char **, char **, ld1_argv);
+  ld2_argv = XCNEWVEC (char *, argc + 11);
+  ld2 = CONST_CAST2 (const char **, char **, ld2_argv);
+  object_lst = XCNEWVEC (char *, argc);
+  object = CONST_CAST2 (const char **, char **, object_lst);
 
 #ifdef DEBUG
   debug = 1;
@@ -865,7 +902,7 @@ main (int argc, char **argv)
 #endif
 
   obstack_begin (&temporary_obstack, 0);
-  temporary_firstobj = obstack_alloc (&temporary_obstack, 0);
+  temporary_firstobj = (char *) obstack_alloc (&temporary_obstack, 0);
 
 #ifndef HAVE_LD_DEMANGLE
   current_demangling_style = auto_demangling;
@@ -883,7 +920,8 @@ main (int argc, char **argv)
      -fno-exceptions -w */
   num_c_args += 5;
 
-  c_ptr = (const char **) (c_argv = xcalloc (sizeof (char *), num_c_args));
+  c_argv = XCNEWVEC (char *, num_c_args);
+  c_ptr = CONST_CAST2 (const char **, char **, c_argv);
 
   if (argc < 2)
     fatal ("no arguments");
@@ -1129,7 +1167,9 @@ main (int argc, char **argv)
 #else
 #if LINK_ELIMINATE_DUPLICATE_LDIRECTORIES
 	    case 'L':
-	      if (is_in_args (arg, (const char **) ld1_argv, ld1-1))
+	      if (is_in_args (arg,
+			      CONST_CAST2 (const char **, char **, ld1_argv),
+			      ld1 - 1))
 		--ld1;
 	      break;
 #endif /* LINK_ELIMINATE_DUPLICATE_LDIRECTORIES */
@@ -1194,6 +1234,8 @@ main (int argc, char **argv)
 		  ld1--;
 		  ld2--;
 		}
+	      else if (strncmp (arg, "--sysroot=", 10) == 0)
+		target_system_root = arg + 10;
 	      break;
 	    }
 	}
@@ -1385,7 +1427,8 @@ main (int argc, char **argv)
       if (strip_flag)
 	{
 	  char **real_strip_argv = XCNEWVEC (char *, 3);
-	  const char ** strip_argv = (const char **) real_strip_argv;
+	  const char ** strip_argv = CONST_CAST2 (const char **, char **,
+						  real_strip_argv);
 
 	  strip_argv[0] = strip_file_name;
 	  strip_argv[1] = output_file;
@@ -1666,7 +1709,8 @@ static long sequence_number = 0;
 static void
 add_to_list (struct head *head_ptr, const char *name)
 {
-  struct id *newid = xcalloc (sizeof (struct id) + strlen (name), 1);
+  struct id *newid
+    = (struct id *) xcalloc (sizeof (struct id) + strlen (name), 1);
   struct id *p;
   strcpy (newid->name, name);
 
@@ -1858,9 +1902,9 @@ write_c_file_stat (FILE *stream, const char *name ATTRIBUTE_UNUSED)
 	}
       else
 	{
-	  if (strncmp (q, ".so", 3) == 0)
+	  if (strncmp (q, SHLIB_SUFFIX, strlen (SHLIB_SUFFIX)) == 0)
 	    {
-	      q += 3;
+	      q += strlen (SHLIB_SUFFIX);
 	      break;
 	    }
 	  else
@@ -2029,14 +2073,12 @@ write_c_file_glob (FILE *stream, const char *name ATTRIBUTE_UNUSED)
 static void
 write_c_file (FILE *stream, const char *name)
 {
-  fprintf (stream, "#ifdef __cplusplus\nextern \"C\" {\n#endif\n");
 #ifndef LD_INIT_SWITCH
   if (! shared_obj)
     write_c_file_glob (stream, name);
   else
 #endif
     write_c_file_stat (stream, name);
-  fprintf (stream, "#ifdef __cplusplus\n}\n#endif\n");
 }
 
 #ifdef COLLECT_EXPORT_LIST
@@ -2070,7 +2112,7 @@ scan_prog_file (const char *prog_name, enum pass which_pass)
   void (*quit_handler) (int);
 #endif
   char *real_nm_argv[4];
-  const char **nm_argv = (const char **) real_nm_argv;
+  const char **nm_argv = CONST_CAST2 (const char **, char**, real_nm_argv);
   int argc = 0;
   struct pex_obj *pex;
   const char *errmsg;
@@ -2162,17 +2204,17 @@ scan_prog_file (const char *prog_name, enum pass which_pass)
       *end = '\0';
       switch (is_ctor_dtor (name))
 	{
-	case 1:
+	case SYM_CTOR:
 	  if (which_pass != PASS_LIB)
 	    add_to_list (&constructors, name);
 	  break;
 
-	case 2:
+	case SYM_DTOR:
 	  if (which_pass != PASS_LIB)
 	    add_to_list (&destructors, name);
 	  break;
 
-	case 3:
+	case SYM_INIT:
 	  if (which_pass != PASS_LIB)
 	    fatal ("init function found in object %s", prog_name);
 #ifndef LD_INIT_SWITCH
@@ -2180,7 +2222,7 @@ scan_prog_file (const char *prog_name, enum pass which_pass)
 #endif
 	  break;
 
-	case 4:
+	case SYM_FINI:
 	  if (which_pass != PASS_LIB)
 	    fatal ("fini function found in object %s", prog_name);
 #ifndef LD_FINI_SWITCH
@@ -2188,7 +2230,7 @@ scan_prog_file (const char *prog_name, enum pass which_pass)
 #endif
 	  break;
 
-	case 5:
+	case SYM_DWEH:
 	  if (which_pass != PASS_LIB)
 	    add_to_list (&frame_tables, name);
 	  break;
@@ -2384,7 +2426,7 @@ scan_libraries (const char *prog_name)
 #   define GCC_SYMZERO(X)	0
 
 /* 0757 = U803XTOCMAGIC (AIX 4.3) and 0767 = U64_TOCMAGIC (AIX V5) */
-#ifdef _AIX51
+#if TARGET_AIX_VERSION >= 51
 #   define GCC_CHECK_HDR(X) \
      ((HEADER (X).f_magic == U802TOCMAGIC && ! aix64_flag) \
       || (HEADER (X).f_magic == 0767 && aix64_flag))
@@ -2423,9 +2465,19 @@ static int ignore_library (const char *);
 static int
 ignore_library (const char *name)
 {
-  const char *const *p = &aix_std_libs[0];
-  while (*p++ != NULL)
-    if (! strcmp (name, *p)) return 1;
+  const char *const *p;
+  size_t length;
+
+  if (target_system_root[0] != '\0')
+    {
+      length = strlen (target_system_root);
+      if (strncmp (name, target_system_root, length) != 0)
+	return 0;
+      name += length;
+    }
+  for (p = &aix_std_libs[0]; *p != NULL; ++p)
+    if (strcmp (name, *p) == 0)
+      return 1;
   return 0;
 }
 #endif /* COLLECT_EXPORT_LIST */
@@ -2467,8 +2519,8 @@ scan_prog_file (const char *prog_name, enum pass which_pass)
       /* Some platforms (e.g. OSF4) declare ldopen as taking a
 	 non-const char * filename parameter, even though it will not
 	 modify that string.  So we must cast away const-ness here,
-	 which will cause -Wcast-qual to burp.  */
-      if ((ldptr = ldopen ((char *)prog_name, ldptr)) != NULL)
+	 using CONST_CAST to prevent complaints from -Wcast-qual.  */
+      if ((ldptr = ldopen (CONST_CAST (char *, prog_name), ldptr)) != NULL)
 	{
 	  if (! MY_ISCOFF (HEADER (ldptr).f_magic))
 	    fatal ("%s: not a COFF file", prog_name);
@@ -2507,7 +2559,7 @@ scan_prog_file (const char *prog_name, enum pass which_pass)
 
 		      switch (is_ctor_dtor (name))
 			{
-			case 1:
+			case SYM_CTOR:
 			  if (! is_shared)
 			    add_to_list (&constructors, name);
 #if defined (COLLECT_EXPORT_LIST) && !defined (LD_INIT_SWITCH)
@@ -2516,7 +2568,7 @@ scan_prog_file (const char *prog_name, enum pass which_pass)
 #endif
 			  break;
 
-			case 2:
+			case SYM_DTOR:
 			  if (! is_shared)
 			    add_to_list (&destructors, name);
 #if defined (COLLECT_EXPORT_LIST) && !defined (LD_INIT_SWITCH)
@@ -2526,14 +2578,14 @@ scan_prog_file (const char *prog_name, enum pass which_pass)
 			  break;
 
 #ifdef COLLECT_EXPORT_LIST
-			case 3:
+			case SYM_INIT:
 #ifndef LD_INIT_SWITCH
 			  if (is_shared)
 			    add_to_list (&constructors, name);
 #endif
 			  break;
 
-			case 4:
+			case SYM_FINI:
 #ifndef LD_INIT_SWITCH
 			  if (is_shared)
 			    add_to_list (&destructors, name);
@@ -2541,7 +2593,7 @@ scan_prog_file (const char *prog_name, enum pass which_pass)
 			  break;
 #endif
 
-			case 5:
+			case SYM_DWEH:
 			  if (! is_shared)
 			    add_to_list (&frame_tables, name);
 #if defined (COLLECT_EXPORT_LIST) && !defined (LD_INIT_SWITCH)
@@ -2619,7 +2671,7 @@ resolve_lib_name (const char *name)
     if (libpaths[i]->max_len > l)
       l = libpaths[i]->max_len;
 
-  lib_buf = xmalloc (l + strlen(name) + 10);
+  lib_buf = XNEWVEC (char, l + strlen(name) + 10);
 
   for (i = 0; libpaths[i]; i++)
     {

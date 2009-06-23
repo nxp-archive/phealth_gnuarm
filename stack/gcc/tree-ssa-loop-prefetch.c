@@ -364,7 +364,8 @@ idx_analyze_ref (tree base, tree *index, void *data)
       || TREE_CODE (base) == ALIGN_INDIRECT_REF)
     return false;
 
-  if (!simple_iv (ar_data->loop, ar_data->stmt, *index, &iv, false))
+  if (!simple_iv (ar_data->loop, loop_containing_stmt (ar_data->stmt),
+		  *index, &iv, false))
     return false;
   ibase = iv.base;
   step = iv.step;
@@ -1460,7 +1461,7 @@ loop_prefetch_arrays (struct loop *loop)
   struct tree_niter_desc desc;
   bool unrolled = false, no_other_refs;
 
-  if (!maybe_hot_bb_p (loop->header))
+  if (optimize_loop_nest_for_size_p (loop))
     {
       if (dump_file && (dump_flags & TDF_DETAILS))
 	fprintf (dump_file, "  ignored (cold area)\n");

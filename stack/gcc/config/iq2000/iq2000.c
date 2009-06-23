@@ -1,5 +1,6 @@
 /* Subroutines used for code generation on Vitesse IQ2000 processors
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -161,8 +162,8 @@ static bool iq2000_return_in_memory   (const_tree, const_tree);
 static void iq2000_setup_incoming_varargs (CUMULATIVE_ARGS *,
 					   enum machine_mode, tree, int *,
 					   int);
-static bool iq2000_rtx_costs          (rtx, int, int, int *);
-static int  iq2000_address_cost       (rtx);
+static bool iq2000_rtx_costs          (rtx, int, int, int *, bool);
+static int  iq2000_address_cost       (rtx, bool);
 static section *iq2000_select_section (tree, int, unsigned HOST_WIDE_INT);
 static bool iq2000_pass_by_reference  (CUMULATIVE_ARGS *, enum machine_mode,
 				       const_tree, bool);
@@ -744,7 +745,7 @@ iq2000_move_1word (rtx operands[], rtx insn, int unsignedp)
 /* Provide the costs of an addressing mode that contains ADDR.  */
 
 static int
-iq2000_address_cost (rtx addr)
+iq2000_address_cost (rtx addr, bool speed)
 {
   switch (GET_CODE (addr))
     {
@@ -795,7 +796,7 @@ iq2000_address_cost (rtx addr)
 	  case LABEL_REF:
 	  case HIGH:
 	  case LO_SUM:
-	    return iq2000_address_cost (plus1) + 1;
+	    return iq2000_address_cost (plus1, speed) + 1;
 
 	  default:
 	    break;
@@ -3203,7 +3204,8 @@ print_operand (FILE *file, rtx op, int letter)
 }
 
 static bool
-iq2000_rtx_costs (rtx x, int code, int outer_code ATTRIBUTE_UNUSED, int * total)
+iq2000_rtx_costs (rtx x, int code, int outer_code ATTRIBUTE_UNUSED, int * total,
+		  bool speed ATTRIBUTE_UNUSED)
 {
   enum machine_mode mode = GET_MODE (x);
 

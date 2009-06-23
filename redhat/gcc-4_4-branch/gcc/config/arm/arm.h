@@ -1,6 +1,6 @@
 /* Definitions of target machine for GNU compiler, for ARM.
    Copyright (C) 1991, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Pieter `Tiggr' Schoenmakers (rcpieter@win.tue.nl)
    and Martin Simmons (@harleqn.co.uk).
@@ -2244,7 +2244,9 @@ do {							\
 #define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR, LABEL)	\
   if (TARGET_32BIT)					\
     ARM_GO_IF_MODE_DEPENDENT_ADDRESS (ADDR, LABEL)
-
+
+/* Define this for compatibility reasons. */
+#define HANDLE_PRAGMA_PACK_PUSH_POP
 
 /* Specify the machine mode that this machine uses
    for the index in the tablejump instruction.  */
@@ -2448,7 +2450,7 @@ extern int making_const_table;
         {						\
           if (is_called_in_ARM_mode (DECL)		\
 	      || (TARGET_THUMB1 && !TARGET_THUMB1_ONLY	\
-		  && crtl->is_thunk))	\
+		  && cfun->is_thunk))	\
             fprintf (STREAM, "\t.code 32\n") ;		\
           else if (TARGET_THUMB1)			\
            fprintf (STREAM, "\t.code\t16\n\t.thumb_func\n") ;	\

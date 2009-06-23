@@ -1,0 +1,354 @@
+
+2009-06-22  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r148777
+
+2009-06-18  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r148653
+
+2009-06-16  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r148523
+
+2009-06-12  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r148428
+
+2009-06-08  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r148271
+
+2009-06-03  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r148111
+
+2009-05-26  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r147859
+
+2009-05-15  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r147550
+
+2009-05-11  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r147379
+
+2009-05-07  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r147228
+
+2009-05-06  Basile Starynkevitch  <basile@starynkevitch.net>
+	* configure.ac: check for PPL version 0.10 or better since future
+	0.11 is ok
+	* configure: regenerated
+
+2009-05-04  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r147090
+
+2009-04-27  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r146824
+
+2009-04-09  Basile Starynkevitch  <basile@starynkevitch.net>
+	all .bysl files renamed to .melt
+	all ChangeLog.melt renamed to ChangeLog.MELT
+
+2009-04-07  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r145646
+
+2009-04-02  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r145451
+
+2009-03-29  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r145230
+
+2009-03-25  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r145061
+
+2009-03-22  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r144999
+
+2009-03-18  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r144927
+
+2009-03-13  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r144830
+
+2009-03-08  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r144708
+
+2009-03-04  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r144598
+
+2009-02-23  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r144379
+
+2009-02-19  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r144284
+
+2009-02-10  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r144050
+
+2009-02-05  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r143951
+
+2009-02-02  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r143867
+
+2009-01-29  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r143767
+
+2009-01-21  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r143546
+
+2009-01-15  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r143392
+
+2009-01-13  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r143328
+
+2009-01-09  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r143197
+
+2009-01-05  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r143070
+
+2008-12-14  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r142748
+
+2008-12-10  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r142640
+
+2008-12-08  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r142553
+
+2008-12-04  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r142432
+
+2008-12-02  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r142344
+
+2008-11-28  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r142527
+
+2008-11-20  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r142033
+
+2008-11-12  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141785
+
+2008-11-07  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141668
+
+2008-11-03  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141555
+
+2008-10-31  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141467
+
+2008-10-27  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141380
+
+2008-10-23  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141325
+
+2008-10-18  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141209
+
+2008-10-15  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141146
+
+2008-10-13  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141082
+
+2008-10-10  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r141021
+
+2008-10-08  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140962
+
+2008-10-05  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140892
+
+2008-10-03  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140849
+
+2008-10-01  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140812
+
+2008-09-29  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140750
+
+2008-09-27  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140717
+
+2008-09-26  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140680
+
+2008-09-24  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140637
+
+2008-09-22  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140542
+
+2008-09-18  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140490
+
+2008-09-17  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140415
+
+22008-09-15  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140388
+
+2008-09-15  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140370
+
+2008-09-11  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140286
+
+2008-09-08  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140164
+
+2008-09-06  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r140063
+
+2008-09-04  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r139990
+
+2008-09-04  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r139983
+
+2008-09-03  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r139931
+
+2008-09-02  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r139912 after graphite merge into trunk
+
+2008-09-01  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r139848
+
+2008-09-01  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r139820
+
+2008-08-14  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r139100
+
+2008-08-06  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r138800
+
+2008-08-05  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r138697
+
+2008-08-04  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r138620
+
+2008-08-01  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r138450
+
+2008-07-31  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r138355
+
+2008-07-30  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r138310
+
+2008-07-29  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r138226 [after tuple merge into trunk]
+	some compiler probe stuff are missing
+
+2008-07-22  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r138050
+
+2008-07-17  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r137918
+
+2008-07-15  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r137813
+
+2008-07-08  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r137620
+
+2008-07-02  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r137357
+
+2008-07-01  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r137318
+
+2008-07-01  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r137307
+
+2008-06-25  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r137105
+
+2008-06-23  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r137030
+
+2008-06-18  Basile Starynkevitch  <basile@starynkevitch.net>
+	Adding nearly empty texi documentation on MELT
+
+2008-06-10  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r136757
+
+2008-06-10  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r136620
+
+2008-06-09  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r136577
+
+2008-06-06  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r136492
+
+2008-06-04  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r136369
+
+2008-06-03  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r136317
+
+2008-06-02  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r136272
+
+2008-05-27  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r136046
+
+2008-05-22  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r135793
+
+2008-05-21  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r135714
+
+2008-05-17  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r135459
+
+2008-05-06  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r134973
+
+2008-04-21   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r134529 (added fg-byte-scan.c from new trunk)
+
+2008-04-21   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r134525
+
+2008-04-17   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r134362
+
+2008-04-14   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r134275
+
+	stilly buggy for libgcc muldi3: internal compiler error: in
+	execute_ipa_pass_list, at passes.c:1235
+
+2008-04-05   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r133937
+
+2008-04-05   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r133930
+
+2008-03-26   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r133612
+
+2008-03-24   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r133512
+
+2008-03-20   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r133366
+
+2008-03-11   Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r133288
+
+2008-02-26  Basile Starynkevitch  <basile@starynkevitch.net>
+	MELT branch merged with trunk r132671
+        Merged revisions 132452-132671 via svnmerge from 
+        svn+ssh://bstarynk@gcc.gnu.org/svn/gcc/trunk
+
+2008-02-19   Basile Starynkevitch  <basile@starynkevitch.net>
+	Created MELT branch. See also gcc/ChangeLog.melt

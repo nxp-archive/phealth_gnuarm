@@ -5,9 +5,9 @@
 
 #define N 256
 
-float pa[N] __attribute__ ((__aligned__(16)));
-float pb[N] __attribute__ ((__aligned__(16))) = {0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57};
-float pc[N] __attribute__ ((__aligned__(16))) = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19};
+float pa[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
+float pb[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__))) = {0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57};
+float pc[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__))) = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19};
 
 /* Check handling of unaligned accesses when the misalignment is
    known at compile time and different accesses have the same
@@ -17,18 +17,18 @@ float pc[N] __attribute__ ((__aligned__(16))) = {0,1,2,3,4,5,6,7,8,9,10,11,12,13
    can use this information (generate prolog and epilog loops
    with known number of iterations, and only if needed).  */
 
-int
+__attribute__ ((noinline)) int
 main1 ()
 {
   int i;
 
-  for (i = 0; i < 5; i++)
+  for (i = 0; i < 10; i++)
     {
       pa[i+1] = pb[i+1] * pc[i+1];
     }
 
   /* check results:  */
-  for (i = 0; i < 5; i++)
+  for (i = 0; i < 10; i++)
     {
       if (pa[i+1] != (pb[i+1] * pc[i+1]))
 	abort ();
@@ -37,18 +37,18 @@ main1 ()
   return 0;
 }
 
-int
+__attribute__ ((noinline)) int
 main2 ()
 {
   int i;
 
-  for (i = 0; i < 6; i++)
+  for (i = 0; i < 12; i++)
     {
       pa[i+1] = pb[i+1] * pc[i+1];
     }
 
   /* check results:  */
-  for (i = 0; i < 6; i++)
+  for (i = 0; i < 12; i++)
     {
       if (pa[i+1] != (pb[i+1] * pc[i+1]))
 	abort ();
@@ -57,7 +57,7 @@ main2 ()
   return 0;
 }
 
-int
+__attribute__ ((noinline)) int
 main3 (int n)
 {
   int i;

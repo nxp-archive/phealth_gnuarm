@@ -1,5 +1,5 @@
 /* Loop unswitching.
-   Copyright (C) 2004, 2005, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
    
 This file is part of GCC.
    
@@ -195,6 +195,14 @@ tree_unswitch_single_loop (struct loop *loop, int num)
     {
       if (dump_file && (dump_flags & TDF_DETAILS))
 	fprintf (dump_file, ";; Not unswitching, not innermost loop\n");
+      return false;
+    }
+
+  /* Do not unswitch in cold regions.  */
+  if (optimize_loop_for_size_p (loop))
+    {
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	fprintf (dump_file, ";; Not unswitching cold loops\n");
       return false;
     }
 

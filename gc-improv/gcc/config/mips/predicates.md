@@ -1,5 +1,5 @@
 ;; Predicate definitions for MIPS.
-;; Copyright (C) 2004, 2007 Free Software Foundation, Inc.
+;; Copyright (C) 2004, 2007, 2008 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -76,9 +76,11 @@
        (ior (match_test "op == CONST0_RTX (GET_MODE (op))")
 	    (match_test "op == CONST1_RTX (GET_MODE (op))"))))
 
-(define_predicate "fpr_operand"
+(define_predicate "d_operand"
   (and (match_code "reg")
-       (match_test "FP_REG_P (REGNO (op))")))
+       (match_test "TARGET_MIPS16
+		    ? M16_REG_P (REGNO (op))
+		    : GP_REG_P (REGNO (op))")))
 
 (define_predicate "lo_operand"
   (and (match_code "reg")
@@ -102,14 +104,9 @@
   switch (symbol_type)
     {
     case SYMBOL_ABSOLUTE:
-      /* We can only use direct calls for TARGET_ABSOLUTE_ABICALLS if we
-	 are sure that the target function does not need $25 to be live
-	 on entry.  This is true for any locally-defined function because
-	 any such function will use %hi/%lo accesses to set up $gp.  */
-      if (TARGET_ABSOLUTE_ABICALLS
-          && !(GET_CODE (op) == SYMBOL_REF
-	       && SYMBOL_REF_DECL (op)
-	       && !DECL_EXTERNAL (SYMBOL_REF_DECL (op))))
+      /* We can only use direct calls if we're sure that the target
+	 function does not need $25 to be valid on entry.  */
+      if (mips_use_pic_fn_addr_reg_p (op))
 	return false;
 
       /* If -mlong-calls or if this function has an explicit long_call
@@ -204,6 +201,11 @@
       return (mips_symbolic_constant_p (op, SYMBOL_CONTEXT_LEA, &symbol_type)
 	      && !mips_split_p[symbol_type]);
 
+    case HIGH:
+      op = XEXP (op, 0);
+      return (mips_symbolic_constant_p (op, SYMBOL_CONTEXT_LEA, &symbol_type)
+	      && !mips_split_hi_p[symbol_type]);
+
     default:
       return true;
     }
@@ -283,6 +285,12 @@
 (define_predicate "order_operator"
   (match_code "lt,ltu,le,leu,ge,geu,gt,gtu"))
 
+;; For NE, cstore uses sltu instructions in which the first operand is $0.
+;; This isn't possible in mips16 code.
+
+(define_predicate "mips_cstore_operator"
+  (ior (match_code "eq,gt,gtu,ge,geu,lt,ltu,le,leu")
+       (and (match_code "ne") (match_test "!TARGET_MIPS16"))))
 
 (define_predicate "small_data_pattern"
   (and (match_code "set,parallel,unspec,unspec_volatile,prefetch")

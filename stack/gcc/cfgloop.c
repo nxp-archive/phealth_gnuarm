@@ -1,5 +1,5 @@
 /* Natural loop discovery code for GNU compiler.
-   Copyright (C) 2000, 2001, 2003, 2004, 2005, 2006, 2007
+   Copyright (C) 2000, 2001, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -887,6 +887,19 @@ get_loop_body_in_dom_order (const struct loop *loop)
   return tovisit;
 }
 
+/* Gets body of a LOOP sorted via provided BB_COMPARATOR.  */
+
+basic_block *
+get_loop_body_in_custom_order (const struct loop *loop, 
+			       int (*bb_comparator) (const void *, const void *))
+{
+  basic_block *bbs = get_loop_body (loop);
+
+  qsort (bbs, loop->num_nodes, sizeof (basic_block), bb_comparator);
+
+  return bbs;
+}
+
 /* Get body of a LOOP in breadth first sort order.  */
 
 basic_block *
@@ -1606,4 +1619,19 @@ single_exit (const struct loop *loop)
     return exit->e;
   else
     return NULL;
+}
+
+/* Returns true when BB has an edge exiting LOOP.  */
+
+bool
+is_loop_exit (struct loop *loop, basic_block bb)
+{
+  edge e;
+  edge_iterator ei;
+
+  FOR_EACH_EDGE (e, ei, bb->preds)
+    if (loop_exit_edge_p (loop, e))
+      return true;
+
+  return false;
 }

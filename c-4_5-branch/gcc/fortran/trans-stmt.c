@@ -213,7 +213,6 @@ gfc_conv_elemental_dependencies (gfc_se * se, gfc_se * loopse,
   gfc_ss_info *info;
   gfc_symbol *fsym;
   int n;
-  stmtblock_t block;
   tree data;
   tree offset;
   tree size;
@@ -252,7 +251,7 @@ gfc_conv_elemental_dependencies (gfc_se * se, gfc_se * loopse,
 	    && gfc_check_fncall_dependency (e, fsym->attr.intent,
 					    sym, arg0, check_variable))
 	{
-	  tree initial;
+	  tree initial, temptype;
 	  stmtblock_t temp_post;
 
 	  /* Make a local loopinfo for the temporary creation, so that
@@ -278,24 +277,31 @@ gfc_conv_elemental_dependencies (gfc_se * se, gfc_se * loopse,
 	  else
 	    initial = NULL_TREE;
 
-	  /* Generate the temporary.  Merge the block so that the
-	     declarations are put at the right binding level.  Cleaning up the
-	     temporary should be the very last thing done, so we add the code to
-	     a new block and add it to se->post as last instructions.  */
+	  /* Find the type of the temporary to create; we don't use the type
+	     of e itself as this breaks for subcomponent-references in e (where
+	     the type of e is that of the final reference, but parmse.expr's
+	     type corresponds to the full derived-type).  */
+	  /* TODO: Fix this somehow so we don't need a temporary of the whole
+	     array but instead only the components referenced.  */
+	  temptype = TREE_TYPE (parmse.expr); /* Pointer to descriptor.  */
+	  gcc_assert (TREE_CODE (temptype) == POINTER_TYPE);
+	  temptype = TREE_TYPE (temptype);
+	  temptype = gfc_get_element_type (temptype);
+
+	  /* Generate the temporary.  Cleaning up the temporary should be the
+	     very last thing done, so we add the code to a new block and add it
+	     to se->post as last instructions.  */
 	  size = gfc_create_var (gfc_array_index_type, NULL);
 	  data = gfc_create_var (pvoid_type_node, NULL);
-	  gfc_start_block (&block);
 	  gfc_init_block (&temp_post);
-	  tmp = gfc_typenode_for_spec (&e->ts);
 	  tmp = gfc_trans_create_temp_array (&se->pre, &temp_post,
-					     &tmp_loop, info, tmp,
+					     &tmp_loop, info, temptype,
 					     initial,
 					     false, true, false,
 					     &arg->expr->where);
 	  gfc_add_modify (&se->pre, size, tmp);
 	  tmp = fold_convert (pvoid_type_node, info->data);
 	  gfc_add_modify (&se->pre, data, tmp);
-	  gfc_merge_block_scope (&block);
 
 	  /* Calculate the offset for the temporary.  */
 	  offset = gfc_index_zero_node;
@@ -311,14 +317,11 @@ gfc_conv_elemental_dependencies (gfc_se * se, gfc_se * loopse,
 	  info->offset = gfc_create_var (gfc_array_index_type, NULL);	  
 	  gfc_add_modify (&se->pre, info->offset, offset);
 
-
 	  /* Copy the result back using unpack.  */
 	  tmp = build_call_expr (gfor_fndecl_in_unpack, 2, parmse.expr, data);
 	  gfc_add_expr_to_block (&se->post, tmp);
 
-	  /* XXX: This is possibly not needed; but isn't it cleaner this way? */
-	  gfc_add_block_to_block (&se->pre, &parmse.pre);
-
+	  /* parmse.pre is already added above.  */
 	  gfc_add_block_to_block (&se->post, &parmse.post);
 	  gfc_add_block_to_block (&se->post, &temp_post);
 	}
@@ -758,6 +761,7 @@ gfc_trans_simple_do (gfc_code * code, stmtblock_t *pblock, tree dovar,
   tree type;
   tree cond;
   tree tmp;
+  tree saved_dovar = NULL;
   tree cycle_label;
   tree exit_label;
   
@@ -765,6 +769,13 @@ gfc_trans_simple_do (gfc_code * code, stmtblock_t *pblock, tree dovar,
 
   /* Initialize the DO variable: dovar = from.  */
   gfc_add_modify (pblock, dovar, from);
+  
+  /* Save value for do-tinkering checking. */
+  if (gfc_option.rtcheck & GFC_RTCHECK_DO)
+    {
+      saved_dovar = gfc_create_var (type, ".saved_dovar");
+      gfc_add_modify (pblock, saved_dovar, dovar);
+    }
 
   /* Cycle and exit statements are implemented with gotos.  */
   cycle_label = gfc_build_label_decl (NULL_TREE);
@@ -787,6 +798,14 @@ gfc_trans_simple_do (gfc_code * code, stmtblock_t *pblock, tree dovar,
       gfc_add_expr_to_block (&body, tmp);
     }
 
+  /* Check whether someone has modified the loop variable. */
+  if (gfc_option.rtcheck & GFC_RTCHECK_DO)
+    {
+      tmp = fold_build2 (NE_EXPR, boolean_type_node, dovar, saved_dovar);
+      gfc_trans_runtime_check (true, false, tmp, &body, &code->loc,
+			       "Loop variable has been modified");
+    }
+
   /* Evaluate the loop condition.  */
   cond = fold_build2 (EQ_EXPR, boolean_type_node, dovar, to);
   cond = gfc_evaluate_now (cond, &body);
@@ -794,6 +813,9 @@ gfc_trans_simple_do (gfc_code * code, stmtblock_t *pblock, tree dovar,
   /* Increment the loop variable.  */
   tmp = fold_build2 (PLUS_EXPR, type, dovar, step);
   gfc_add_modify (&body, dovar, tmp);
+
+  if (gfc_option.rtcheck & GFC_RTCHECK_DO)
+    gfc_add_modify (&body, saved_dovar, dovar);
 
   /* The loop exit.  */
   tmp = build1_v (GOTO_EXPR, exit_label);
@@ -861,6 +883,7 @@ gfc_trans_do (gfc_code * code)
 {
   gfc_se se;
   tree dovar;
+  tree saved_dovar = NULL;
   tree from;
   tree to;
   tree step;
@@ -899,6 +922,14 @@ gfc_trans_do (gfc_code * code)
   gfc_add_block_to_block (&block, &se.pre);
   step = gfc_evaluate_now (se.expr, &block);
 
+  if (gfc_option.rtcheck & GFC_RTCHECK_DO)
+    {
+      tmp = fold_build2 (EQ_EXPR, boolean_type_node, step,
+			 fold_convert (type, integer_zero_node));
+      gfc_trans_runtime_check (true, false, tmp, &block, &code->loc,
+			       "DO step value is zero");
+    }
+
   /* Special case simple loops.  */
   if (TREE_CODE (type) == INTEGER_TYPE
       && (integer_onep (step)
@@ -921,6 +952,13 @@ gfc_trans_do (gfc_code * code)
 
   /* Initialize the DO variable: dovar = from.  */
   gfc_add_modify (&block, dovar, from);
+
+  /* Save value for do-tinkering checking. */
+  if (gfc_option.rtcheck & GFC_RTCHECK_DO)
+    {
+      saved_dovar = gfc_create_var (type, ".saved_dovar");
+      gfc_add_modify (&block, saved_dovar, dovar);
+    }
 
   /* Initialize loop count and jump to exit label if the loop is empty.
      This code is executed before we enter the loop body. We generate:
@@ -1008,9 +1046,20 @@ gfc_trans_do (gfc_code * code)
       gfc_add_expr_to_block (&body, tmp);
     }
 
+  /* Check whether someone has modified the loop variable. */
+  if (gfc_option.rtcheck & GFC_RTCHECK_DO)
+    {
+      tmp = fold_build2 (NE_EXPR, boolean_type_node, dovar, saved_dovar);
+      gfc_trans_runtime_check (true, false, tmp, &body, &code->loc,
+			       "Loop variable has been modified");
+    }
+
   /* Increment the loop variable.  */
   tmp = fold_build2 (PLUS_EXPR, type, dovar, step);
   gfc_add_modify (&body, dovar, tmp);
+
+  if (gfc_option.rtcheck & GFC_RTCHECK_DO)
+    gfc_add_modify (&body, saved_dovar, dovar);
 
   /* End with the loop condition.  Loop until countm1 == 0.  */
   cond = fold_build2 (EQ_EXPR, boolean_type_node, countm1,
@@ -2255,10 +2304,10 @@ compute_inner_temp_size (gfc_expr *expr1, gfc_expr *expr2,
       loop.array_parameter = 1;
 
       /* Calculate the bounds of the scalarization.  */
-      save_flag = flag_bounds_check;
-      flag_bounds_check = 0;
+      save_flag = gfc_option.rtcheck;
+      gfc_option.rtcheck &= !GFC_RTCHECK_BOUNDS;
       gfc_conv_ss_startstride (&loop);
-      flag_bounds_check = save_flag;
+      gfc_option.rtcheck = save_flag;
       gfc_conv_loop_setup (&loop, &expr2->where);
 
       /* Figure out how many elements we need.  */
@@ -3890,7 +3939,7 @@ gfc_trans_allocate (gfc_code * code)
       tree gfc_int4_type_node = gfc_get_int_type (4);
 
       stat = gfc_create_var (gfc_int4_type_node, "stat");
-      pstat = build_fold_addr_expr (stat);
+      pstat = gfc_build_addr_expr (NULL_TREE, stat);
 
       error_label = gfc_build_label_decl (NULL_TREE);
       TREE_USED (error_label) = 1;
@@ -3996,11 +4045,11 @@ gfc_trans_deallocate (gfc_code * code)
 
       /* Variable used with the library call.  */
       stat = gfc_create_var (gfc_int4_type_node, "stat");
-      pstat = build_fold_addr_expr (stat);
+      pstat = gfc_build_addr_expr (NULL_TREE, stat);
 
       /* Running total of possible deallocation failures.  */
       astat = gfc_create_var (gfc_int4_type_node, "astat");
-      apstat = build_fold_addr_expr (astat);
+      apstat = gfc_build_addr_expr (NULL_TREE, astat);
 
       /* Initialize astat to 0.  */
       gfc_add_modify (&block, astat, build_int_cst (TREE_TYPE (astat), 0));

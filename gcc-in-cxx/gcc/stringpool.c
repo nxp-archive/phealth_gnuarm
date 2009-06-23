@@ -47,7 +47,7 @@ const char digit_vector[] = {
 
 struct ht *ident_hash;
 
-static hashnode alloc_node (cpp_hash_table *);
+static hashnode alloc_node (hash_table *);
 static int mark_ident (struct cpp_reader *, hashnode, const void *);
 
 static void *
@@ -68,7 +68,7 @@ init_stringpool (void)
 
 /* Allocate a hash node.  */
 static hashnode
-alloc_node (cpp_hash_table *table ATTRIBUTE_UNUSED)
+alloc_node (hash_table *table ATTRIBUTE_UNUSED)
 {
   return GCC_IDENT_TO_HT_IDENT (make_node (IDENTIFIER_NODE));
 }
@@ -214,8 +214,7 @@ gt_pch_n_S (const void *x)
 /* SPD is saved in the PCH file and holds the information needed
    to restore the string pool.  */
 
-struct string_pool_data GTY(())
-{
+struct GTY(()) string_pool_data {
   struct ht_identifier * * 
     GTY((length ("%h.nslots"),
 	 nested_ptr (union tree_node, "%h ? GCC_IDENT_TO_HT_IDENT (%h) : NULL",

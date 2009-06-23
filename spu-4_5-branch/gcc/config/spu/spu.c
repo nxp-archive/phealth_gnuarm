@@ -165,11 +165,12 @@ static bool spu_vector_alignment_reachable (const_tree, bool);
 static tree spu_builtin_vec_perm (tree, tree *);
 static int spu_sms_res_mii (struct ddg *g);
 static void asm_file_start (void);
+static bool spu_no_relocation (tree, tree);
 static unsigned HOST_WIDE_INT spu_estimate_section_overhead (void);
 static unsigned HOST_WIDE_INT spu_estimate_instruction_size (rtx);
 static bool begin_critical_section (rtx, enum critical_section_type *);
 static bool end_critical_section (rtx, enum critical_section_type *);
-static unsigned HOST_WIDE_INT record_jump_table (rtx);
+static unsigned HOST_WIDE_INT record_jump_table (rtx, rtx *);
 static bool spu_start_new_section (int, unsigned HOST_WIDE_INT, 
                                    unsigned HOST_WIDE_INT, 
                                    unsigned HOST_WIDE_INT);
@@ -236,16 +237,37 @@ spu_libgcc_shift_count_mode (void);
 
 /* Built in types.  */
 tree spu_builtin_types[SPU_BTI_MAX];
+
+/* Pointer mode for __ea references.  */
+#define EAmode (spu_ea_model != 32 ? DImode : SImode)
 
 /*  TARGET overrides.  */
 
-static enum machine_mode spu_ea_pointer_mode (addr_space_t);
+static enum machine_mode spu_addr_space_pointer_mode (addr_space_t);
 #undef TARGET_ADDR_SPACE_POINTER_MODE
-#define TARGET_ADDR_SPACE_POINTER_MODE spu_ea_pointer_mode
+#define TARGET_ADDR_SPACE_POINTER_MODE spu_addr_space_pointer_mode
+
+static tree spu_addr_space_minus_type (addr_space_t, addr_space_t);
+#undef TARGET_ADDR_SPACE_MINUS_TYPE
+#define TARGET_ADDR_SPACE_MINUS_TYPE spu_addr_space_minus_type
 
 static const char *spu_addr_space_name (addr_space_t);
 #undef TARGET_ADDR_SPACE_NAME
 #define TARGET_ADDR_SPACE_NAME spu_addr_space_name
+
+static bool spu_addr_space_memory_address_p (enum machine_mode, rtx,
+					     addr_space_t);
+#undef TARGET_ADDR_SPACE_MEMORY_ADDRESS_P
+#define TARGET_ADDR_SPACE_MEMORY_ADDRESS_P spu_addr_space_memory_address_p
+
+static bool spu_addr_space_strict_memory_address_p (enum machine_mode, rtx,
+						    addr_space_t);
+#undef TARGET_ADDR_SPACE_STRICT_MEMORY_ADDRESS_P
+#define TARGET_ADDR_SPACE_STRICT_MEMORY_ADDRESS_P \
+  spu_addr_space_strict_memory_address_p
+
+#undef TARGET_ADDR_SPACE_LEGITIMIZE_ADDRESS
+#define TARGET_ADDR_SPACE_LEGITIMIZE_ADDRESS spu_legitimize_address
 
 static bool spu_addr_space_can_convert_p (addr_space_t, addr_space_t);
 #undef TARGET_ADDR_SPACE_CAN_CONVERT_P
@@ -269,6 +291,11 @@ static tree spu_addr_space_section_name (addr_space_t);
 #undef TARGET_ADDR_SPACE_SECTION_NAME
 #define TARGET_ADDR_SPACE_SECTION_NAME spu_addr_space_section_name
 
+static bool spu_addr_space_static_init_ok_p (tree, tree, addr_space_t,
+					     addr_space_t);
+#undef TARGET_ADDR_SPACE_STATIC_INIT_OK_P
+#define TARGET_ADDR_SPACE_STATIC_INIT_OK_P spu_addr_space_static_init_ok_p
+
 static unsigned int spu_section_type_flags (tree, const char *, int);
 #undef TARGET_SECTION_TYPE_FLAGS
 #define TARGET_SECTION_TYPE_FLAGS spu_section_type_flags
@@ -288,6 +315,15 @@ static bool spu_valid_pointer_mode (enum machine_mode mode);
 
 #undef TARGET_ASM_ALIGNED_DI_OP
 #define TARGET_ASM_ALIGNED_DI_OP "\t.quad\t"
+
+/* The current assembler doesn't like .4byte foo@ppu, so use the normal .long
+   and .quad for the debugger.  When it is known that the assembler is fixed,
+   these can be removed.  */
+#undef TARGET_ASM_UNALIGNED_SI_OP
+#define TARGET_ASM_UNALIGNED_SI_OP	"\t.long\t"
+
+#undef TARGET_ASM_UNALIGNED_DI_OP
+#define TARGET_ASM_UNALIGNED_DI_OP	"\t.quad\t"
 
 #undef TARGET_RTX_COSTS
 #define TARGET_RTX_COSTS spu_rtx_costs
@@ -465,7 +501,7 @@ spu_override_options (void)
       flag_partition_functions_into_sections = ICACHE_LINESIZE;
       flag_function_sections = 1;
       /* A stub is 8 words of information.  */
-      spu_stub_size = 32; 
+      spu_stub_size = 16; 
       fix_range ("75-79");
     }
 
@@ -2124,6 +2160,14 @@ spu_expand_prologue (void)
 	}
     }
 
+  if (TARGET_SOFTWARE_ICACHE)
+    {
+      insn = emit_insn (gen_blockage ());
+      add_reg_note (insn, REG_BRANCH_INFO,
+		    gen_rtx_SYMBOL_REF (VOIDmode,
+					ggc_strdup ("prologue_end")));
+    }
+
   emit_note (NOTE_INSN_DELETED);
 }
 
@@ -2155,6 +2199,15 @@ spu_expand_epilogue (bool sibcall_p)
       || total_size > 0
       || (current_function_is_leaf && TARGET_SOFTWARE_ICACHE))
     total_size += STACK_POINTER_OFFSET;
+
+  if (TARGET_SOFTWARE_ICACHE)
+    {
+      rtx insn = emit_insn (gen_blockage ());
+
+      add_reg_note (insn, REG_BRANCH_INFO,
+		    gen_rtx_SYMBOL_REF (VOIDmode,
+					ggc_strdup ("epilogue_start")));
+    }
 
   if (total_size > 0)
     {
@@ -2429,9 +2482,9 @@ typedef struct critical_sections
 }critical_sections_t;
 
 DEF_VEC_O(critical_sections_t);
-DEF_VEC_ALLOC_O(critical_sections_t,heap);
+DEF_VEC_ALLOC_O(critical_sections_t,gc);
 
-VEC (critical_sections_t, heap) *critical_sections = NULL;
+VEC (critical_sections_t, gc) *critical_sections = NULL;
 
 static bool
 bb_contains_prologue_p (basic_block bb)
@@ -2517,48 +2570,43 @@ begin_critical_section (rtx insn, enum critical_section_type *type)
   if (!INSN_P (insn))
     return false;
 
-  if (GET_CODE (PATTERN (insn)) == PARALLEL)
-    return false;
+  if (TARGET_SOFTWARE_ICACHE)
+    {
+      rtx note = find_reg_note (insn, REG_BRANCH_INFO, NULL_RTX); 
+
+      if (note)
+	{
+	  const char *info = XSTR (XEXP (note, 0), 0);
   
+          if (strcmp (info, "jumptable start") == 0)
+          {
+             *type = JUMP_TABLE;
+             return true;
+           }
+	  if (strcmp (info, "epilogue_start") == 0)
+	    {
+	      *type = EPILOGUE;
+	      dump_critical_section_info (EPILOGUE, true, insn);
+	      return true;
+	    }
+	  if (strcmp (info, "ibranch_seq") == 0)
+	    {  
+	      *type = IBRANCH_SEQ;
+	      dump_critical_section_info (IBRANCH_SEQ, true, insn);
+	      return true;
+	    }
+	}
+    }
+
   set = single_set (insn);
  
   if (set != 0)
     {
       rtx src, dest;
-      
+
       src = SET_SRC (set);
       dest = SET_DEST (set);
-      
-      if (TARGET_SOFTWARE_ICACHE 
-	  && REG_P (dest) 
-	  && (REGNO (dest) == STACK_POINTER_REGNUM)
-	  && (GET_CODE (src)) == PLUS)
-	{
-	  rtx op1, op2;
-	  
-	  op1 = XEXP (src, 0);
-	  op2 = XEXP (src, 1);
-	  if (REG_P (op1)
-	      && (REGNO (op1) == STACK_POINTER_REGNUM)
-	      && (GET_CODE (op2) == CONST_INT)
-	      && (INTVAL (op2) > 0))
-	    {
-	      *type = EPILOGUE;
-              dump_critical_section_info (EPILOGUE, true, insn);
-	      return true;
-	    }
-	}
-      /* The interval from lqr $76, func_ptr to the
-	 branch indirect is a critical section. */
-      if (TARGET_SOFTWARE_ICACHE 
-	  && REG_P (dest) 
-	  && (REGNO (dest) == 76) 
-	  && (REG_P (src)))
-	{
-	  *type = IBRANCH_SEQ;
-          dump_critical_section_info (IBRANCH_SEQ, true, insn);
-	  return true;
-	}
+     
       /* We are looking for this type of instruction:
 
          (insn (set (reg)
@@ -2577,10 +2625,9 @@ begin_critical_section (rtx insn, enum critical_section_type *type)
 	      }
 	  }
       
-      if (GET_CODE (src) == LABEL_REF)
+      if (!TARGET_SOFTWARE_ICACHE && GET_CODE (src) == LABEL_REF)
 	{
 	  *type = JUMP_TABLE;
-          dump_critical_section_info (JUMP_TABLE, true, insn);
 	  return true;
 	}
     }
@@ -2635,6 +2682,9 @@ is_ibranch_seq_end (rtx insn)
 	  if (GET_CODE (SET_DEST (set)) != PC)
 	    abort ();
 	  
+	  if (REG_P (src) && REGNO (src) == 75)
+	    return true;
+
 	  if (GET_CODE (src) == IF_THEN_ELSE)
 	    {
 	      rtx lab = 0;
@@ -2670,58 +2720,44 @@ is_ibranch_seq_end (rtx insn)
 static bool
 end_critical_section (rtx insn, enum critical_section_type *type)
 {
-  rtx body, set;
+  rtx body;
 
   if (!INSN_P (insn))
     return false;
 
-  body = PATTERN (insn);
-
-  if (TARGET_SOFTWARE_ICACHE 
-      && (JUMP_P (insn) || CALL_P (insn))
-      && is_ibranch_seq_end (insn))
+  if (TARGET_SOFTWARE_ICACHE)
     {
-      *type = IBRANCH_SEQ;
-      dump_critical_section_info (IBRANCH_SEQ, false, insn);
-      return true;
-    }
-  if (TARGET_SOFTWARE_ICACHE 
-      && JUMP_P (insn) 
-      && GET_CODE (PATTERN (insn)) == RETURN)
-    {
-      *type = EPILOGUE;
-      dump_critical_section_info (EPILOGUE, false, insn);
-      return true;
-    }
-
-  set = single_set (insn);
-  
-  if (TARGET_SOFTWARE_ICACHE && set)
-    {
-      rtx src = SET_SRC (set);
-      rtx dest = SET_DEST (set);
-
-      if (TARGET_SOFTWARE_ICACHE
-	  && REG_P (dest)
-	  && (REGNO (dest) == STACK_POINTER_REGNUM)
-	  && (GET_CODE (src)) == PLUS)
+      rtx note = find_reg_note (insn, REG_BRANCH_INFO, NULL_RTX); 
+      if (note)
 	{
-	  rtx op1, op2;
-	  
-	  op1 = XEXP (src, 0);
-	  op2 = XEXP (src, 1);
-	  if (REG_P (op1)
-	      && (REGNO (op1) == STACK_POINTER_REGNUM)
-	      && (GET_CODE (op2) == CONST_INT)
-	      && (INTVAL (op2) < 0))
+	  const char *info = XSTR (XEXP (note, 0), 0);
+
+	  if (strcmp (info, "prologue_end") == 0)
 	    {
 	      *type = PROLOGUE;
-              dump_critical_section_info (PROLOGUE, false, insn);
+	      dump_critical_section_info (PROLOGUE, false, insn);
 	      return true;
 	    }
 	}
+
+      if ((JUMP_P (insn) || CALL_P (insn)) && is_ibranch_seq_end (insn))
+	{
+	  *type = IBRANCH_SEQ;
+	  dump_critical_section_info (IBRANCH_SEQ, false, insn);
+	  return true;
+	}
+
+      if ((JUMP_P (insn) && GET_CODE (PATTERN (insn)) == RETURN)
+	  || (CALL_P (insn) && SIBLING_CALL_P (insn)))
+	{
+	  *type = EPILOGUE;
+	  dump_critical_section_info (EPILOGUE, false, insn);
+	  return true;
+	}
     }
-  
+
+  body = PATTERN (insn);
+
   /* We are looking for the following type of instruction:
 
      (insn (parallel [
@@ -2822,26 +2858,27 @@ spu_legal_breakpoint (rtx insn)
    .
    .
    end of table
-   */
+   LAST_INSN_CRITICAL SECTION denotes the jump_insn which is the last
+   instruction in the section (excluding the table itself).  */
 static unsigned HOST_WIDE_INT  
-record_jump_table (rtx ila_insn)
+record_jump_table (rtx ila_insn, rtx *last_insn_critical_section)
 {
-  rtx insn, set;
+  rtx insn;
   basic_block bb;
-  rtx label, label1;
+  rtx label1, set, label = NULL_RTX;
   bool *bb_aux;
   bool found_jump_table = false;
   unsigned HOST_WIDE_INT size = 0;
-  
-  bb_aux = (bool *)xmalloc (n_basic_blocks * sizeof (bool));
-  memset (bb_aux, false, n_basic_blocks * sizeof (bool));
+ 
+  bb_aux = (bool *)xmalloc (last_basic_block * sizeof (bool));
+  memset (bb_aux, false, last_basic_block * sizeof (bool));
 
-  set = single_set (ila_insn);
-  
-  gcc_assert (set);
-  
-  label = XEXP (SET_SRC (set), 0);
-
+  if (!TARGET_SOFTWARE_ICACHE)
+    {
+      set = single_set (ila_insn);
+      gcc_assert (set);
+      label = XEXP (SET_SRC (set), 0);
+   }
   /* Reset counters.  */
   mem_ref_counter = 0;
   safe_hints_counter = 0;
@@ -2849,30 +2886,35 @@ record_jump_table (rtx ila_insn)
   
   for (insn = ila_insn; insn != NULL; insn = NEXT_INSN (insn))
     {
-      bb = BLOCK_FOR_INSN (insn);
-      bb_aux[bb->index] = true;
-      
       if (!INSN_P (insn))
 	continue;
-      
-      size += spu_estimate_instruction_size (insn); 
+
+      bb = BLOCK_FOR_INSN (insn);
+      if (!TARGET_SOFTWARE_ICACHE)
+        bb_aux[bb->index] = true;
+      size += spu_estimate_instruction_size (insn);
+
       if (!tablejump_p (insn, &label1, NULL))
 	continue;
       
-      if (rtx_equal_p (label, label1))
+      if ((!TARGET_SOFTWARE_ICACHE && rtx_equal_p (label, label1))
+          || TARGET_SOFTWARE_ICACHE)
 	{
 	  found_jump_table = true;
+          *last_insn_critical_section = insn;
 	  break;
 	}
+       
     }
   
   if (found_jump_table)
     {
       int i;
-      
+     
+       dump_critical_section_info (JUMP_TABLE, true, ila_insn); 
       /* Mark the bb's between the jump-table and the code that
          reads the table so they reside in the same section.  */
-      for (i = 0; i < n_basic_blocks; i++)
+      for (i = 0; i < last_basic_block; i++)
 	if (bb_aux[i] == true)
 	  BASIC_BLOCK (i)->il.rtl->skip = 1;
     }
@@ -2889,7 +2931,7 @@ record_jump_table (rtx ila_insn)
    START_SEQUENCE; which appears in the same basic-block as bb and is
    of type TYPE.  */
 static void
-close_critical_sections (VEC (critical_sections_t, heap) *start_sequence,
+close_critical_sections (VEC (critical_sections_t, gc) *start_sequence,
 			 basic_block bb, enum critical_section_type type, 
 			 rtx insn)
 {
@@ -2908,7 +2950,7 @@ close_critical_sections (VEC (critical_sections_t, heap) *start_sequence,
 	  crit->closed_p = true;
 	  crit->end = insn;
 	  bb_close_critical_section_p = true;
-	  VEC_safe_push (critical_sections_t, heap, critical_sections, crit);
+	  VEC_safe_push (critical_sections_t, gc, critical_sections, crit);
 	  break;
 	}
     }
@@ -2933,7 +2975,7 @@ spu_start_new_section (int bb_index, unsigned HOST_WIDE_INT bb_size,
 		       unsigned HOST_WIDE_INT last_section_size)
 {
   rtx insn;
-  VEC (critical_sections_t, heap) *start_sequence = NULL;
+  VEC (critical_sections_t, gc) *start_sequence = NULL;
   int i;
   enum critical_section_type type;
   basic_block bb = BASIC_BLOCK (bb_index);
@@ -2945,6 +2987,8 @@ spu_start_new_section (int bb_index, unsigned HOST_WIDE_INT bb_size,
   /* Estimate the number of external branch limit in the current section.  */
   if (TARGET_SOFTWARE_ICACHE)
     {
+      if (last_section_size == 0)
+        estimate_number_of_external_branches_in_section = 0;
       if (bb->flags & BB_FIRST_AFTER_SECTION_SWITCH)
 	estimate_number_of_external_branches_in_section = 0;
       else if (!(single_succ_p (bb) && single_succ_edge (bb)->dest == bb))
@@ -2958,19 +3002,24 @@ spu_start_new_section (int bb_index, unsigned HOST_WIDE_INT bb_size,
   /* Loop through all of the basic-block's insns.  */
   FOR_BB_INSNS (bb, insn)
     {
-      if (tablejump_p (insn, NULL, NULL) && !bb->il.rtl->skip)
+      /* Free the critical section list from previous functions.  */
+      if (NOTE_P (insn) && NOTE_KIND (insn) == NOTE_INSN_FUNCTION_BEG)
+        VEC_free (critical_sections_t, gc, critical_sections);
+  
+      if (tablejump_p (insn, NULL, NULL) && !bb->il.rtl->skip && !TARGET_SOFTWARE_ICACHE)
 	warning (0, "Unexpected jump-table in basic-block %d.  ", bb->index);
       
       /* Check whether this insn can begin a critical sections.  */
       if (begin_critical_section (insn, &type))
 	{
 	  critical_sections_t crit;
+          rtx last_insn_critical_section = NULL_RTX;
 	  
 	  size = bb_size;
 	  
 	  if (type == JUMP_TABLE)
 	    {
-	      size = record_jump_table (insn);
+	      size = record_jump_table (insn, &last_insn_critical_section);
 	      if (size > estimate_max_section_size)
 		warning (0,
 			 "jump-table in bb exceeds section size %d.  ",
@@ -2984,8 +3033,19 @@ spu_start_new_section (int bb_index, unsigned HOST_WIDE_INT bb_size,
 	  crit.type = type;
 	  crit.start = insn;
 	  crit.closed_p = false;
+          crit.end = NULL_RTX;
 	  /* Record the start instruction unless this is the .  */
-	  VEC_safe_push (critical_sections_t, heap, start_sequence, &crit);
+	  VEC_safe_push (critical_sections_t, gc, start_sequence, &crit);
+          if (type == JUMP_TABLE)
+            {
+              /* If this section contains if of type JUMP_TABLE then
+                 we already have its first and last instructions, so we
+                 record the critical section now.  */
+              gcc_assert (tablejump_p (last_insn_critical_section, NULL, NULL));
+              crit.end = last_insn_critical_section;
+              dump_critical_section_info (JUMP_TABLE, false, crit.end);
+              VEC_safe_push (critical_sections_t, gc, critical_sections, &crit);
+            }
 	}
 
       /* Check whether this insn can end a critical sections.  */
@@ -3017,7 +3077,7 @@ spu_start_new_section (int bb_index, unsigned HOST_WIDE_INT bb_size,
   if (last_section_size == 0)
     start_new_section_p = false;
   
-  VEC_free (critical_sections_t, heap, start_sequence);
+  VEC_free (critical_sections_t, gc, start_sequence);
  
   if (TARGET_SOFTWARE_ICACHE
       && !has_jump_table 
@@ -3055,7 +3115,12 @@ spu_start_new_section (int bb_index, unsigned HOST_WIDE_INT bb_size,
 static bool
 spu_dont_create_jumptable (unsigned int ncases)
 {
-  unsigned int table_size = ncases * 4 + 12 * 4;
+  unsigned int table_size = ncases * 4;
+
+  /* For the software icache scheme we should take into account the
+     inline check.  */
+  if (TARGET_SOFTWARE_ICACHE)
+    table_size += (12 * 4);
 
   if (flag_partition_functions_into_sections == 0)
     return false;
@@ -3063,72 +3128,6 @@ spu_dont_create_jumptable (unsigned int ncases)
   if ((table_size) > (unsigned int)flag_partition_functions_into_sections)
     return true;
   return false;
-}
-
-/* All inter-block branches can cause cache misses, and therefore
-   evictions.  During eviction, a block is deallocated from the cache.
-   A stack back-trace is performed to locate the first return pointer to
-   the evicted block.  This back-trace process requires knowlege about
-   the current state of liveness of the first three link elements.
-   Therefor, all external branches must be labeled with a 3 bit link
-   liveness indicator.
-
-   liveness
-   indicator  meaning
-   ---------  -------------------------------------
-              1..       indicates the lr itself is live
-              .1.       indicates the value *(sp+16) is live
-              ..1       indicates the value *(*sp+16) is live
-
-   For example, on entry to a function the liveness indicator would be
-   "101" because the link register is live, but the link value in the
-   current stack frame is not while the the link value in the previous
-   stack frame is valid.  After, the link register is saved in a non-leaf
-   function, the indicator would be "011".  If the function then allocates
-   a new stack frame, the indicator would be "001".  If a leaf proceedure
-   creates a new stack frame, the indicator would transition from "101"
-   to "100".  
-   TODO:  If we always save lr and do not break the sequence between
-   stack-setup and tear-down parts we have the following two scenarios:
-   1. inter-functions calls (including sibling calls) -- 101 
-   2. intra-function jumps between stack-setup part and tear-down part --
-   001.
-   The linker can deduce the states (GCC does not have to pass the
-   lr information.  To create smaller critical sections GCC should
-   calculate the states and pass them to the linker.  */
-static void
-record_link_elements_liveness (void)
-{
-  rtx insn;
- 
-  gcc_assert (TARGET_SOFTWARE_ICACHE);
-  for (insn = get_insns (); insn; insn = NEXT_INSN (insn))
-    {
-      rtx set;
-      
-      if (!INSN_P (insn))
-	continue;
-
-      /* Fix lqa r75,__icache_ptr_handler$lr_live.  */
-      set = single_set (insn);
-      if (set 
-	  && REG_P (SET_DEST (set)) 
-	  && (REGNO (SET_DEST (set)) == 75)
-	  && MEM_P (SET_SRC (set)) 
-	  && GET_CODE (XEXP (XEXP (SET_SRC (set), 0), 0)) == SYMBOL_REF)
-	{
-         rtx symbol_ref;
-	 char *new_symbol;
-	 const char *str;
-	 
-         symbol_ref = XEXP (XEXP (SET_SRC (set), 0), 0);
-	 str = XSTR (symbol_ref, 0); 
-	 new_symbol = (char *) alloca (2 + 2 * HOST_BITS_PER_INT / 4 + 1);
-	 sprintf (new_symbol, str);
-	 strcat (new_symbol, "5");
-	 XSTR (symbol_ref, 0) = ggc_strdup (new_symbol); 
-	}
-    }
 }
 
 /* A structure to hold information for each branch instruction.
@@ -3208,6 +3207,9 @@ record_branch_info (void)
 		      src = SET_SRC (set);
 		      if (GET_CODE (SET_DEST (set)) != PC)
 			abort ();
+
+		      if (REG_P (src))
+			continue;
 		      
 		      if (GET_CODE (src) == IF_THEN_ELSE)
 			{
@@ -3425,15 +3427,23 @@ print_operand_punct_valid_p (int c)
 
 void
 final_prescan_insn (rtx insn,
-                   rtx *opvec ATTRIBUTE_UNUSED,
-                   int noperands ATTRIBUTE_UNUSED)
+		    rtx *opvec ATTRIBUTE_UNUSED,
+		    int noperands ATTRIBUTE_UNUSED)
 {
-  rtx branch_info = find_reg_note (insn, REG_BRANCH_INFO, NULL_RTX);
+  rtx branch_info;
 
-  if (branch_info == NULL_RTX)
-    global_branch_info = NULL;
-  else
-    global_branch_info = XSTR (XEXP (branch_info, 0), 0);
+  global_branch_info = NULL;
+
+  if (!TARGET_SOFTWARE_ICACHE || !INSN_P (insn))
+    return;
+
+  if (GET_CODE (insn) == JUMP_INSN
+      || GET_CODE (insn) == CALL_INSN)
+    {
+      branch_info = find_reg_note (insn, REG_BRANCH_INFO, NULL_RTX);
+      if (branch_info != NULL)
+	global_branch_info = XSTR (XEXP (branch_info, 0), 0);
+    }
 }
 
 
@@ -3853,7 +3863,6 @@ spu_machine_dependent_reorg (void)
       if (TARGET_SOFTWARE_ICACHE)
         {
           record_branch_info ();
-          record_link_elements_liveness ();
         }
 
       return;
@@ -4014,7 +4023,8 @@ spu_machine_dependent_reorg (void)
 	      spu_bb_info[prop->index].prop_jump = branch;
 	      spu_bb_info[prop->index].bb_index = i;
 	    }
-	  else if (branch_addr - next_addr >= required_dist)
+	  else if (branch_addr - next_addr >= required_dist
+                   && !NOTE_INSN_BASIC_BLOCK_P (NEXT_INSN (insn)))
 	    {
 	      if (dump_file)
 		fprintf (dump_file, "hint for %i in block %i before %i\n",
@@ -4054,7 +4064,6 @@ spu_machine_dependent_reorg (void)
   if (TARGET_SOFTWARE_ICACHE)
     {
       record_branch_info ();
-      record_link_elements_liveness ();
     }
 
   free_bb_for_insn ();
@@ -4847,8 +4856,15 @@ spu_legitimate_constant_p (rtx x)
   preferable to allow any alignment and fix it up when splitting.) */
 int
 spu_legitimate_address (enum machine_mode mode ATTRIBUTE_UNUSED,
-			rtx x, int reg_ok_strict)
+			rtx x, int reg_ok_strict,
+			addr_space_t as)
 {
+  if (as == ADDR_SPACE_EA)
+    return (REG_P (x) && (GET_MODE (x) == EAmode));
+
+  else if (as != ADDR_SPACE_GENERIC)
+    gcc_unreachable ();
+
   if (mode == TImode && GET_CODE (x) == AND
       && GET_CODE (XEXP (x, 1)) == CONST_INT
       && INTVAL (XEXP (x, 1)) == (HOST_WIDE_INT) -16)
@@ -4930,9 +4946,13 @@ spu_legitimate_address (enum machine_mode mode ATTRIBUTE_UNUSED,
    register.  */
 rtx
 spu_legitimize_address (rtx x, rtx oldx ATTRIBUTE_UNUSED,
-			enum machine_mode mode)
+			enum machine_mode mode, addr_space_t as)
 {
   rtx op0, op1;
+				 
+  if (as != ADDR_SPACE_GENERIC)
+    return NULL_RTX;
+
   /* Make sure both operands are registers.  */
   if (GET_CODE (x) == PLUS)
     {
@@ -4953,7 +4973,7 @@ spu_legitimize_address (rtx x, rtx oldx ATTRIBUTE_UNUSED,
       else if (GET_CODE (op1) != REG)
 	op1 = force_reg (Pmode, op1);
       x = gen_rtx_PLUS (Pmode, op0, op1);
-      if (spu_legitimate_address (mode, x, 0))
+      if (spu_legitimate_address (mode, x, 0, as))
 	return x;
     }
   return NULL_RTX;
@@ -5487,9 +5507,6 @@ store_with_one_insn_p (rtx mem)
   return 0;
 }
 
-/* Pointer mode for __ea references.  */
-#define EAmode (spu_ea_model != 32 ? DImode : SImode)
-
 static GTY(()) rtx cache_fetch;		  /* __cache_fetch function */
 static GTY(()) rtx cache_fetch_dirty;	  /* __cache_fetch_dirty function */
 static alias_set_type ea_alias_set = -1;  /* alias set for __ea memory */
@@ -5706,7 +5723,8 @@ expand_ea_mem (rtx mem, bool is_store)
   if (ea_alias_set == -1)
     ea_alias_set = new_alias_set ();
 
-  new_mem = change_address (mem, VOIDmode, data_addr);
+  new_mem = change_address_addr_space (mem, VOIDmode, data_addr,
+				       ADDR_SPACE_GENERIC);
 
   /* We can't just change the alias set directly to ea_alias_set, because the
      --enable-checking code may complain that the alias sets don't conflict */
@@ -6147,6 +6165,7 @@ spu_valid_move (rtx * ops)
      the direct_load[] and direct_store[] arrays.  We always want to
      consider those loads and stores valid.  init_expr_once is called in
      the context of a dummy function which does not have a decl. */
+  gcc_assert (cfun);
   if (cfun->decl == 0)
     return 1;
 
@@ -6564,7 +6583,7 @@ spu_unwind_word_mode (void)
 static bool
 spu_function_ok_for_sibcall (tree decl, tree exp ATTRIBUTE_UNUSED)
 {
-  return decl && !TARGET_LARGE_MEM && !TARGET_SOFTWARE_ICACHE;
+  return decl && !TARGET_LARGE_MEM;
 }
 
 /* We need to correctly update the back chain pointer and the Available
@@ -7777,26 +7796,12 @@ spu_vector_alignment_reachable (const_tree type ATTRIBUTE_UNUSED, bool is_packed
   return true;
 }
 
-/* Return the appropriate mode for a named address pointer.  */
-static enum machine_mode
-spu_ea_pointer_mode (addr_space_t addrspace)
-{
-  switch (addrspace)
-    {
-    case ADDR_SPACE_GENERIC:
-      return ptr_mode;
-    case ADDR_SPACE_EA:
-      return (spu_ea_model == 64 ? DImode : ptr_mode);
-    default:
-      gcc_unreachable ();
-    }
-}
-
 /* Return valid pointer modes.  */
 static bool
 spu_valid_pointer_mode (enum machine_mode mode)
 {
-  return (mode == ptr_mode || mode == Pmode || mode == spu_ea_pointer_mode (1));
+  return (mode == ptr_mode || mode == Pmode ||
+	  (spu_ea_model != 32 && mode == DImode));
 }
 
 /* Adjust section flags for the __ea section.  */
@@ -7921,6 +7926,38 @@ spu_libgcc_shift_count_mode (void)
   return SImode;
 }
 
+/* Return the appropriate mode for a named address pointer.  */
+static enum machine_mode
+spu_addr_space_pointer_mode (addr_space_t addrspace)
+{
+  switch (addrspace)
+    {
+    case ADDR_SPACE_GENERIC:
+      return ptr_mode;
+    case ADDR_SPACE_EA:
+      return (EAmode);
+    default:
+      gcc_unreachable ();
+    }
+}
+
+/* Return the appropriate type for subtracting two pointers.  */
+static tree
+spu_addr_space_minus_type (addr_space_t as1, addr_space_t as2)
+{
+  gcc_assert (as1 == ADDR_SPACE_GENERIC || as1 == ADDR_SPACE_EA);
+  gcc_assert (as2 == ADDR_SPACE_GENERIC || as2 == ADDR_SPACE_EA);
+
+  if (as1 == ADDR_SPACE_GENERIC && as2 == ADDR_SPACE_GENERIC)
+    return ptrdiff_type_node;
+
+  else if (spu_ea_model == 32)
+    return ptrdiff_type_node;
+
+  else
+    return unsigned_intDI_type_node;
+}
+
 /* Map an address space number into a name.  */
 static const char *
 spu_addr_space_name (addr_space_t addrspace)
@@ -7929,6 +7966,28 @@ spu_addr_space_name (addr_space_t addrspace)
     return "__ea";
 
   gcc_unreachable ();
+}
+
+/* Return if an address is valid for a given mode that points to a given named
+   address space.  */
+
+static bool
+spu_addr_space_memory_address_p (enum machine_mode mode, rtx x,
+				 addr_space_t as)
+{
+  gcc_assert (as == ADDR_SPACE_GENERIC || as == ADDR_SPACE_EA);
+  return spu_legitimate_address (mode, x, 0, as);
+}
+
+/* Return if an address is valid for a given mode that points to a given named
+   address space after register allocation has been done.  */
+
+static bool
+spu_addr_space_strict_memory_address_p (enum machine_mode mode, rtx x,
+					addr_space_t as)
+{
+  gcc_assert (as == ADDR_SPACE_GENERIC || as == ADDR_SPACE_EA);
+  return spu_legitimate_address (mode, x, 1, as);
 }
 
 /* Determine if you can convert one address to another.  */
@@ -8038,6 +8097,88 @@ spu_addr_space_section_name (addr_space_t addrspace)
   return spu_ea_name;
 }
 
+/* Return true if the tree contains any elements that require relocation that
+   would not be allowed to initialize a __ea memory address space.  */
+
+static bool
+spu_no_relocation (tree type, tree init)
+{
+  bool ret;
+  unsigned HOST_WIDE_INT idx;
+  tree value;
+  tree field;
+
+  switch (TREE_CODE (init))
+    {
+    default:
+      ret = false;
+      break;
+
+      /* Constants are not relocatable.  */
+    case REAL_CST:
+    case FIXED_CST:
+    case COMPLEX_CST:
+    case INTEGER_CST:
+      ret = true;
+      break;
+
+      /* Strings are ok if we are initializing a char array of some sort.  */
+    case STRING_CST:
+      ret = (type != NULL_TREE
+	     && TREE_CODE (type) == ARRAY_TYPE
+	     && TYPE_STRING_FLAG (TREE_TYPE (type)));
+      break;
+
+      /* Support a limited number of conversions.  */
+    case CONVERT_EXPR:
+    case NOP_EXPR:
+      ret = spu_no_relocation (type, TREE_OPERAND (init, 0));
+      break;
+
+      /* Decode the constructor.  */
+    case CONSTRUCTOR:
+      ret = true;
+      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (init), idx, field, value)
+	{
+	  if (value && !spu_no_relocation (TREE_TYPE (field), value))
+	    {
+	      ret = false;
+	      break;
+	    }
+	}
+      break;
+    }
+
+  return ret;
+}
+
+static bool
+spu_addr_space_static_init_ok_p (tree type,
+				 tree init,
+				 addr_space_t as,
+				 addr_space_t as_ptr)
+{
+  bool ret;
+
+  if (init == error_mark_node)
+    ret = false;
+
+  /* Normal initializations are ok.  */
+  else if (as == ADDR_SPACE_GENERIC && as_ptr == ADDR_SPACE_GENERIC)
+    ret = true;
+
+  else
+    {
+      /* Don't allow things that need relocations in or pointing to the __ea
+	 address space.  */
+      gcc_assert (as == ADDR_SPACE_GENERIC || as == ADDR_SPACE_EA);
+      gcc_assert (as_ptr == ADDR_SPACE_GENERIC || as_ptr == ADDR_SPACE_EA);
+
+      ret = spu_no_relocation (type, init);
+    }
+
+  return ret;
+}
 
 /* An early place to adjust some flags after GCC has finished processing
  * them. */

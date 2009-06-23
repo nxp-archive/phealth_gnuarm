@@ -1,13 +1,13 @@
 /* Definitions of target machine for GNU compiler, for the pdp-11
-   Copyright (C) 1994, 1995, 1996, 1998, 1999, 2000, 2001, 2002, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1994, 1995, 1996, 1998, 1999, 2000, 2001, 2002, 2004, 2005,
+   2006, 2007, 2008 Free Software Foundation, Inc.
    Contributed by Michael K. Gschwind (mike@vlsivie.tuwien.ac.at).
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #define CONSTANT_POOL_BEFORE_FUNCTION	0
 
@@ -101,8 +100,6 @@ Boston, MA 02110-1301, USA.  */
    big endian, opposite for what you need for float, the vax float
    conversion routines aren't actually used directly.  But the underlying
    format is indeed the vax/pdp11 float format.  */
-#define TARGET_FLOAT_FORMAT VAX_FLOAT_FORMAT
-
 extern const struct real_format pdp11_f_format;
 extern const struct real_format pdp11_d_format;
 
@@ -249,14 +246,6 @@ extern const struct real_format pdp11_d_format;
 /* Base register for access to local variables of the function.  */
 #define FRAME_POINTER_REGNUM 5
 
-/* Value should be nonzero if functions must have frame pointers.
-   Zero means the frame pointer need not be set up (and parms
-   may be accessed via the stack pointer) in functions that seem suitable.
-   This is computed in `reload', in reload1.c.
-  */
-
-#define FRAME_POINTER_REQUIRED 0
-
 /* Base register for access to arguments of the function.  */
 #define ARG_POINTER_REGNUM 5
 
@@ -382,7 +371,7 @@ enum reg_class { NO_REGS, MUL_REGS, GENERAL_REGS, LOAD_FPU_REGS, NO_LOAD_FPU_REG
 
 #define EXTRA_CONSTRAINT(OP,CODE)					\
   ((GET_CODE (OP) != MEM) ? 0						\
-   : !legitimate_address_p (GET_MODE (OP), XEXP (OP, 0)) ? 0		\
+   : !memory_address_p (GET_MODE (OP), XEXP (OP, 0)) ? 0		\
    : ((CODE) == 'Q')	  ? !simple_memory_operand (OP, GET_MODE (OP))	\
    : ((CODE) == 'R')	  ? simple_memory_operand (OP, GET_MODE (OP))	\
    : 0)
@@ -566,10 +555,10 @@ extern int may_call_alloca;
   int offset, regno;		      				\
   offset = get_frame_size();					\
   for (regno = 0; regno < 8; regno++)				\
-    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+    if (df_regs_ever_live_p (regno) && ! call_used_regs[regno])	\
       offset += 2;						\
   for (regno = 8; regno < 14; regno++)				\
-    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+    if (df_regs_ever_live_p (regno) && ! call_used_regs[regno])	\
       offset += 8;						\
   /* offset -= 2;   no fp on stack frame */			\
   (DEPTH_VAR) = offset;						\
@@ -756,14 +745,6 @@ extern int may_call_alloca;
   /* anything else is invalid */					\
   fail: ;								\
 }
-
-
-/* Go to LABEL if ADDR (a legitimate address expression)
-   has an effect that depends on the machine mode it is used for.
-   On the pdp this is for predec/postinc, and this is now treated
-   generically in recog.c.  */
-
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
 
 
 /* Specify the machine mode that this machine uses
@@ -984,7 +965,7 @@ extern struct rtx_def *cc0_reg_rtx;
       long sval[2];							\
       REAL_VALUE_FROM_CONST_DOUBLE (r, X);				\
       REAL_VALUE_TO_TARGET_DOUBLE (r, sval);				\
-      fprintf (FILE, "$%#o", sval[0] >> 16); }				\
+      fprintf (FILE, "$%#lo", sval[0] >> 16); }				\
   else { putc ('$', FILE); output_addr_const_pdp11 (FILE, X); }}
 
 /* Print a memory address as an operand to reference that memory location.  */
@@ -1050,6 +1031,9 @@ JMP	FUNCTION	0x0058  0x0000 <- FUNCTION
 
 #define OPTIMIZATION_OPTIONS(LEVEL,SIZE)				\
 {									\
+  flag_finite_math_only		= 0;					\
+  flag_trapping_math		= 0;					\
+  flag_signaling_nans		= 0;					\
   if (LEVEL >= 3)							\
     {									\
       flag_omit_frame_pointer		= 1;				\
@@ -1060,7 +1044,7 @@ JMP	FUNCTION	0x0058  0x0000 <- FUNCTION
 /* there is no point in avoiding branches on a pdp, 
    since branches are really cheap - I just want to find out
    how much difference the BRANCH_COST macro makes in code */
-#define BRANCH_COST (TARGET_BRANCH_CHEAP ? 0 : 1)
+#define BRANCH_COST(speed_p, predictable_p) (TARGET_BRANCH_CHEAP ? 0 : 1)
 
 
 #define COMPARE_FLAG_MODE HImode

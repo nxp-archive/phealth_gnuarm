@@ -1,3 +1,335 @@
+2009-04-03  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r145494.
+
+2009-04-03  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r145490.
+
+2009-04-02  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r145440.
+
+2009-04-01  Richard Guenther  <rguenther@suse.de>
+
+	* gimple.h (gimple_p): New typedef.  Define VEC of it.
+	* tree-ssa-operands.c (struct scb_d, scb_t): Remove.
+	(scb_stack): Make it a vector of gimple_p.
+	(init_ssa_operands): Adjust.
+	(fini_ssa_operands): Likewise.
+	(mark_difference_for_renaming): Remove.
+	(push_stmt_changes): Simplify and deprecate.
+	(pop_stmt_changes): Likewise.
+	(discard_stmt_changes): Likewise.
+	* tree-ssa-ccp.c (gimplify_and_update_call_from_tree): Properly
+	update VOPs.
+	* tree-ssa-dom.c (gimple_p): Remove typedef.
+	* tree-ssa-propagate.c (update_call_from_tree): Properly
+	update VOPs.
+
+2009-03-31  Richard Guenther  <rguenther@suse.de>
+
+	* Makefile.in (tree-ssa-structalias.o): Remove tree-ssa-structalias.h
+	dependency.
+	(tree-ssa-alias.o): Likewise.
+	(GTFILES): Remove tree-ssa-structalias.h.
+	* tree-ssa-alias.c: Do not include tree-ssa-structalias.h.
+	* tree-ssa-structalias.c: Likewise.
+	* tree-ssa-structalias.h: Remove file.
+
+2009-03-30  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r145297.
+
+2009-03-30  Richard Guenther  <rguenther@suse.de>
+
+	* tree-eh.c (cleanup_empty_eh): Do not leave stale SSA_NAMEs
+	and immediate uses in statements.
+
+2009-03-30  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r145282.
+
+2009-03-29  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-pre.c (eliminate): Do not remove stmts during elimination,
+	instead queue and remove them afterwards.
+
+	testsuite/
+	* g++.dg/torture/20090329-1.C: New testcase.
+
+2009-03-29  Richard Guenther  <rguenther@suse.de>
+
+	* tree-inline.c (tree_function_versioning): Do not call update_ssa
+	if we are not updating clones.  Simplify.
+
+2009-03-28  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r145210.
+
+2009-03-28  Richard Guenther  <rguenther@suse.de>
+
+	testsuite/
+	* gcc.c-torture/compile/20090328-1.c: New testcase.
+	* gcc.dg/tree-ssa/ssa-fre-10.c: XFAIL.
+	* gcc.dg/tree-ssa/ssa-pre-24.c: Likewise.
+	* gcc.dg/uninit-B.c: Likewise.
+	* gcc.dg/uninit-pr19430.c: Likewise.
+
+2009-03-27  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-alias.c (refs_may_alias_p_1): Split into ...
+	(nonaliasing_component_refs_p): ... this, and ...
+	(decl_refs_may_alias_p): ... this, and ...
+	(indirect_ref_may_alias_decl_p): ... this, and ...
+	(indirect_refs_may_alias_p): ... this.
+
+2009-03-24  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r145028.
+
+2009-03-23  Richard Guenther  <rguenther@suse.de>
+
+	* tree-flow.h (struct ptr_info_def): Remove is_dereferenced member.
+	* tree-ssa-alias.c (dump_points_to_info_for): Do not dump it.
+	* tree-ssa-structalias.c (find_what_var_points_to): Adjust
+	comment.  Take is_dereferenced parameter.
+	(compute_points_to_sets): Compute whether a ptr is dereferenced
+	in a local sbitmap.
+
+	testsuite/
+	* gcc.dg/torture/pr39074-2.c: Adjust.
+	* gcc.dg/torture/pta-callused-1.c: Likewise.
+	* gcc.dg/torture/pta-ptrarith-3.c: Likewise.
+	* gcc.dg/torture/pta-structcopy-1.c: Likewise.
+	* gcc.dg/torture/ssa-pta-fn-1.c: Likewise.
+	* gcc.dg/tree-ssa/alias-19.c: Likewise.
+	* gcc.dg/tree-ssa/pta-ptrarith-1.c: Likewise.
+	* gcc.dg/tree-ssa/pta-ptrarith-2.c: Likewise.
+	* gcc.dg/torture/pr39074.c: Likewise.
+
+2009-03-20  Richard Guenther  <rguenther@suse.de>
+
+	PR tree-optimization/39506
+	* tree-ssa-structalias.c (may_alias_p): Remove.
+	(set_uids_in_ptset): Take the alias set to prune with as
+	parameter.  Fold in the alias test of may_alias_p.
+	(find_what_var_points_to): Decide upfront if we can prune.
+
+2009-03-19  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-alias.c (may_point_to_global_var): Rename to ...
+	(ptr_deref_may_alias_global_p): ... this.
+	(may_point_to_decl): Rename to ...
+	(ptr_deref_may_alias_decl_p): ... this.
+	(may_point_to_same_object): Rename to ...
+	(ptr_derefs_may_alias_p): ... this.
+	(refs_may_alias_p_1): Adjust.
+	* tree-ssa-alias.h (may_point_to_global_var): Rename to ...
+	(ptr_deref_may_alias_global_p): ... this.
+	* tree-ssa-sink.c (is_hidden_global_store): Adjust.
+	* tree-flow.h (struct ptr_info_def): Adjust comment.
+	* tree-ssa-structalias.c (pt_solution_empty_p): Simplify.
+	(pt_solution_includes_global): Likewise.
+	(pt_solution_includes_1): Likewise.
+	(pt_solutions_intersect_1): Likewise.
+	(compute_points_to_sets): Clear ESCAPED in ESCAPED solution.
+
+2009-03-18  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-dse.c (dse_possible_dead_store_p): Limit alias
+	oracle use.  Look through PHI nodes into post-dominated
+	regions.
+	(tree_ssa_dse): Compute dominators.
+
+	testsuite/
+	* gcc.dg/tree-ssa/ssa-dce-5.c: New testcase.
+	* gcc.dg/tree-ssa/ssa-dse-12.c: Likewise.
+
+2009-03-16  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-structalias.c (do_sd_constraint): Simplify check
+	for escaped_id.
+	(solve_graph): Do not disable propagation from escaped
+	completely.  Instead properly only propagate escaped_id.
+	(pt_solution_includes_global): New function.
+	* tree-ssa-alias.h (pt_solution_includes_global): Declare.
+	* tree-ssa-alias.c (may_point_to_global_var): Use
+	pt_solution_includes_global.
+
+2009-03-15  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-alias.c (walk_aliased_vdefs_1): Return an updated
+	alias query counter.
+	(walk_aliased_vdefs): Return the number of alias queries done.
+	* tree-ssa-alias.h (walk_aliased_vdefs): Update prototype.
+	* tree-ssa-dce.c (mark_operand_necessary): Assert the stmt
+	is necessary if we visited it.
+	(longest_chain, total_chain, chain_ovfl): New global statics.
+	(mark_nonaliased_loads_necessary_1): Rename to ...
+	(mark_aliased_reaching_defs_necessary_1): ... this.
+	(mark_nonaliased_loads_necessary): Rename to ...
+	(mark_aliased_reaching_defs_necessary): ... this.  Assert we
+	are not called in simple mode, account the number of alias
+	queries.
+	(mark_aliased_loads_necessary_1): Rename to ...
+	(mark_all_reaching_defs_necessary_1): ... this.  In simple
+	mode skip already processed stmts and do not skip not aliased
+	stores.
+	(mark_aliased_loads_necessary): Rename to ...
+	(mark_all_reaching_defs_necessary): ... this.
+	(propagate_necessity): In simple mode simply call
+	mark_all_reaching_defs_necessary.  Check alias query accounting
+	and drop back to simple mode if it turns out to be too expensive.
+	(perform_tree_ssa_dce): Initialize alias query accounting vars.
+
+2009-03-14  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r144858.
+
+2009-03-13  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-pre.c (valid_in_sets): Check if the VUSE for
+	a REFERENCE is available.
+
+	testsuite/
+	* gcc.c-torture/execute/20090113-3.c: New testcase.
+
+2009-03-02  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r144538.
+
+2009-03-01  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-structalias.c (process_constraint): Deal with
+	&ANYTHING on the lhs, reject all other ADDRESSOF constraints
+	on the lhs.
+	(get_constraint_for_component_ref): Assert that we don't get
+	ADDRESSOF constraints from the base of the reference.
+	Properly generate UNKNOWN_OFFSET for DEREF if needed.
+	(do_structure_copy): Remove special casings, treat &ANYTHING
+	on the lhs like DEREF.
+
+2009-02-28  Richard Guenther  <rguenther@suse.de>
+
+	* gimple.h (struct gimple_statement_with_memory_ops_base):
+	Mark vdef and vuse members with GTY((skip (""))).
+
+2009-02-27  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-structalias.c (get_constraint_for_1): Note that
+	we should handle TARGET_MEM_REF here.
+	(do_structure_copy): Handle &ANYTHING fallback on the lhs.
+
+2009-02-26  Richard Guenther  <rguenther@suse.de>
+
+	PR tree-optimization/39299
+	* tree-ssa-structalias.c (struct variable_info): Remove collapsed_to
+	member.
+	(get_varinfo_fc): Remove.
+	(new_var_info): Do not set collapsed_to.
+	(dump_constraint): Do not follow cycles.
+	(dump_constraint_graph): Likewise.
+	(build_pred_graph): Likewise.
+	(build_succ_graph): Likewise.
+	(rewrite_constraints): Likewise.
+	(do_simple_structure_copy): Remove.
+	(do_rhs_deref_structure_copy): Remove.
+	(do_lhs_deref_structure_copy): Remove.
+	(collapse_rest_of_var): Remove.
+	(do_structure_copy): Re-implement.
+
+	testsuite/
+	* gcc.dg/torture/pta-structcopy-1.c: New testcase.
+
+2009-02-24  Richard Guenther  <rguenther@suse.de>
+
+	* passes.c (execute_one_pass): Initialize dump-files before
+	running the pre-pass todo.
+	* tree-sra.c (todoflags): Remove.
+	(tree_sra): Do not rebuild alias info.
+	(tree_sra_early): Adjust.
+	(pass_sra): Run TODO_update_address_taken before SRA.
+	* tree-ssa-ccp.c (execute_fold_all_builtins): Do not rebuild alias info.
+	* tree-ssa-pre.c (do_pre): Likewise.
+	(pass_pre): Run TODO_rebuild_alias before PRE.
+
+2009-02-24  Richard Guenther  <rguenther@suse.de>
+
+	* doc/tree-ssa.texi (Alias analysis): Update.
+
+2009-02-21  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r144352.
+
+2009-02-20  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-sccvn.h (get_ref_from_reference_ops): Declare.
+	* tree-ssa-sccvn.c (get_ref_from_reference_ops): Export.
+	* tree-ssa-pre.c (struct bb_bitmap_sets): Add expr_dies bitmap.
+	(EXPR_DIES): New.
+	(translate_vuse_through_block): Use the oracle.
+	(phi_translate_1): Adjust.
+	(value_dies_in_block_x): Use the oracle.  Cache the outcome
+	in EXPR_DIES.
+
+	testsuite/
+	* gcc.c-torture/execute/20090113-1.c: New testcase.
+	* gcc.c-torture/execute/20090113-2.c: Likewise.
+
+2009-02-20  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-pre.c (compute_avail): Do not make VOPs available.
+
+	testsuite/
+	* gcc.dg/tree-ssa/ssa-pre-24.c: Adjust pattern.
+
+2009-02-19  Richard Guenther  <rguenther@suse.de>
+
+	* ipa-reference.c (scan_stmt_for_static_refs): Open-code
+	gimple_loaded_syms and gimple_stored_syms computation.
+	* gimple-pretty-print.c (dump_symbols): Remove.
+	(dump_gimple_mem_ops): Do not dump loaded or stored syms.
+	* tree-ssa.c (delete_tree_ssa): Do not free the loaded and stored
+	syms bitmaps
+	* gimple.c (gimple_copy): Do not reset them.
+	(gimple_set_stored_syms): Remove.
+	(gimple_set_loaded_syms): Likewise.
+	* gimple.h (struct gimple_statement_with_memory_ops_base): Remove
+	stores and loads members.
+	(gimple_loaded_syms): Remove.
+	(gimple_stored_syms): Remove.
+	* tree-ssa-operands.c (build_loads, build_stores): Remove.
+	(init_ssa_operands): Do not init them.
+	(fini_ssa_operands): Do not free them.
+	(finalize_ssa_defs): Do not transfer them to stmts.
+	(finalize_ssa_uses): Likewise.
+	(cleanup_build_arrays): Do not clear them.
+	(start_ssa_stmt_operands): Do not assert they are empty.
+	(add_stmt_operand): Do not add to them.
+	(free_stmt_operands): Do not reset stmt loaded and stored syms.
+
+2009-02-16  Richard Guenther  <rguenther@suse.de>
+
+	Merge from trunk r144196.
+
+2009-02-14  Richard Guenther  <rguenther@suse.de>
+
+	testsuite/
+	* gcc.dg/tree-ssa/ssa-dce-4.c: New testcase.
+
+2009-02-12  Richard Guenther  <rguenther@suse.de>
+
+	* tree-ssa-alias.c (walk_aliased_vdefs): Get visited bitmap.
+	Only free it if we didn't get one.
+	* tree-ssa-alias.h (walk_aliased_vdefs): Adjust prototype.
+	* tree-ssa-dce.c (mark_nonaliased_loads_necessary): Pass NULL
+	for the bitmap argument to walk_aliased_vdefs.
+	(mark_aliased_loads_necessary): Pass locally cached bitmap.
+	(visited): New global static.
+	(perform_tree_ssa_dce): Free visited bitmap after propagating
+	necessity.
+
 2009-02-11  Richard Guenther  <rguenther@suse.de>
 
 	Merge from trunk r144098.

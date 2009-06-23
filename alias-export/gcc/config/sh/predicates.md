@@ -1,11 +1,11 @@
 ;; Predicate definitions for Renesas / SuperH SH.
-;; Copyright (C) 2005, 2006 Free Software Foundation, Inc.
+;; Copyright (C) 2005, 2006, 2007, 2008, 2009 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
 ;; GCC is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 ;;
 ;; GCC is distributed in the hope that it will be useful,
@@ -14,9 +14,8 @@
 ;; GNU General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with GCC; see the file COPYING.  If not, write to
-;; the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-;; Boston, MA 02110-1301, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
 
 ;; TODO: Add a comment here.
 
@@ -30,7 +29,7 @@
   cond = XEXP (op, 0);
   mem = XEXP (op, 1);
   res = XEXP (op, 2);
-  if (GET_CODE (mem) != MEM
+  if (!MEM_P (mem)
       || (GET_CODE (res) != SIGN_EXTEND && GET_CODE (res) != TRUNCATE))
     return 0;
   tar = XEXP (res, 0);
@@ -40,21 +39,21 @@
   if (GET_CODE (cond) == CONST)
     {
       cond = XEXP (cond, 0);
-      if (!EXTRA_CONSTRAINT_Csy (tar))
+      if (!satisfies_constraint_Csy (tar))
 	return 0;
       if (GET_CODE (tar) == CONST)
 	tar = XEXP (tar, 0);
     }
   else if (!arith_reg_operand (tar, VOIDmode)
-	   && ! EXTRA_CONSTRAINT_Csy (tar))
+	   && ! satisfies_constraint_Csy (tar))
     return 0;
   if (GET_CODE (cond) != EQ)
     return 0;
   and = XEXP (cond, 0);
   return (GET_CODE (and) == AND
 	  && rtx_equal_p (XEXP (and, 0), tar)
-	  && GET_CODE (XEXP (and, 1)) == CONST_INT
-	  && GET_CODE (XEXP (cond, 1)) == CONST_INT
+	  && CONST_INT_P (XEXP (and, 1))
+	  && CONST_INT_P (XEXP (cond, 1))
 	  && INTVAL (XEXP (and, 1)) == 3
 	  && INTVAL (XEXP (cond, 1)) == 3);
 })
@@ -70,8 +69,7 @@
   /* Check mshflo.l / mshflhi.l opportunities.  */
   if (TARGET_SHMEDIA
       && mode == DImode
-      && GET_CODE (op) == CONST_INT
-      && CONST_OK_FOR_J16 (INTVAL (op)))
+      && satisfies_constraint_J16 (op))
     return 1;
 
   return 0;
@@ -106,14 +104,15 @@
   if (TARGET_SHMEDIA)
     {
       /* FIXME: We should be checking whether the CONST_INT fits in a
-	 CONST_OK_FOR_I16 here, but this causes reload_cse to crash when
+	 signed 16-bit here, but this causes reload_cse to crash when
 	 attempting to transform a sequence of two 64-bit sets of the
 	 same register from literal constants into a set and an add,
 	 when the difference is too wide for an add.  */
-      if (GET_CODE (op) == CONST_INT
-	  || EXTRA_CONSTRAINT_Css (op))
+      if (CONST_INT_P (op)
+	  || satisfies_constraint_Css (op))
 	return 1;
       else if (GET_CODE (op) == TRUNCATE
+	       && REG_P (XEXP (op, 0))
 	       && ! system_reg_operand (XEXP (op, 0), VOIDmode)
 	       && (mode == VOIDmode || mode == GET_MODE (op))
 	       && (GET_MODE_SIZE (GET_MODE (op))
@@ -124,7 +123,7 @@
       else
 	return 0;
     }
-  else if (GET_CODE (op) == CONST_INT && CONST_OK_FOR_I08 (INTVAL (op)))
+  else if (satisfies_constraint_I08 (op))
     return 1;
 
   return 0;
@@ -153,9 +152,9 @@
     {
       int regno;
 
-      if (GET_CODE (op) == REG)
+      if (REG_P (op))
 	regno = REGNO (op);
-      else if (GET_CODE (op) == SUBREG && GET_CODE (SUBREG_REG (op)) == REG)
+      else if (GET_CODE (op) == SUBREG && REG_P (SUBREG_REG (op)))
 	regno = REGNO (SUBREG_REG (op));
       else
 	return 1;
@@ -176,7 +175,7 @@
 #if 0 /* Can't do this because of PROMOTE_MODE for unsigned vars.  */
   if (GET_MODE (op) == SImode && GET_CODE (op) == SIGN_EXTEND
       && GET_MODE (XEXP (op, 0)) == HImode
-      && GET_CODE (XEXP (op, 0)) == REG
+      && REG_P (XEXP (op, 0))
       && REGNO (XEXP (op, 0)) <= LAST_GENERAL_REG)
     return register_operand (XEXP (op, 0), VOIDmode);
 #endif
@@ -198,7 +197,7 @@
   if (arith_reg_operand (op, mode))
     return 1;
 
-  if (EXTRA_CONSTRAINT_Z (op))
+  if (satisfies_constraint_Z (op))
     return 1;
 
   return 0;
@@ -224,13 +223,13 @@
 {
   if (GET_CODE (op) == PLUS)
     {
-      if (GET_CODE (XEXP (op, 0)) != REG)
+      if (!REG_P (XEXP (op, 0)))
 	return 0;
-      if (GET_CODE (XEXP (op, 1)) != CONST_INT
+      if (!CONST_INT_P (XEXP (op, 1))
 	  || (INTVAL (XEXP (op, 1)) & 31))
 	return 0;
     }
-  else if (GET_CODE (op) != REG)
+  else if (!REG_P (op))
     return 0;
   return address_operand (op, mode);
 })
@@ -240,7 +239,7 @@
 (define_predicate "cmp_operand"
   (match_code "subreg,reg,const_int")
 {
-  if (GET_CODE (op) == CONST_INT && CONST_OK_FOR_N (INTVAL (op)))
+  if (satisfies_constraint_N (op))
     return 1;
   if (TARGET_SHMEDIA
       && mode != DImode && GET_CODE (op) == SUBREG
@@ -254,7 +253,7 @@
 (define_predicate "cmpsi_operand"
   (match_code "subreg,reg,const_int")
 {
-  if (GET_CODE (op) == REG && REGNO (op) == T_REG
+  if (REG_P (op) && REGNO (op) == T_REG
       && GET_MODE (op) == SImode
       && TARGET_SH1)
     return 1;
@@ -320,9 +319,9 @@
     {
       int regno;
 
-      if (GET_CODE (op) == REG)
+      if (REG_P (op))
 	regno = REGNO (op);
-      else if (GET_CODE (op) == SUBREG && GET_CODE (SUBREG_REG (op)) == REG)
+      else if (GET_CODE (op) == SUBREG && REG_P (SUBREG_REG (op)))
 	regno = REGNO (SUBREG_REG (op));
       else
 	return 1;
@@ -338,7 +337,7 @@
 (define_predicate "fpscr_operand"
   (match_code "reg")
 {
-  return (GET_CODE (op) == REG
+  return (REG_P (op)
 	  && (REGNO (op) == FPSCR_REG
 	      || (REGNO (op) >= FIRST_PSEUDO_REGISTER
 		  && !(reload_in_progress || reload_completed)))
@@ -353,7 +352,7 @@
   if (TARGET_SHMEDIA)
     return fp_arith_reg_operand (op, mode);
 
-  return (GET_CODE (op) == REG
+  return (REG_P (op)
 	  && (REGNO (op) == FPUL_REG || REGNO (op) >= FIRST_PSEUDO_REGISTER)
 	  && GET_MODE (op) == mode);
 })
@@ -375,7 +374,7 @@
 (define_predicate "general_movsrc_operand"
   (match_code "subreg,reg,const_int,const_double,mem,symbol_ref,label_ref,const,const_vector")
 {
-  if (GET_CODE (op) == MEM)
+  if (MEM_P (op))
     {
       rtx inside = XEXP (op, 0);
       if (GET_CODE (inside) == CONST)
@@ -386,19 +385,13 @@
 
       if (GET_CODE (inside) == PLUS
 	  && GET_CODE (XEXP (inside, 0)) == LABEL_REF
-	  && GET_CODE (XEXP (inside, 1)) == CONST_INT)
+	  && CONST_INT_P (XEXP (inside, 1)))
 	return 1;
 
       /* Only post inc allowed.  */
       if (GET_CODE (inside) == PRE_DEC)
 	return 0;
     }
-
-  if ((mode == QImode || mode == HImode)
-      && (GET_CODE (op) == SUBREG
-	  && GET_CODE (XEXP (op, 0)) == REG
-	  && system_reg_operand (XEXP (op, 0), mode)))
-    return 0;
 
   if (TARGET_SHMEDIA
       && (GET_CODE (op) == PARALLEL || GET_CODE (op) == CONST_VECTOR)
@@ -418,7 +411,7 @@
   (match_code "subreg,reg,mem")
 {
   /* Only pre dec allowed.  */
-  if (GET_CODE (op) == MEM && GET_CODE (XEXP (op, 0)) == POST_INC)
+  if (MEM_P (op) && GET_CODE (XEXP (op, 0)) == POST_INC)
     return 0;
   if (mode == DImode && TARGET_SHMEDIA && GET_CODE (op) == SUBREG
       && GET_MODE_SIZE (GET_MODE (SUBREG_REG (op))) < 8
@@ -435,7 +428,7 @@
 {
   rtx inside;
 
-  if (GET_CODE (op) != MEM || GET_MODE (op) != mode)
+  if (!MEM_P (op) || GET_MODE (op) != mode)
     return 0;
 
   inside = XEXP (op, 0);
@@ -443,7 +436,7 @@
   if (GET_CODE (inside) == POST_INC)
     inside = XEXP (inside, 0);
 
-  if (GET_CODE (inside) == REG)
+  if (REG_P (inside))
     return 1;
 
   return 0;
@@ -464,7 +457,7 @@
   op = XEXP (op, 0);
   /* Can't use true_regnum here because copy_cost wants to know about
      SECONDARY_INPUT_RELOAD_CLASS.  */
-  return GET_CODE (op) == REG && FP_REGISTER_P (REGNO (op));
+  return REG_P (op) && FP_REGISTER_P (REGNO (op));
 })
 
 ;; TODO: Add a comment here.
@@ -502,12 +495,12 @@
 
   if (TARGET_SHMEDIA)
     {
-      if (GET_CODE (op) == CONST_INT && CONST_OK_FOR_I10 (INTVAL (op)))
+      if (satisfies_constraint_I10 (op))
 	return 1;
       else
 	return 0;
     }
-  else if (GET_CODE (op) == CONST_INT && CONST_OK_FOR_K08 (INTVAL (op)))
+  else if (satisfies_constraint_K08 (op))
     return 1;
 
   return 0;
@@ -539,7 +532,7 @@
 {
   HOST_WIDE_INT i;
 
-  if (GET_CODE (op) != CONST_INT)
+  if (!CONST_INT_P (op))
     return 0;
   i = INTVAL (op);
   return i >= 1 * 8 && i <= 7 * 8 && (i & 7) == 0;
@@ -559,6 +552,17 @@
   (and (match_code "minus,div")
        (match_test "GET_MODE (op) == mode")))
 
+;; UNORDERED is only supported on SHMEDIA.
+
+(define_predicate "sh_float_comparison_operator"
+  (ior (match_operand 0 "ordered_comparison_operator")
+       (and (match_test "TARGET_SHMEDIA")
+	    (match_code "unordered"))))
+
+(define_predicate "shmedia_cbranch_comparison_operator"
+  (ior (match_operand 0 "equality_comparison_operator")
+       (match_operand 0 "greater_comparison_operator")))
+
 ;; TODO: Add a comment here.
 
 (define_predicate "sh_const_vec"
@@ -571,7 +575,7 @@
     return 0;
   i = XVECLEN (op, 0) - 1;
   for (; i >= 0; i--)
-    if (GET_CODE (XVECEXP (op, 0, i)) != CONST_INT)
+    if (!CONST_INT_P (XVECEXP (op, 0, i)))
       return 0;
   return 1;
 })
@@ -593,12 +597,12 @@
   /* Determine numbers of last and of least significant elements.  */
   last = XVECLEN (op, 0) - 1;
   least = TARGET_LITTLE_ENDIAN ? 0 : last;
-  if (GET_CODE (XVECEXP (op, 0, least)) != CONST_INT)
+  if (!CONST_INT_P (XVECEXP (op, 0, least)))
     return 0;
   sign_ix = least;
   if (GET_MODE_UNIT_SIZE (mode) == 1)
     sign_ix = TARGET_LITTLE_ENDIAN ? 1 : last - 1;
-  if (GET_CODE (XVECEXP (op, 0, sign_ix)) != CONST_INT)
+  if (!CONST_INT_P (XVECEXP (op, 0, sign_ix)))
     return 0;
   unit_size = GET_MODE_UNIT_SIZE (GET_MODE (op));
   sign = (INTVAL (XVECEXP (op, 0, sign_ix)) >> (unit_size * BITS_PER_UNIT - 1)
@@ -656,7 +660,7 @@
   (match_code "const_int,const_double,const,symbol_ref,label_ref,subreg,reg,zero_extend,sign_extend")
 {
   return (CONSTANT_P (op)
-	  ? (GET_CODE (op) == CONST_INT
+	  ? (CONST_INT_P (op)
 	     ? (unsigned) INTVAL (op) < GET_MODE_BITSIZE (mode)
 	     : nonmemory_operand (op, mode))
 	  : shift_count_reg_operand (op, mode));
@@ -705,7 +709,7 @@
     return 0;
 
   if ((GET_MODE (op) == Pmode || GET_MODE (op) == VOIDmode)
-      && EXTRA_CONSTRAINT_Csy (op))
+      && satisfies_constraint_Csy (op))
     return ! reload_completed;
 
   return target_reg_operand (op, mode);
@@ -724,7 +728,7 @@
   if (GET_CODE (op) == SUBREG)
     op = XEXP (op, 0);
 
-  if (GET_CODE (op) != REG)
+  if (!REG_P (op))
     return 0;
 
   /* We must protect ourselves from matching pseudos that are virtual
@@ -756,8 +760,7 @@
   (match_code "subreg,reg,plus")
 {
   if (GET_CODE (op) == PLUS
-      && (GET_CODE (XEXP (op, 1)) != CONST_INT
-	  || ! CONST_OK_FOR_I06 (INTVAL (XEXP (op, 1)))))
+      && (! satisfies_constraint_I06 (XEXP (op, 1))))
     return 0;
   return address_operand (op, QImode);
 })
@@ -767,7 +770,7 @@
 (define_predicate "ua_offset"
   (match_code "const_int")
 {
-  return GET_CODE (op) == CONST_INT && CONST_OK_FOR_I06 (INTVAL (op));
+  return satisfies_constraint_I06 (op);
 })
 
 ;; TODO: Add a comment here.
@@ -781,14 +784,30 @@
 (define_predicate "xor_operand"
   (match_code "subreg,reg,const_int")
 {
-  if (GET_CODE (op) == CONST_INT)
+  if (CONST_INT_P (op))
     return (TARGET_SHMEDIA
-	    ? (CONST_OK_FOR_I06 (INTVAL (op))
-	       || (no_new_pseudos && INTVAL (op) == 0xff))
-	    : CONST_OK_FOR_K08 (INTVAL (op)));
+	    ? (satisfies_constraint_I06 (op)
+	       || (!can_create_pseudo_p () && INTVAL (op) == 0xff))
+	    : satisfies_constraint_K08 (op));
   if (TARGET_SHMEDIA
       && mode != DImode && GET_CODE (op) == SUBREG
       && GET_MODE_SIZE (GET_MODE (SUBREG_REG (op))) > 4)
     return 0;
   return arith_reg_operand (op, mode);
+})
+
+(define_predicate "bitwise_memory_operand"
+  (match_code "mem")
+{
+  if (MEM_P (op))
+    {
+      if (REG_P (XEXP (op, 0)))
+	return 1;
+
+      if (GET_CODE (XEXP (op, 0)) == PLUS
+	  && REG_P (XEXP (XEXP (op, 0), 0))
+	  && satisfies_constraint_K12 (XEXP (XEXP (op, 0), 1)))
+        return 1;
+    }
+  return 0;
 })

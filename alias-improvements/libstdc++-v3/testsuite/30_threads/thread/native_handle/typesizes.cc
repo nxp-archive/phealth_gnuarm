@@ -23,13 +23,12 @@
 // Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 // USA.
 
-#include <thread/all.h>
 #include <thread>
+#include <thread/all.h>
 
 int main()
 {
   typedef std::thread test_type;
-  // XXX disable at the moment
-  //__gnu_test::compare_type_to_native_type_sizes<test_type>();
+  __gnu_test::compare_type_to_native_type<test_type>();
   return 0;
 }

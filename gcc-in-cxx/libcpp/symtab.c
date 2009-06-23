@@ -1,9 +1,10 @@
 /* Hash tables.
-   Copyright (C) 2000, 2001, 2003, 2004, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2001, 2003, 2004, 2008, 2009
+   Free Software Foundation, Inc.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
-Free Software Foundation; either version 2, or (at your option) any
+Free Software Foundation; either version 3, or (at your option) any
 later version.
 
 This program is distributed in the hope that it will be useful,
@@ -12,8 +13,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+along with this program; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
  In other words, you are welcome to use, share and improve this program.
  You are forbidden to forbid anyone else to use, share and improve
@@ -30,7 +31,7 @@ Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
    existing entry with a potential new one.  */
 
 static unsigned int calc_hash (const unsigned char *, size_t);
-static void ht_expand (cpp_hash_table *);
+static void ht_expand (hash_table *);
 static double approx_sqrt (double);
 
 /* A deleted entry.  */
@@ -52,13 +53,13 @@ calc_hash (const unsigned char *str, size_t len)
 
 /* Initialize an identifier hashtable.  */
 
-cpp_hash_table *
+hash_table *
 ht_create (unsigned int order)
 {
   unsigned int nslots = 1 << order;
-  cpp_hash_table *table;
+  hash_table *table;
 
-  table = XCNEW (cpp_hash_table);
+  table = XCNEW (hash_table);
 
   /* Strings need no alignment.  */
   _obstack_begin (&table->stack, 0, 0,
@@ -76,7 +77,7 @@ ht_create (unsigned int order)
 /* Frees all memory associated with a hash table.  */
 
 void
-ht_destroy (cpp_hash_table *table)
+ht_destroy (hash_table *table)
 {
   obstack_free (&table->stack, NULL);
   if (table->entries_owned)
@@ -90,7 +91,7 @@ ht_destroy (cpp_hash_table *table)
    returns NULL.  Otherwise insert and returns a new entry.  A new
    string is allocated.  */
 hashnode
-ht_lookup (cpp_hash_table *table, const unsigned char *str, size_t len,
+ht_lookup (hash_table *table, const unsigned char *str, size_t len,
 	   enum ht_lookup_option insert)
 {
   return ht_lookup_with_hash (table, str, len, calc_hash (str, len),
@@ -98,7 +99,7 @@ ht_lookup (cpp_hash_table *table, const unsigned char *str, size_t len,
 }
 
 hashnode
-ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
+ht_lookup_with_hash (hash_table *table, const unsigned char *str,
 		     size_t len, unsigned int hash,
 		     enum ht_lookup_option insert)
 {
@@ -181,7 +182,7 @@ ht_lookup_with_hash (cpp_hash_table *table, const unsigned char *str,
 /* Double the size of a hash table, re-hashing existing entries.  */
 
 static void
-ht_expand (cpp_hash_table *table)
+ht_expand (hash_table *table)
 {
   hashnode *nentries, *p, *limit;
   unsigned int size, sizemask;
@@ -223,7 +224,7 @@ ht_expand (cpp_hash_table *table)
 /* For all nodes in TABLE, callback CB with parameters TABLE->PFILE,
    the node, and V.  */
 void
-ht_forall (cpp_hash_table *table, ht_cb cb, const void *v)
+ht_forall (hash_table *table, ht_cb cb, const void *v)
 {
   hashnode *p, *limit;
 
@@ -241,7 +242,7 @@ ht_forall (cpp_hash_table *table, ht_cb cb, const void *v)
 /* Like ht_forall, but a nonzero return from the callback means that
    the entry should be removed from the table.  */
 void
-ht_purge (cpp_hash_table *table, ht_cb cb, const void *v)
+ht_purge (hash_table *table, ht_cb cb, const void *v)
 {
   hashnode *p, *limit;
 
@@ -258,7 +259,7 @@ ht_purge (cpp_hash_table *table, ht_cb cb, const void *v)
 
 /* Restore the hash table.  */
 void
-ht_load (cpp_hash_table *ht, hashnode *entries,
+ht_load (hash_table *ht, hashnode *entries,
 	 unsigned int nslots, unsigned int nelements,
 	 bool own)
 {
@@ -273,7 +274,7 @@ ht_load (cpp_hash_table *ht, hashnode *entries,
 /* Dump allocation statistics to stderr.  */
 
 void
-ht_dump_statistics (cpp_hash_table *table)
+ht_dump_statistics (hash_table *table)
 {
   size_t nelts, nids, overhead, headers;
   size_t total_bytes, longest, deleted = 0;

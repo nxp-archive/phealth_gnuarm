@@ -62,9 +62,6 @@
 #ifndef HAVE_trap
 #define HAVE_trap 0
 #endif
-#ifndef HAVE_conditional_trap
-#define HAVE_conditional_trap 0
-#endif
 
 #ifndef MAX_CONDITIONAL_EXECUTE
 #define MAX_CONDITIONAL_EXECUTE \
@@ -2488,7 +2485,7 @@ check_cond_move_block (basic_block bb, rtx *vals, VEC (int, heap) **regs, rtx co
     {
       rtx set, dest, src;
 
-      if (!INSN_P (insn) || DEBUG_INSN_P (insn) || JUMP_P (insn))
+      if (!NONDEBUG_INSN_P (insn) || JUMP_P (insn))
 	continue;
       set = single_set (insn);
       if (!set)
@@ -2567,7 +2564,7 @@ cond_move_convert_if_block (struct noce_if_info *if_infop,
       unsigned int regno;
 
       /* ??? Maybe emit conditional debug insn?  */
-      if (!INSN_P (insn) || DEBUG_INSN_P (insn) || JUMP_P (insn))
+      if (!NONDEBUG_INSN_P (insn) || JUMP_P (insn))
 	continue;
       set = single_set (insn);
       gcc_assert (set && REG_P (SET_DEST (set)));
@@ -3048,7 +3045,8 @@ find_if_header (basic_block test_bb, int pass)
       && cond_exec_find_if_block (&ce_info))
     goto success;
 
-  if (HAVE_trap && HAVE_conditional_trap
+  if (HAVE_trap
+      && optab_handler (ctrap_optab, word_mode)->insn_code != CODE_FOR_nothing
       && find_cond_trap (test_bb, then_edge, else_edge))
     goto success;
 
@@ -3888,7 +3886,7 @@ dead_or_predicable (basic_block test_bb, basic_block merge_bb,
 	{
 	  if (CALL_P (insn))
 	    return FALSE;
-	  if (INSN_P (insn) && !DEBUG_INSN_P (insn))
+	  if (NONDEBUG_INSN_P (insn))
 	    {
 	      if (may_trap_p (PATTERN (insn)))
 		return FALSE;
@@ -3934,7 +3932,7 @@ dead_or_predicable (basic_block test_bb, basic_block merge_bb,
 
       FOR_BB_INSNS (merge_bb, insn)
 	{
-	  if (INSN_P (insn) && !DEBUG_INSN_P (insn))
+	  if (NONDEBUG_INSN_P (insn))
 	    {
 	      unsigned int uid = INSN_UID (insn);
 	      df_ref *def_rec;
@@ -3965,13 +3963,13 @@ dead_or_predicable (basic_block test_bb, basic_block merge_bb,
       /* The loop below takes the set of live registers 
          after JUMP, and calculates the live set before EARLIEST. */
       bitmap_copy (test_live, df_get_live_in (other_bb));
-      df_simulate_artificial_refs_at_end (test_bb, test_live);
+      df_simulate_initialize_backwards (test_bb, test_live);
       for (insn = jump; ; insn = prev)
 	{
 	  if (INSN_P (insn))
 	    {
 	      df_simulate_find_defs (insn, test_set);
-	      df_simulate_one_insn (test_bb, insn, test_live);
+	      df_simulate_one_insn_backwards (test_bb, insn, test_live);
 	    }
 	  prev = PREV_INSN (insn);
 	  if (insn == earliest)

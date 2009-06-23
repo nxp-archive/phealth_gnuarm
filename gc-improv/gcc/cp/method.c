@@ -1,7 +1,7 @@
 /* Handle the hair of processing (but not expanding) inline functions.
    Also manage function and variable name overloading.
    Copyright (C) 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
 
@@ -38,6 +38,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "tree-pass.h"
 #include "diagnostic.h"
+#include "cgraph.h"
 
 /* Various flags to control the mangling process.  */
 
@@ -125,7 +126,8 @@ make_thunk (tree function, bool this_adjusting,
   gcc_assert (TYPE_SIZE (DECL_CONTEXT (function))
 	      && TYPE_BEING_DEFINED (DECL_CONTEXT (function)));
 
-  thunk = build_decl (FUNCTION_DECL, NULL_TREE, TREE_TYPE (function));
+  thunk = build_decl (DECL_SOURCE_LOCATION (function),
+		      FUNCTION_DECL, NULL_TREE, TREE_TYPE (function));
   DECL_LANG_SPECIFIC (thunk) = DECL_LANG_SPECIFIC (function);
   cxx_dup_lang_specific_decl (thunk);
   DECL_THUNKS (thunk) = NULL_TREE;
@@ -154,7 +156,6 @@ make_thunk (tree function, bool this_adjusting,
   DECL_NO_STATIC_CHAIN (thunk) = 1;
   /* The THUNK is not a pending inline, even if the FUNCTION is.  */
   DECL_PENDING_INLINE_P (thunk) = 0;
-  DECL_INLINE (thunk) = 0;
   DECL_DECLARED_INLINE_P (thunk) = 0;
   /* Nor has it been deferred.  */
   DECL_DEFERRED_FN (thunk) = 0;
@@ -262,7 +263,8 @@ static GTY (()) int thunk_labelno;
 tree
 make_alias_for (tree function, tree newid)
 {
-  tree alias = build_decl (FUNCTION_DECL, newid, TREE_TYPE (function));
+  tree alias = build_decl (DECL_SOURCE_LOCATION (function),
+			   FUNCTION_DECL, newid, TREE_TYPE (function));
   DECL_LANG_SPECIFIC (alias) = DECL_LANG_SPECIFIC (function);
   cxx_dup_lang_specific_decl (alias);
   DECL_CONTEXT (alias) = NULL;
@@ -280,7 +282,6 @@ make_alias_for (tree function, tree newid)
   DECL_ARTIFICIAL (alias) = 1;
   DECL_NO_STATIC_CHAIN (alias) = 1;
   DECL_PENDING_INLINE_P (alias) = 0;
-  DECL_INLINE (alias) = 0;
   DECL_DECLARED_INLINE_P (alias) = 0;
   DECL_DEFERRED_FN (alias) = 0;
   DECL_USE_TEMPLATE (alias) = 0;
@@ -382,7 +383,7 @@ use_thunk (tree thunk_fndecl, bool emit_p)
   DECL_VISIBILITY_SPECIFIED (thunk_fndecl)
     = DECL_VISIBILITY_SPECIFIED (function);
   if (DECL_ONE_ONLY (function))
-    make_decl_one_only (thunk_fndecl);
+    make_decl_one_only (thunk_fndecl, cxx_comdat_group (thunk_fndecl));
 
   if (flag_syntax_only)
     {
@@ -429,7 +430,8 @@ use_thunk (tree thunk_fndecl, bool emit_p)
       
       current_function_decl = thunk_fndecl;
       DECL_RESULT (thunk_fndecl)
-	= build_decl (RESULT_DECL, 0, integer_type_node);
+	= build_decl (DECL_SOURCE_LOCATION (thunk_fndecl),
+		      RESULT_DECL, 0, integer_type_node);
       fnname = IDENTIFIER_POINTER (DECL_NAME (thunk_fndecl));
       /* The back end expects DECL_INITIAL to contain a BLOCK, so we
 	 create one.  */
@@ -437,7 +439,7 @@ use_thunk (tree thunk_fndecl, bool emit_p)
       BLOCK_VARS (fn_block) = a;
       DECL_INITIAL (thunk_fndecl) = fn_block;
       init_function_start (thunk_fndecl);
-      current_function_is_thunk = 1;
+      cfun->is_thunk = 1;
       assemble_start_function (thunk_fndecl, fnname);
 
       targetm.asm_out.output_mi_thunk (asm_out_file, thunk_fndecl,
@@ -481,6 +483,7 @@ use_thunk (tree thunk_fndecl, bool emit_p)
 	argarray[i] = a;
       t = build_call_a (alias, i, argarray);
       CALL_FROM_THUNK_P (t) = 1;
+      CALL_CANNOT_INLINE_P (t) = 1;
 
       if (VOID_TYPE_P (TREE_TYPE (t)))
 	finish_expr_stmt (t);
@@ -506,7 +509,7 @@ use_thunk (tree thunk_fndecl, bool emit_p)
 		t = build3 (COND_EXPR, TREE_TYPE (t), cond, t,
 			    cp_convert (TREE_TYPE (t), integer_zero_node));
 	    }
-	  if (IS_AGGR_TYPE (TREE_TYPE (t)))
+	  if (MAYBE_CLASS_TYPE_P (TREE_TYPE (t)))
 	    t = build_cplus_new (TREE_TYPE (t), t);
 	  finish_return_stmt (t);
 	}
@@ -522,8 +525,7 @@ use_thunk (tree thunk_fndecl, bool emit_p)
       pop_deferring_access_checks ();
 
       thunk_fndecl = finish_function (0);
-      tree_lowering_passes (thunk_fndecl);
-      tree_rest_of_compilation (thunk_fndecl);
+      cgraph_add_new_function (thunk_fndecl, false);
     }
 
   pop_from_top_level ();
@@ -662,18 +664,21 @@ do_build_assign_ref (tree fndecl)
 	   BINFO_BASE_ITERATE (binfo, i, base_binfo); i++)
 	{
 	  tree converted_parm;
+	  VEC(tree,gc) *parmvec;
 
 	  /* We must convert PARM directly to the base class
 	     explicitly since the base class may be ambiguous.  */
 	  converted_parm = build_base_path (PLUS_EXPR, parm, base_binfo, 1);
 	  /* Call the base class assignment operator.  */
+	  parmvec = make_tree_vector_single (converted_parm);
 	  finish_expr_stmt
 	    (build_special_member_call (current_class_ref,
 					ansi_assopname (NOP_EXPR),
-					build_tree_list (NULL_TREE,
-							 converted_parm),
+					&parmvec,
 					base_binfo,
-					LOOKUP_NORMAL | LOOKUP_NONVIRTUAL));
+					LOOKUP_NORMAL | LOOKUP_NONVIRTUAL,
+                                        tf_warning_or_error));
+	  release_tree_vector (parmvec);
 	}
 
       /* Assign to each of the non-static data members.  */
@@ -728,7 +733,8 @@ do_build_assign_ref (tree fndecl)
 	  init = build3 (COMPONENT_REF, expr_type, init, field, NULL_TREE);
 
 	  if (DECL_NAME (field))
-	    init = build_modify_expr (comp, NOP_EXPR, init);
+	    init = cp_build_modify_expr (comp, NOP_EXPR, init, 
+					 tf_warning_or_error);
 	  else
 	    init = build2 (MODIFY_EXPR, TREE_TYPE (comp), comp, init);
 	  finish_expr_stmt (init);
@@ -769,7 +775,7 @@ synthesize_method (tree fndecl)
   if (! context)
     push_to_top_level ();
   else if (nested)
-    push_function_context_to (context);
+    push_function_context ();
 
   input_location = DECL_SOURCE_LOCATION (fndecl);
 
@@ -807,13 +813,13 @@ synthesize_method (tree fndecl)
   if (! context)
     pop_from_top_level ();
   else if (nested)
-    pop_function_context_from (context);
+    pop_function_context ();
 
   pop_deferring_access_checks ();
 
   if (error_count != errorcount || warning_count != warningcount)
-    inform ("%Hsynthesized method %qD first required here ",
-	    &input_location, fndecl);
+    inform (input_location, "synthesized method %qD first required here ",
+	    fndecl);
 }
 
 /* Use EXTRACTOR to locate the relevant function called for each base &
@@ -1105,9 +1111,9 @@ implicitly_declare_fn (special_function_kind kind, tree type, bool const_p)
   rest_of_decl_compilation (fn, toplevel_bindings_p (), at_eof);
   DECL_IN_AGGR_P (fn) = 1;
   DECL_ARTIFICIAL (fn) = 1;
+  DECL_DEFAULTED_FN (fn) = 1;
   DECL_NOT_REALLY_EXTERN (fn) = 1;
   DECL_DECLARED_INLINE_P (fn) = 1;
-  DECL_INLINE (fn) = 1;
   gcc_assert (!TREE_USED (fn));
 
   /* Restore PROCESSING_TEMPLATE_DECL.  */

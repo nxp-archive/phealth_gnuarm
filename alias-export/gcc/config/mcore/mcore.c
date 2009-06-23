@@ -1,12 +1,12 @@
 /* Output routines for Motorola MCore processor
-   Copyright (C) 1993, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
-   Free Software Foundation, Inc.
+   Copyright (C) 1993, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008,
+   2009 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -15,9 +15,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to
-   the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-   Boston, MA 02110-1301, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -45,6 +44,7 @@
 #include "toplev.h"
 #include "target.h"
 #include "target-def.h"
+#include "df.h"
 
 /* Maximum size we are allowed to grow the stack in a single operation.
    If we want more, we must do it in increments of at most this size.
@@ -56,11 +56,6 @@ char * mcore_current_function_name = 0;
 long   mcore_current_compilation_timestamp = 0;
 
 /* Global variables for machine-dependent things.  */
-
-/* Saved operands from the last compare to use when we generate an scc
-  or bcc insn.  */
-rtx arch_compare_op0;
-rtx arch_compare_op1;
 
 /* Provides the class number of the smallest class containing
    reg number.  */
@@ -127,7 +122,7 @@ static rtx        emit_new_cond_insn            (rtx, int);
 static rtx        conditionalize_block          (rtx);
 static void       conditionalize_optimization   (void);
 static void       mcore_reorg                   (void);
-static rtx        handle_structs_in_regs        (enum machine_mode, tree, int);
+static rtx        handle_structs_in_regs        (enum machine_mode, const_tree, int);
 static void       mcore_mark_dllexport          (tree);
 static void       mcore_mark_dllimport          (tree);
 static int        mcore_dllexport_p             (tree);
@@ -144,9 +139,9 @@ static const char *mcore_strip_name_encoding	(const char *);
 static int        mcore_const_costs            	(rtx, RTX_CODE);
 static int        mcore_and_cost               	(rtx);
 static int        mcore_ior_cost               	(rtx);
-static bool       mcore_rtx_costs		(rtx, int, int, int *);
+static bool       mcore_rtx_costs		(rtx, int, int, int *, bool);
 static void       mcore_external_libcall	(rtx);
-static bool       mcore_return_in_memory	(tree, tree);
+static bool       mcore_return_in_memory	(const_tree, const_tree);
 static int        mcore_arg_partial_bytes       (CUMULATIVE_ARGS *,
 						 enum machine_mode,
 						 tree, bool);
@@ -183,16 +178,16 @@ static int        mcore_arg_partial_bytes       (CUMULATIVE_ARGS *,
 #undef  TARGET_RTX_COSTS
 #define TARGET_RTX_COSTS 		mcore_rtx_costs
 #undef  TARGET_ADDRESS_COST
-#define TARGET_ADDRESS_COST 		hook_int_rtx_0
+#define TARGET_ADDRESS_COST 		hook_int_rtx_bool_0
 #undef  TARGET_MACHINE_DEPENDENT_REORG
 #define TARGET_MACHINE_DEPENDENT_REORG	mcore_reorg
 
 #undef  TARGET_PROMOTE_FUNCTION_ARGS
-#define TARGET_PROMOTE_FUNCTION_ARGS	hook_bool_tree_true
+#define TARGET_PROMOTE_FUNCTION_ARGS	hook_bool_const_tree_true
 #undef  TARGET_PROMOTE_FUNCTION_RETURN
-#define TARGET_PROMOTE_FUNCTION_RETURN	hook_bool_tree_true
+#define TARGET_PROMOTE_FUNCTION_RETURN	hook_bool_const_tree_true
 #undef  TARGET_PROMOTE_PROTOTYPES
-#define TARGET_PROMOTE_PROTOTYPES	hook_bool_tree_true
+#define TARGET_PROMOTE_PROTOTYPES	hook_bool_const_tree_true
 
 #undef  TARGET_RETURN_IN_MEMORY
 #define TARGET_RETURN_IN_MEMORY		mcore_return_in_memory
@@ -267,7 +262,7 @@ calc_live_regs (int * count)
 
   for (reg = 0; reg < FIRST_PSEUDO_REGISTER; reg++)
     {
-      if (regs_ever_live[reg] && !call_used_regs[reg])
+      if (df_regs_ever_live_p (reg) && !call_used_regs[reg])
 	{
 	  (*count)++;
 	  live_regs_mask |= (1 << reg);
@@ -480,7 +475,8 @@ mcore_ior_cost (rtx x)
 }
 
 static bool
-mcore_rtx_costs (rtx x, int code, int outer_code, int * total)
+mcore_rtx_costs (rtx x, int code, int outer_code, int * total,
+		 bool speed ATTRIBUTE_UNUSED)
 {
   switch (code)
     {
@@ -518,26 +514,36 @@ mcore_rtx_costs (rtx x, int code, int outer_code, int * total)
     }
 }
 
-/* Check to see if a comparison against a constant can be made more efficient
-   by incrementing/decrementing the constant to get one that is more efficient
-   to load.  */
+/* Prepare the operands for a comparison.  Return whether the branch/setcc
+   should reverse the operands.  */
 
-int
-mcore_modify_comparison (enum rtx_code code)
+bool
+mcore_gen_compare (enum rtx_code code, rtx op0, rtx op1)
 {
-  rtx op1 = arch_compare_op1;
-  
+  rtx cc_reg = gen_rtx_REG (CCmode, CC_REG);
+  bool invert;
+
   if (GET_CODE (op1) == CONST_INT)
     {
       HOST_WIDE_INT val = INTVAL (op1);
       
       switch (code)
 	{
+	case GTU:
+	  /* Unsigned > 0 is the same as != 0; everything else is converted
+	     below to LEU (reversed cmphs).  */
+	  if (val == 0)
+	    code = NE;
+	  break;
+
+        /* Check whether (LE A imm) can become (LT A imm + 1),
+	   or (GT A imm) can become (GE A imm + 1).  */
+	case GT:
 	case LE:
 	  if (CONST_OK_FOR_J (val + 1))
 	    {
-	      arch_compare_op1 = GEN_INT (val + 1);
-	      return 1;
+	      op1 = GEN_INT (val + 1);
+	      code = code == LE ? LT : GE;
 	    }
 	  break;
 	  
@@ -545,28 +551,18 @@ mcore_modify_comparison (enum rtx_code code)
 	  break;
 	}
     }
-  
-  return 0;
-}
-
-/* Prepare the operands for a comparison.  */
-
-rtx
-mcore_gen_compare_reg (enum rtx_code code)
-{
-  rtx op0 = arch_compare_op0;
-  rtx op1 = arch_compare_op1;
-  rtx cc_reg = gen_rtx_REG (CCmode, CC_REG);
-
+ 
   if (CONSTANT_P (op1) && GET_CODE (op1) != CONST_INT)
     op1 = force_reg (SImode, op1);
 
   /* cmpnei: 0-31 (K immediate)
      cmplti: 1-32 (J immediate, 0 using btsti x,31).  */
+  invert = false;
   switch (code)
     {
     case EQ:	/* Use inverted condition, cmpne.  */
       code = NE;
+      invert = true;
       /* Drop through.  */
       
     case NE:	/* Use normal condition, cmpne.  */
@@ -576,6 +572,7 @@ mcore_gen_compare_reg (enum rtx_code code)
 
     case LE:	/* Use inverted condition, reversed cmplt.  */
       code = GT;
+      invert = true;
       /* Drop through.  */
       
     case GT:	/* Use normal condition, reversed cmplt.  */
@@ -585,6 +582,7 @@ mcore_gen_compare_reg (enum rtx_code code)
 
     case GE:	/* Use inverted condition, cmplt.  */
       code = LT;
+      invert = true;
       /* Drop through.  */
       
     case LT:	/* Use normal condition, cmplt.  */
@@ -596,13 +594,10 @@ mcore_gen_compare_reg (enum rtx_code code)
       break;
 
     case GTU:	/* Use inverted condition, cmple.  */
-      /* Unsigned > 0 is the same as != 0, but we need to invert the
-	 condition, so we want to set code = EQ.  This cannot be done
-	 however, as the mcore does not support such a test.  Instead
-	 we cope with this case in the "bgtu" pattern itself so we
-	 should never reach this point.  */
+      /* We coped with unsigned > 0 above.  */
       gcc_assert (GET_CODE (op1) != CONST_INT || INTVAL (op1) != 0);
       code = LEU;
+      invert = true;
       /* Drop through.  */
       
     case LEU:	/* Use normal condition, reversed cmphs.  */
@@ -612,6 +607,7 @@ mcore_gen_compare_reg (enum rtx_code code)
 
     case LTU:	/* Use inverted condition, cmphs.  */
       code = GEU;
+      invert = true;
       /* Drop through.  */
       
     case GEU:	/* Use normal condition, cmphs.  */
@@ -623,9 +619,10 @@ mcore_gen_compare_reg (enum rtx_code code)
       break;
     }
 
-  emit_insn (gen_rtx_SET (VOIDmode, cc_reg, gen_rtx_fmt_ee (code, CCmode, op0, op1)));
-  
-  return cc_reg;
+  emit_insn (gen_rtx_SET (VOIDmode,
+			  cc_reg,
+			  gen_rtx_fmt_ee (code, CCmode, op0, op1)));
+  return invert;
 }
 
 int
@@ -1652,7 +1649,7 @@ layout_mcore_frame (struct mcore_frame * infp)
 
   /* Might have to spill bytes to re-assemble a big argument that
      was passed partially in registers and partially on the stack.  */
-  nbytes = current_function_pretend_args_size;
+  nbytes = crtl->args.pretend_args_size;
   
   /* Determine how much space for spilled anonymous args (e.g., stdarg).  */
   if (current_function_anonymous_args)
@@ -1666,7 +1663,7 @@ layout_mcore_frame (struct mcore_frame * infp)
 
   /* And the rest of it... locals and space for overflowed outbounds.  */
   infp->local_size = get_frame_size ();
-  infp->outbound_size = current_function_outgoing_args_size;
+  infp->outbound_size = crtl->outgoing_args_size;
 
   /* Make sure we have a whole number of words for the locals.  */
   if (infp->local_size % STACK_BYTES)
@@ -1939,7 +1936,7 @@ mcore_expand_prolog (void)
       
       ASM_OUTPUT_CG_NODE (asm_out_file, mcore_current_function_name, space_allocated);
 
-      if (current_function_calls_alloca)
+      if (cfun->calls_alloca)
 	ASM_OUTPUT_CG_EDGE (asm_out_file, mcore_current_function_name, "alloca", 1);
 
       /* 970425: RBE:
@@ -1963,7 +1960,7 @@ mcore_expand_prolog (void)
   /* If we have a parameter passed partially in regs and partially in memory,
      the registers will have been stored to memory already in function.c.  So
      we only need to do something here for varargs functions.  */
-  if (fi.arg_size != 0 && current_function_pretend_args_size == 0)
+  if (fi.arg_size != 0 && crtl->args.pretend_args_size == 0)
     {
       int offset;
       int rn = FIRST_PARM_REG + NPARM_REGS - 1;
@@ -2603,30 +2600,30 @@ mcore_r15_operand_p (rtx x)
     }
 }
 
-/* Implement SECONDARY_RELOAD_CLASS.  If CLASS contains r15, and we can't
+/* Implement SECONDARY_RELOAD_CLASS.  If RCLASS contains r15, and we can't
    directly move X into it, use r1-r14 as a temporary.  */
 
 enum reg_class
-mcore_secondary_reload_class (enum reg_class class,
+mcore_secondary_reload_class (enum reg_class rclass,
 			      enum machine_mode mode ATTRIBUTE_UNUSED, rtx x)
 {
-  if (TEST_HARD_REG_BIT (reg_class_contents[class], 15)
+  if (TEST_HARD_REG_BIT (reg_class_contents[rclass], 15)
       && !mcore_r15_operand_p (x))
     return LRW_REGS;
   return NO_REGS;
 }
 
 /* Return the reg_class to use when reloading the rtx X into the class
-   CLASS.  If X is too complex to move directly into r15, prefer to
+   RCLASS.  If X is too complex to move directly into r15, prefer to
    use LRW_REGS instead.  */
 
 enum reg_class
-mcore_reload_class (rtx x, enum reg_class class)
+mcore_reload_class (rtx x, enum reg_class rclass)
 {
-  if (reg_class_subset_p (LRW_REGS, class) && !mcore_r15_operand_p (x))
+  if (reg_class_subset_p (LRW_REGS, rclass) && !mcore_r15_operand_p (x))
     return LRW_REGS;
 
-  return class;
+  return rclass;
 }
 
 /* Tell me if a pair of reg/subreg rtx's actually refer to the same
@@ -2663,7 +2660,7 @@ mcore_override_options (void)
    hold a function argument of mode MODE and type TYPE.  */
 
 int
-mcore_num_arg_regs (enum machine_mode mode, tree type)
+mcore_num_arg_regs (enum machine_mode mode, const_tree type)
 {
   int size;
 
@@ -2679,7 +2676,7 @@ mcore_num_arg_regs (enum machine_mode mode, tree type)
 }
 
 static rtx
-handle_structs_in_regs (enum machine_mode mode, tree type, int reg)
+handle_structs_in_regs (enum machine_mode mode, const_tree type, int reg)
 {
   int size;
 
@@ -2723,14 +2720,14 @@ handle_structs_in_regs (enum machine_mode mode, tree type, int reg)
 }
 
 rtx
-mcore_function_value (tree valtype, tree func ATTRIBUTE_UNUSED)
+mcore_function_value (const_tree valtype, const_tree func ATTRIBUTE_UNUSED)
 {
   enum machine_mode mode;
   int unsigned_p;
   
   mode = TYPE_MODE (valtype);
 
-  PROMOTE_MODE (mode, unsigned_p, NULL);
+  mode = promote_mode (valtype, mode, &unsigned_p, 1);
   
   return handle_structs_in_regs (mode, valtype, FIRST_RET_REG);
 }
@@ -2852,7 +2849,7 @@ mcore_mark_dllexport (tree decl)
   if (mcore_dllexport_name_p (oldname))
     return;  /* Already done.  */
 
-  newname = alloca (strlen (oldname) + 4);
+  newname = XALLOCAVEC (char, strlen (oldname) + 4);
   sprintf (newname, "@e.%s", oldname);
 
   /* We pass newname through get_identifier to ensure it has a unique
@@ -2910,7 +2907,7 @@ mcore_mark_dllimport (tree decl)
       TREE_PUBLIC (decl) = 1;
     }
 
-  newname = alloca (strlen (oldname) + 11);
+  newname = XALLOCAVEC (char, strlen (oldname) + 11);
   sprintf (newname, "@i.__imp_%s", oldname);
 
   /* We pass newname through get_identifier to ensure it has a unique
@@ -3030,8 +3027,8 @@ mcore_handle_naked_attribute (tree * node, tree name, tree args ATTRIBUTE_UNUSED
     }
   else
     {
-      warning (OPT_Wattributes, "%qs attribute only applies to functions",
-	       IDENTIFIER_POINTER (name));
+      warning (OPT_Wattributes, "%qE attribute only applies to functions",
+	       name);
       *no_add_attrs = true;
     }
 
@@ -3067,7 +3064,7 @@ mcore_unique_section (tree decl, int reloc ATTRIBUTE_UNUSED)
     prefix = ".data$";
   
   len = strlen (name) + strlen (prefix);
-  string = alloca (len + 1);
+  string = XALLOCAVEC (char, len + 1);
   
   sprintf (string, "%s%s", prefix, name);
 
@@ -3103,8 +3100,8 @@ mcore_external_libcall (rtx fun)
 /* Worker function for TARGET_RETURN_IN_MEMORY.  */
 
 static bool
-mcore_return_in_memory (tree type, tree fntype ATTRIBUTE_UNUSED)
+mcore_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 {
-  HOST_WIDE_INT size = int_size_in_bytes (type);
+  const HOST_WIDE_INT size = int_size_in_bytes (type);
   return (size == -1 || size > 2 * UNITS_PER_WORD);
 }

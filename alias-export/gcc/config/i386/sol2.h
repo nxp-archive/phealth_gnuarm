@@ -1,14 +1,13 @@
 /* Target definitions for GCC for Intel 80386 running Solaris 2
    Copyright (C) 1993, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
-   2004
-   Free Software Foundation, Inc.
+   2004, 2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Fred Fish (fnf@cygnus.com).
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -17,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* The Solaris 2.0 x86 linker botches alignment of code sections.
    It tries to align to a 16 byte boundary by padding with 0x00000090
@@ -98,6 +96,9 @@ Boston, MA 02110-1301, USA.  */
 #define SUBTARGET_INSERT_ATTRIBUTES solaris_insert_attributes
 #define SUBTARGET_ATTRIBUTE_TABLE SOLARIS_ATTRIBUTE_TABLE
 
+/* Register the Solaris-specific #pragma directives.  */
+#define REGISTER_SUBTARGET_PRAGMAS() solaris_register_pragmas ()
+
 /* Output a simple call for .init/.fini.  */
 #define ASM_OUTPUT_CALL(FILE, FN)				\
   do								\
@@ -111,3 +112,9 @@ Boston, MA 02110-1301, USA.  */
 /* We do not need NT_VERSION notes.  */
 #undef X86_FILE_START_VERSION_DIRECTIVE
 #define X86_FILE_START_VERSION_DIRECTIVE false
+
+/* Only recent versions of Solaris 11 ld properly support hidden .gnu.linkonce
+   sections, so don't use them.  */
+#ifndef TARGET_GNU_LD
+#define USE_HIDDEN_LINKONCE 0
+#endif

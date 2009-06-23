@@ -1,5 +1,6 @@
-/* LTO output code.
-   Copyright (C) 2007, 2008 Free Software Foundation, Inc.
+/* Functions for writing LTO sections.
+
+   Copyright (C) 2009 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
 
 This file is part of GCC.
@@ -30,29 +31,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "input.h"
 #include "varray.h"
 #include "hashtab.h"
-#include "langhooks.h"
 #include "basic-block.h"
-#include "tree-iterator.h"
-#include "tree-pass.h"
 #include "tree-flow.h"
+#include "tree-pass.h"
 #include "cgraph.h"
 #include "function.h"
 #include "ggc.h"
 #include "diagnostic.h"
 #include "except.h"
-#include "debug.h"
 #include "vec.h"
-#include "tree-vectorizer.h"
-#include "timevar.h"
-#include "lto-section.h"
-#include "lto-section-out.h"
-#include "lto-tree-out.h"
 #include "pointer-set.h"
-#include "stdint.h"
-#include "lto-symtab.h"
-#include "lto-opts.h"
-#include "lto-utils.h"
 #include "bitmap.h"
+#include "langhooks.h"
+#include "lto-symtab.h"
+#include "lto-streamer.h"
+#include "lto-compress.h"
 
 static VEC(lto_out_decl_state_ptr, heap) *decl_state_stack;
 
@@ -62,50 +55,44 @@ static VEC(lto_out_decl_state_ptr, heap) *decl_state_stack;
 VEC(lto_out_decl_state_ptr, heap) *lto_function_decl_states;
 
 /* Bitmap indexed by DECL_UID to indicate if a function needs to be
-   forced static inline. */
-
-static bitmap forced_static_inline;
+   forced extern inline. */
+static bitmap forced_extern_inline;
 
 /* Initialize states for determining which function decls to be ouput
-   as static inline, regardless of the decls' own attributes.  */
+   as extern inline, regardless of the decls' own attributes.  */
 
 void
-lto_new_static_inline_states (void)
+lto_new_extern_inline_states (void)
 {
-  forced_static_inline = lto_bitmap_alloc ();
+  forced_extern_inline = lto_bitmap_alloc ();
 }
 
 /* Releasing resources use for states to determine which function decls
-   to be ouput as static inline */
+   to be ouput as extern inline */
 
 void
-lto_delete_static_inline_states (void)
+lto_delete_extern_inline_states (void)
 {
-  lto_bitmap_free (forced_static_inline);
-  forced_static_inline = NULL;
+  lto_bitmap_free (forced_extern_inline);
+  forced_extern_inline = NULL;
 }
 
-/* Force FN_DECL to be output as static inline.  */
-
-void
-lto_force_function_static_inline (tree fn_decl)
-{
-  bitmap_set_bit (forced_static_inline, DECL_UID (fn_decl));
-}
-
-/* Like lto_force_function_static_inline above but for multiple decls.
-   DECL is a bitmap indexed by DECL_UID. */
+/* Force all the functions in DECLS to be output as extern inline.
+   DECLS is a bitmap indexed by DECL_UID. */
  
 void
-lto_force_functions_static_inline (bitmap decls)
+lto_force_functions_extern_inline (bitmap decls)
 {
-  bitmap_ior_into (forced_static_inline, decls);
+  bitmap_ior_into (forced_extern_inline, decls);
 }
 
+/* Return true if FN_DECL is a function which should be emitted as
+   extern inline.  */
+
 bool
-lto_forced_static_inline_p (tree fn_decl)
+lto_forced_extern_inline_p (tree fn_decl)
 {
-  return bitmap_bit_p (forced_static_inline, DECL_UID (fn_decl));
+  return bitmap_bit_p (forced_extern_inline, DECL_UID (fn_decl));
 }
 
 /* Add FLAG onto the end of BASE.  */
@@ -213,12 +200,33 @@ lto_eq_global_slot_node (const void *p1, const void *p2)
 *****************************************************************************/
 
 
+/* Flush compressed stream data function, sends NUM_CHARS from CHARS
+   to the append lang hook, OPAQUE is currently always NULL.  */
+
+static void
+lto_append_data (const char *chars, unsigned int num_chars, void *opaque)
+{
+  gcc_assert (opaque == NULL);
+  lang_hooks.lto.append_data (chars, num_chars, opaque);
+}
+
+/* Pointer to the current compression stream.  */
+
+static struct lto_compression_stream *compression_stream = NULL;
+
 /* Begin a new output section named NAME.  */
 
 void
 lto_begin_section (const char *name)
 {
   lang_hooks.lto.begin_section (name);
+
+  /* FIXME lto: for now, suppress compression if the lang_hook that appends
+     data is anything other than assembler output.  The effect here is that
+     we get compression of IL only in non-ltrans object files.  */
+  gcc_assert (compression_stream == NULL);
+  if (!flag_wpa)
+    compression_stream = lto_start_compression (lto_append_data, NULL);
 }
 
 
@@ -227,6 +235,11 @@ lto_begin_section (const char *name)
 void
 lto_end_section (void)
 {
+  if (compression_stream)
+    {
+      lto_end_compression (compression_stream);
+      compression_stream = NULL;
+    }
   lang_hooks.lto.end_section ();
 }
 
@@ -238,25 +251,34 @@ void
 lto_write_stream (struct lto_output_stream *obs)
 {
   unsigned int block_size = 1024;
-  unsigned int num_chars;
   struct lto_char_ptr_base *block;
+  struct lto_char_ptr_base *next_block;
   if (!obs->first_block)
     return;
 
-  block = obs->first_block;
-  while (block)
+  for (block = obs->first_block; block; block = next_block)
     {
       const char *base = ((char *)block) + sizeof (struct lto_char_ptr_base);
-      struct lto_char_ptr_base *old_block = block;
-      block = (struct lto_char_ptr_base *)block->ptr;
-      /* If there is a next block, then this one is full, if there is
-	 not a next block, then the left_in_block field says how many
-	 chars there are in this block.  */
-      num_chars = block_size - sizeof (struct lto_char_ptr_base);
-      if (!block)
-	num_chars = num_chars - obs->left_in_block;
+      unsigned int num_chars = block_size - sizeof (struct lto_char_ptr_base);
 
-      lang_hooks.lto.append_data (base, num_chars, old_block);
+      /* If this is not the last block, it is full.  If it is the last
+	 block, left_in_block indicates how many chars are unoccupied in
+	 this block; subtract from num_chars to obtain occupancy.  */
+      next_block = (struct lto_char_ptr_base *) block->ptr;
+      if (!next_block)
+	num_chars -= obs->left_in_block;
+
+      /* FIXME lto: WPA mode uses an ELF function as a lang_hook to append
+         output data.  This hook is not happy with the way that compression
+         blocks up output differently to the way it's blocked here.  So for
+         now, we don't compress WPA output.  */
+      if (compression_stream)
+	{
+	  lto_compress_block (compression_stream, base, num_chars);
+	  lang_hooks.lto.append_data (NULL, 0, block);
+	}
+      else
+	lang_hooks.lto.append_data (base, num_chars, block);
       block_size *= 2;
     }
 }
@@ -358,7 +380,6 @@ void
 lto_output_uleb128_stream (struct lto_output_stream *obs,
 			   unsigned HOST_WIDE_INT work)
 {
-  LTO_DEBUG_WIDE ("U", work);
   do
     {
       unsigned int byte = (work & 0x7f);
@@ -381,7 +402,6 @@ void
 lto_output_widest_uint_uleb128_stream (struct lto_output_stream *obs,
 				       unsigned HOST_WIDEST_INT work)
 {
-  LTO_DEBUG_WIDE ("U", work);
   do
     {
       unsigned int byte = (work & 0x7f);
@@ -402,7 +422,7 @@ void
 lto_output_sleb128_stream (struct lto_output_stream *obs, HOST_WIDE_INT work)
 {
   int more, byte;
-  LTO_DEBUG_WIDE ("S", work);
+
   do
     {
       byte = (work & 0x7f);
@@ -439,8 +459,6 @@ lto_output_integer_stream (struct lto_output_stream *obs, tree t)
       lto_output_sleb128_stream (obs, low);
       return;
     }
-
-  LTO_DEBUG_INTEGER ("SS", high, low);
 
   /* This is just a copy of the lto_output_sleb128 code with extra
      operations to transfer the low 7 bits of the high value to the
@@ -579,10 +597,6 @@ lto_output_type_ref_index (struct lto_out_decl_state *decl_state,
 }
 
 
-/*****************************************************************************
-  Convenience routines used by the ipa passes to serialize their information.
-*****************************************************************************/
-
 /* Create the output block and return it.  */
 
 struct lto_simple_output_block *
@@ -596,13 +610,6 @@ lto_create_simple_output_block (enum lto_section_type section_type)
   ob->decl_state = lto_get_out_decl_state ();
   ob->main_stream = ((struct lto_output_stream *)
 		     xcalloc (1, sizeof (struct lto_output_stream)));
-
-#ifdef LTO_STREAM_DEBUGGING
-  lto_debug_context.out = lto_debug_out_fun;
-  lto_debug_context.indent = 0;
-#endif
-
-  LTO_SET_DEBUGGING_STREAM (debug_main_stream, main_data);
 
   return ob;
 }
@@ -631,29 +638,19 @@ lto_destroy_simple_output_block (struct lto_simple_output_block *ob)
   header.compressed_size = 0;
   
   header.main_size = ob->main_stream->total_size;
-#ifdef LTO_STREAM_DEBUGGING
-  header.debug_main_size = ob->debug_main_stream->total_size;
-#else
-  header.debug_main_size = -1;
-#endif
 
-  header_stream = ((struct lto_output_stream *)
-		   xcalloc (1, sizeof (struct lto_output_stream)));
+  header_stream = XCNEW (struct lto_output_stream);
   lto_output_data_stream (header_stream, &header, sizeof header);
   lto_write_stream (header_stream);
   free (header_stream);
 
   lto_write_stream (ob->main_stream);
-#ifdef LTO_STREAM_DEBUGGING
-  lto_write_stream (ob->debug_main_stream);
-#endif
 
   /* Put back the assembly section that was there before we started
      writing lto info.  */
   lto_end_section ();
 
   free (ob->main_stream);
-  LTO_CLEAR_DEBUGGING_STREAM (debug_main_stream);
   free (ob);
 }
 
@@ -679,8 +676,10 @@ lto_new_out_decl_state (void)
 	  hash_fn = lto_hash_decl_slot_node;
 	  eq_fn = lto_eq_decl_slot_node;
 	}
-    lto_init_tree_ref_encoder (&state->streams[i], hash_fn, eq_fn);
+      lto_init_tree_ref_encoder (&state->streams[i], hash_fn, eq_fn);
     }
+
+  state->cgraph_node_encoder = lto_cgraph_encoder_new ();
 
   return state;
 }
@@ -780,6 +779,12 @@ get_ref_idx_for (tree t, htab_t h, VEC(tree, heap) **v, unsigned *ref_p)
   struct lto_decl_slot d_slot;
   unsigned next_ref_idx = htab_elements (h);
   bool retval;
+
+  /* If -funsigned-char is given, replace references to 'char' with
+     'unsigned char'.  FIXME lto, this should be done in
+     free_lang_data.  */
+  if (flag_signed_char == 0 && TYPE_P (t) && t == char_type_node)
+    t = unsigned_char_type_node;
 
   retval = true;
   d_slot.t = t;
@@ -892,14 +897,20 @@ preload_common_node (tree t, htab_t h, VEC(tree, heap) **v, unsigned *ref_p)
 {
   gcc_assert (t);
 
-#ifdef GLOBAL_STREAMER_TRACE
-  fprintf (stderr, "Preloading common node: [%s] ",
-	   tree_code_name[TREE_CODE (t)]);
-  print_generic_expr (stderr, t, 0);
-  fprintf (stderr, "\n");
-#endif
-
  get_ref_idx_for (t, h, v, ref_p);
+
+ /* The FIELD_DECLs of structures should be shared, so that every
+    COMPONENT_REF uses the same tree node when referencing a field.
+    Pointer equality between FIELD_DECLs is used by the alias
+    machinery to compute overlapping memory references (See
+    nonoverlapping_component_refs_p).  */
+ if (TREE_CODE (t) == RECORD_TYPE)
+   {
+     tree f;
+
+     for (f = TYPE_FIELDS (t); f; f = TREE_CHAIN (f))
+       preload_common_node (f, h, v, ref_p);
+   }
 }
 
 
@@ -914,16 +925,8 @@ preload_common_nodes (struct output_block *ob)
   VEC(tree, heap) *common_nodes = lto_get_common_nodes ();
   tree node;
   
-#ifdef GLOBAL_STREAMER_TRACE
-  fprintf (stderr, "\n\nPreloading all common nodes.\n");
-#endif
-
   for (i = 0; VEC_iterate (tree, common_nodes, i, node); i++)
     preload_common_node (node, ob->main_hash_table, NULL, NULL);
-
-#ifdef GLOBAL_STREAMER_TRACE
-  fprintf (stderr, "\n\nPreloaded %u common nodes\n", i - 1);
-#endif
 
   VEC_free (tree, heap, common_nodes);
 }
@@ -1075,15 +1078,13 @@ write_symbol_vec (htab_t hash, struct lto_output_stream *stream,
       uint64_t size;
       const char *comdat;
 
-      if (!TREE_PUBLIC (t))
-	continue;
-
-      if (incorporeal_function_p (t))
-	continue;
-
-      gcc_assert (!DECL_ABSTRACT (t));
-
-      if (TREE_CODE (t) == RESULT_DECL)
+      /* None of the following kinds of symbols are needed in the
+	 symbol table.  */
+      if (!TREE_PUBLIC (t)
+	  || DECL_IS_BUILTIN (t)
+	  || incorporeal_function_p (t)
+	  || DECL_ABSTRACT (t)
+	  || TREE_CODE (t) == RESULT_DECL)
 	continue;
 
       gcc_assert (TREE_CODE (t) == VAR_DECL
@@ -1248,7 +1249,6 @@ produce_asm_for_decls (cgraph_node_set set)
   lto_output_1_stream (ob->string_stream, 0);
 
   /* Write the global var decls.  */
-  LTO_SET_DEBUGGING_STREAM (debug_main_stream, main_data);
   num_fns = VEC_length (lto_out_decl_state_ptr, lto_function_decl_states);
   lto_output_decl_state_streams (ob, out_state);
   for (idx = 0; idx < num_fns; idx++)
@@ -1279,12 +1279,8 @@ produce_asm_for_decls (cgraph_node_set set)
 
   header.main_size = ob->main_stream->total_size;
   header.string_size = ob->string_stream->total_size;
-#ifdef LTO_STREAM_DEBUGGING
-  header.debug_main_size = ob->debug_main_stream->total_size;
-#endif
 
-  header_stream = ((struct lto_output_stream *)
-		   xcalloc (1, sizeof (struct lto_output_stream)));
+  header_stream = XCNEW (struct lto_output_stream);
   lto_output_data_stream (header_stream, &header, sizeof header);
   lto_write_stream (header_stream);
   free (header_stream);
@@ -1309,10 +1305,6 @@ produce_asm_for_decls (cgraph_node_set set)
   lto_write_stream (ob->main_stream);
   lto_write_stream (ob->string_stream);
 
-#ifdef LTO_STREAM_DEBUGGING
-  lto_write_stream (ob->debug_main_stream);
-#endif
-
   lto_end_section ();
 
   /* Write the symbol table. */
@@ -1321,10 +1313,10 @@ produce_asm_for_decls (cgraph_node_set set)
   /* Write command line opts.  */
   lto_write_options ();
 
+  /* Deallocate memory and clean up.  */
+  lto_cgraph_encoder_delete (ob->decl_state->cgraph_node_encoder);
   VEC_free (lto_out_decl_state_ptr, heap, lto_function_decl_states);
   lto_function_decl_states = NULL;
-
-  /* Deallocate memory and clean up.  */
   destroy_output_block (ob);
 }
 
@@ -1339,7 +1331,7 @@ gate_lto_out (void)
 	  && !(errorcount || sorrycount));
 }
 
-struct ipa_opt_pass pass_ipa_lto_finish_out =
+struct ipa_opt_pass_d pass_ipa_lto_finish_out =
 {
  {
   IPA_PASS,
@@ -1364,17 +1356,3 @@ struct ipa_opt_pass pass_ipa_lto_finish_out =
  NULL,			                /* function_transform */
  NULL					/* variable_transform */
 };
-
-#ifdef LTO_STREAM_DEBUGGING
-struct lto_debug_context lto_debug_context;
-
-/* Print character C to the debugging stream in CONTEXT.  */
-
-void
-lto_debug_out_fun (struct lto_debug_context *context, char c)
-{
-  struct lto_output_stream *stream 
-    = (struct lto_output_stream *)context->current_data;
-  lto_output_1_stream (stream, c);
-}
-#endif

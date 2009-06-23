@@ -1,24 +1,23 @@
-/* Input functions for reading lto sections.
+/* Input functions for reading LTO sections.
 
-   Copyright 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 2009 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
 
 This file is part of GCC.
 
-GCC is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
-any later version.
+GCC is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3, or (at your option) any later
+version.
 
-GCC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -32,24 +31,33 @@ Boston, MA 02110-1301, USA.  */
 #include "input.h"
 #include "varray.h"
 #include "hashtab.h"
-#include "langhooks.h"
 #include "basic-block.h"
-#include "tree-iterator.h"
-#include "tree-pass.h"
 #include "tree-flow.h"
 #include "cgraph.h"
 #include "function.h"
 #include "ggc.h"
 #include "diagnostic.h"
 #include "except.h"
-#include "debug.h"
 #include "vec.h"
 #include "timevar.h"
 #include "output.h"
-#include "lto-section.h"
-#include "lto-section-in.h"
-#include "lto-utils.h"
-#include "cpplib.h"
+#include "lto-streamer.h"
+#include "lto-compress.h"
+
+/* Section names.  These must correspond to the values of
+   enum lto_section_type.  */
+const char *lto_section_name[LTO_N_SECTION_TYPES] =
+{
+  "decls",
+  "function_body",
+  "static_initializer",
+  "cgraph",
+  "ipa_pure_const",
+  "ipa_reference",
+  "symtab",
+  "wpa_fixup",
+  "opts"
+};
 
 /* Return 0 or 1 based on the last bit of FLAGS and right shift FLAGS
    by 1.  */
@@ -99,10 +107,7 @@ lto_input_uleb128 (struct lto_input_block *ib)
       result |= (byte & 0x7f) << shift;
       shift += 7;
       if ((byte & 0x80) == 0)
-	{
-	  LTO_DEBUG_WIDE ("U", result);
-	  return result;
-	}
+	return result;
     }
 }
 
@@ -122,10 +127,7 @@ lto_input_widest_uint_uleb128 (struct lto_input_block *ib)
       result |= (byte & 0x7f) << shift;
       shift += 7;
       if ((byte & 0x80) == 0)
-	{
-	  LTO_DEBUG_WIDE ("U", result);
-	  return result;
-	}
+	return result;
     }
 }
 
@@ -148,7 +150,6 @@ lto_input_sleb128 (struct lto_input_block *ib)
 	  if ((shift < HOST_BITS_PER_WIDE_INT) && (byte & 0x40))
 	    result |= - ((HOST_WIDE_INT)1 << shift);
 
-	  LTO_DEBUG_WIDE ("S", result);
 	  return result;
 	}
     }
@@ -196,14 +197,6 @@ lto_input_integer (struct lto_input_block *ib, tree type)
 		high |= - ((HOST_WIDE_INT)1 << (shift - HOST_BITS_PER_WIDE_INT));
 	    }
 
-#ifdef LTO_STREAM_DEBUGGING
-	  /* Have to match the quick out in the lto writer.  */
-	  if (((high == -1) && (low < 0))
-	      || ((high == 0) && (low >= 0)))
-	    LTO_DEBUG_WIDE ("S", low);
-	  else 
-	    LTO_DEBUG_INTEGER ("SS", high, low);
-#endif	  
 	  return build_int_cst_wide (type, low, high);
 	}
     }
@@ -243,6 +236,37 @@ lto_get_file_decl_data (void)
   return file_decl_data;
 }
 
+/* Buffer structure for accumulating data from compression callbacks.  */
+
+struct lto_buffer
+{
+  char *data;
+  size_t length;
+};
+
+/* Compression callback, append LENGTH bytes from DATA to the buffer pointed
+   to by OPAQUE.  */
+
+static void
+lto_append_data (const char *data, unsigned length, void *opaque)
+{
+  struct lto_buffer *buffer = (struct lto_buffer *) opaque;
+
+  buffer->data = (char *) xrealloc (buffer->data, buffer->length + length);
+  memcpy (buffer->data + buffer->length, data, length);
+  buffer->length += length;
+}
+
+/* Header placed in returned uncompressed data streams.  Allows the
+   uncompressed allocated data to be mapped back to the underlying
+   compressed data for use with free_section_f.  */
+
+struct lto_data_header
+{
+  const char *data;
+  size_t len;
+};
+
 /* Return a char pointer to the start of a data stream for an LTO pass
    or function.  FILE_DATA indicates where to obtain the data.
    SECTION_TYPE is the type of information to be obtained.  NAME is
@@ -256,14 +280,44 @@ lto_get_section_data (struct lto_file_decl_data *file_data,
 		      const char *name, 
 		      size_t *len)
 {
-  gcc_assert (get_section_f);
-  return (get_section_f) (file_data, section_type, name, len);
+  const char *data = (get_section_f) (file_data, section_type, name, len);
+  const size_t header_length = sizeof (struct lto_data_header);
+  struct lto_data_header *header;
+  struct lto_buffer buffer;
+  struct lto_compression_stream *stream;
+  lto_stats.section_size[section_type] += *len;
+
+  if (data == NULL)
+    return NULL;
+
+  /* FIXME lto: WPA mode does not write compressed sections, so for now
+     suppress uncompression if flag_ltrans.  */
+  if (flag_ltrans)
+    return data;
+
+  /* Create a mapping header containing the underlying data and length,
+     and prepend this to the uncompression buffer.  The uncompressed data
+     then follows, and a pointer to the start of the uncompressed data is
+     returned.  */
+  header = (struct lto_data_header *) xmalloc (header_length);
+  header->data = data;
+  header->len = *len;
+  
+  buffer.data = (char *) header;
+  buffer.length = header_length; 
+
+  stream = lto_start_uncompression (lto_append_data, &buffer);
+  lto_uncompress_block (stream, data, *len);
+  lto_end_uncompression (stream);
+
+  *len = buffer.length - header_length;
+  return buffer.data + header_length;
 }
 
 
-/* Return the data found from the above call.  The first three
+/* Free the data found from the above call.  The first three
    parameters are the same as above.  DATA is the data to be freed and
-   LEN is the length of that data. */
+   LEN is the length of that data.  */
 
 void 
 lto_free_section_data (struct lto_file_decl_data *file_data, 
@@ -272,8 +326,25 @@ lto_free_section_data (struct lto_file_decl_data *file_data,
 		       const char *data,
 		       size_t len)
 {
+  const size_t header_length = sizeof (struct lto_data_header);
+  const char *real_data = data - header_length;
+  const struct lto_data_header *header
+    = (const struct lto_data_header *) real_data;
+
   gcc_assert (free_section_f);
-  (free_section_f) (file_data, section_type, name, data, len);
+
+  /* FIXME lto: WPA mode does not write compressed sections, so for now
+     suppress uncompression mapping if flag_ltrans.  */
+  if (flag_ltrans)
+    {
+      (free_section_f) (file_data, section_type, name, data, len);
+      return;
+    }
+
+  /* The underlying data address has been extracted from the mapping header.
+     Free that, then free the allocated uncompression buffer.  */
+  (free_section_f) (file_data, section_type, name, header->data, header->len);
+  free (CONST_CAST (char *, real_data));
 }
 
 
@@ -293,31 +364,16 @@ lto_create_simple_input_block (struct lto_file_decl_data *file_data,
 
   struct lto_input_block* ib_main;
   int32_t main_offset = sizeof (struct lto_simple_header); 
-#ifdef LTO_STREAM_DEBUGGING
-  int32_t debug_main_offset;
-  struct lto_input_block *debug_main;
-#endif
 
   if (!data)
     return NULL;
 
   ib_main = XNEW (struct lto_input_block);
-#ifdef LTO_STREAM_DEBUGGING
-  debug_main_offset = main_offset + header->main_size;
-  debug_main = XNEW (struct lto_input_block);
-#endif
 
   *datar = data;
   LTO_INIT_INPUT_BLOCK_PTR (ib_main, data + main_offset,
 			    0, header->main_size);
-#ifdef LTO_STREAM_DEBUGGING
-  lto_debug_context.out = lto_debug_in_fun;
-  LTO_INIT_INPUT_BLOCK_PTR (debug_main, data + debug_main_offset,
-			    0, header->debug_main_size);
-  lto_debug_context.current_data = debug_main;
-  lto_debug_context.indent = 0;
-#endif
-  
+
   return ib_main;
 }
 
@@ -335,9 +391,6 @@ lto_destroy_simple_input_block (struct lto_file_decl_data *file_data,
 				const char *data, size_t len)
 {
   free (ib);
-#ifdef LTO_STREAM_DEBUGGING
-  free (lto_debug_context.current_data);
-#endif
   lto_free_section_data (file_data, section_type, NULL, data, len);
 }
 
@@ -506,96 +559,3 @@ lto_get_function_in_decl_state (struct lto_file_decl_data *file_data,
   slot = htab_find_slot (file_data->function_decl_states, &temp, NO_INSERT);
   return slot? ((struct lto_in_decl_state*) *slot) : NULL;
 }
-
-/*****************************************************************************/
-/* Stream debugging support code.                                            */
-/*****************************************************************************/
-
-#ifdef LTO_STREAM_DEBUGGING
-
-/* Dump the debug STREAM, and two characters B and C.  */
-
-static void 
-dump_debug_stream (struct lto_input_block *stream, 
-		   const char *stream_name, char b, char c)
-{
-  unsigned int i = 0;
-  bool new_line = true;
-  int chars = 0;
-  int hit_pos = -1;
-  fprintf (stderr, 
-	   "stream failure: looking for a '%c'[0x%x] in the %s debug stream.\nHowever the data translated into a '%c'[0x%x]at position %d\n\n",
-	   c, c, stream_name, b, b, stream->p);
-  
-  while (i < stream->len)
-    {
-      char x;
-      
-      if (new_line)
-	{
-	  if (hit_pos >= 0)
-	    {
-	      int j;
-	      fprintf (stderr, "             ");
-	      for (j=0; j<hit_pos; j++)
-		fputc (' ', stderr);
-	      fprintf (stderr, "^\n             ");
-	      for (j=0; j<hit_pos; j++)
-		fputc (' ', stderr);
-	      fprintf (stderr, "|\n");
-	      hit_pos = -1;
-	    }
-	  
-	  fprintf (stderr, "%6d   -->>", i);
-	  new_line = false;
-	  chars = 0;
-	}
-      
-      x = stream->data[i++];
-      if (x == '\n')
-	{
-	  fprintf (stderr, "<<--\n");
-	  new_line = true;
-	}
-      else 
-	fputc (x, stderr);
-      
-      if (i == stream->p)
-	hit_pos = chars;
-      chars++;
-    }
-}
-
-
-/* The low level output routine to for a single character.  Unlike the
-   version on the writing side, this does interesting processing.
-
-   This call checks that the debugging information generated by
-   lto-function-out matches the debugging information generated by the
-   reader. Each character is checked and a call to abort is generated
-   when the first mismatch is found.  */
-
-void
-lto_debug_in_fun (struct lto_debug_context *context, char c)
-{
-  struct lto_input_block *stream;
-  char b;
-
-  stream = (struct lto_input_block *) context->current_data;
-
-  /* If the writer and reader were compiled with different settings
-     for LTO_STREAM_DEBUGGING, the debugging STREAM may not have any
-     data in it.  Do nothing in that case.  */
-  if (stream->len == 0 || stream->len == (unsigned) -1)
-    return;
-
-  b = lto_input_1_unsigned (stream);
-
-  if (b != c)
-    {
-      dump_debug_stream (stream, context->stream_name, b, c);
-      gcc_unreachable ();
-    }
-}
- 
-#endif

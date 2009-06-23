@@ -75,6 +75,10 @@ along with GCC; see the file COPYING3.  If not see
 
 #define MODULE_EXTENSION ".mod"
 
+/* Don't put any single quote (') in MOD_VERSION, 
+   if yout want it to be recognized.  */
+#define MOD_VERSION "0"
+
 
 /* Structure that describes a position within a module file.  */
 
@@ -1696,6 +1700,7 @@ static const mstring binding_overriding[] =
 {
     minit ("OVERRIDABLE", 0),
     minit ("NON_OVERRIDABLE", 1),
+    minit ("DEFERRED", 2),
     minit (NULL, -1)
 };
 static const mstring binding_generic[] =
@@ -3201,6 +3206,7 @@ static void
 mio_typebound_proc (gfc_typebound_proc** proc)
 {
   int flag;
+  int overriding_flag;
 
   if (iomode == IO_INPUT)
     {
@@ -3213,9 +3219,15 @@ mio_typebound_proc (gfc_typebound_proc** proc)
 
   (*proc)->access = MIO_NAME (gfc_access) ((*proc)->access, access_types);
 
+  /* IO the NON_OVERRIDABLE/DEFERRED combination.  */
+  gcc_assert (!((*proc)->deferred && (*proc)->non_overridable));
+  overriding_flag = ((*proc)->deferred << 1) | (*proc)->non_overridable;
+  overriding_flag = mio_name (overriding_flag, binding_overriding);
+  (*proc)->deferred = ((overriding_flag & 2) != 0);
+  (*proc)->non_overridable = ((overriding_flag & 1) != 0);
+  gcc_assert (!((*proc)->deferred && (*proc)->non_overridable));
+
   (*proc)->nopass = mio_name ((*proc)->nopass, binding_passing);
-  (*proc)->non_overridable = mio_name ((*proc)->non_overridable,
-				       binding_overriding);
   (*proc)->is_generic = mio_name ((*proc)->is_generic, binding_generic);
 
   if (iomode == IO_INPUT)
@@ -4333,11 +4345,10 @@ free_written_common (struct written_common *w)
 /* Write a common block to the module -- recursive helper function.  */
 
 static void
-write_common_0 (gfc_symtree *st)
+write_common_0 (gfc_symtree *st, bool this_module)
 {
   gfc_common_head *p;
   const char * name;
-  const char * lname;
   int flags;
   const char *label;
   struct written_common *w;
@@ -4346,13 +4357,10 @@ write_common_0 (gfc_symtree *st)
   if (st == NULL)
     return;
 
-  write_common_0 (st->left);
+  write_common_0 (st->left, this_module);
 
   /* We will write out the binding label, or the name if no label given.  */
   name = st->n.common->name;
-
-  /* Use the symtree(local)name to check if the common has been written.  */ 
-  lname = st->name;
   p = st->n.common;
   label = p->is_bind_c ? p->binding_label : p->name;
 
@@ -4360,13 +4368,16 @@ write_common_0 (gfc_symtree *st)
   w = written_commons;
   while (w)
     {
-      int c = strcmp (lname, w->name);
+      int c = strcmp (name, w->name);
       c = (c != 0 ? c : strcmp (label, w->label));
       if (c == 0)
 	write_me = false;
 
       w = (c < 0) ? w->left : w->right;
     }
+
+  if (this_module && p->use_assoc)
+    write_me = false;
 
   if (write_me)
     {
@@ -4388,12 +4399,12 @@ write_common_0 (gfc_symtree *st)
 
       /* Record that we have written this common.  */
       w = XCNEW (struct written_common);
-      w->name = lname;
+      w->name = p->name;
       w->label = label;
       gfc_insert_bbt (&written_commons, w, compare_written_commons);
     }
 
-  write_common_0 (st->right);
+  write_common_0 (st->right, this_module);
 }
 
 
@@ -4404,7 +4415,8 @@ static void
 write_common (gfc_symtree *st)
 {
   written_commons = NULL;
-  write_common_0 (st);
+  write_common_0 (st, true);
+  write_common_0 (st, false);
   free_written_common (written_commons);
   written_commons = NULL;
 }
@@ -4735,8 +4747,18 @@ read_md5_from_module_file (const char * filename, unsigned char md5[16])
     return -1;
 
   /* Read two lines.  */
-  if (fgets (buf, sizeof (buf) - 1, file) == NULL
-      || fgets (buf, sizeof (buf) - 1, file) == NULL)
+  if (fgets (buf, sizeof (buf) - 1, file) == NULL)
+    {
+      fclose (file);
+      return -1;
+    }
+
+  /* The file also needs to be overwritten if the version number changed.  */
+  n = strlen ("GFORTRAN module version '" MOD_VERSION "' created");
+  if (strncmp (buf, "GFORTRAN module version '" MOD_VERSION "' created", n) != 0)
+    return -1;
+ 
+  if (fgets (buf, sizeof (buf) - 1, file) == NULL)
     {
       fclose (file);
       return -1;
@@ -4817,8 +4839,8 @@ gfc_dump_module (const char *name, int dump_flag)
 
   *strchr (p, '\n') = '\0';
 
-  fprintf (module_fp, "GFORTRAN module created from %s on %s\nMD5:", 
-	   gfc_source_file, p);
+  fprintf (module_fp, "GFORTRAN module version '%s' created from %s on %s\n"
+	   "MD5:", MOD_VERSION, gfc_source_file, p);
   fgetpos (module_fp, &md5_pos);
   fputs ("00000000000000000000000000000000 -- "
 	"If you edit this, you'll get what you deserve.\n\n", module_fp);
@@ -5220,12 +5242,27 @@ gfc_use_module (void)
       c = module_char ();
       if (c == EOF)
 	bad_module ("Unexpected end of module");
-      if (start++ < 2)
+      if (start++ < 3)
 	parse_name (c);
       if ((start == 1 && strcmp (atom_name, "GFORTRAN") != 0)
 	  || (start == 2 && strcmp (atom_name, " module") != 0))
 	gfc_fatal_error ("File '%s' opened at %C is not a GFORTRAN module "
 			 "file", filename);
+      if (start == 3)
+	{
+	  if (strcmp (atom_name, " version") != 0
+	      || module_char () != ' '
+	      || parse_atom () != ATOM_STRING)
+	    gfc_fatal_error ("Parse error when checking module version"
+		    	     " for file '%s' opened at %C", filename);
+
+	  if (strcmp (atom_string, MOD_VERSION))
+	    {
+	      gfc_fatal_error ("Wrong module version '%s' (expected '"
+			       MOD_VERSION "') for file '%s' opened"
+			       " at %C", atom_string, filename);
+	    }
+	}
 
       if (c == '\n')
 	line++;

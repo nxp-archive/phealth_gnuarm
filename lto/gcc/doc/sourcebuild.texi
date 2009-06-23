@@ -97,8 +97,9 @@ The C++ runtime library.
 Scripts used by the @code{gccadmin} account on @code{gcc.gnu.org}.
 
 @item zlib
-The @code{zlib} compression library, used by the Java front end and as
-part of the Java runtime library.
+The @code{zlib} compression library, used by the Java front end, as
+part of the Java runtime library, and for compressing and uncompressing
+GCC's intermediate language in LTO object files.
 @end table
 
 The build system in the top level directory, including how recursion
@@ -499,6 +500,9 @@ directory.  FIXME: document this further.
 @item
 Details of the directories of any runtime libraries in
 @file{gcc/doc/sourcebuild.texi}.
+@item
+Check targets in Makefile.def for the top-level Makefile to check just
+the compiler or the compiler and runtime library for the language.
 @end itemize
 
 If the front end is added to the official GCC source repository, the

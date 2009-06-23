@@ -1,6 +1,6 @@
 /* Subroutines used for code generation on IBM RS/6000.
    Copyright (C) 1991, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu)
 
@@ -2324,6 +2324,11 @@ rs6000_handle_option (size_t code, const char *arg, int value)
     case OPT_maix_struct_return:
     case OPT_msvr4_struct_return:
       rs6000_explicit_options.aix_struct_ret = true;
+      break;
+
+    case OPT_mvrsave:
+      rs6000_explicit_options.vrsave = true;
+      TARGET_ALTIVEC_VRSAVE = value;
       break;
 
     case OPT_mvrsave_:
@@ -15254,7 +15259,7 @@ rs6000_ra_ever_killed (void)
   rtx reg;
   rtx insn;
 
-  if (crtl->is_thunk)
+  if (cfun->is_thunk)
     return 0;
 
   /* regs_ever_live has LR marked as used if any sibcalls are present,
@@ -15933,7 +15938,6 @@ rs6000_emit_stack_reset (rs6000_stack_t *info,
   
   if (frame_reg_rtx != sp_reg_rtx)
     {
-      rs6000_emit_stack_tie ();
       if (sp_offset != 0)
 	emit_insn (gen_addsi3 (sp_reg_rtx, frame_reg_rtx,
 			       GEN_INT (sp_offset)));
@@ -17556,7 +17560,7 @@ rs6000_output_function_epilogue (FILE *file,
      System V.4 Powerpc's (and the embedded ABI derived from it) use a
      different traceback table.  */
   if (DEFAULT_ABI == ABI_AIX && ! flag_inhibit_size_directive
-      && rs6000_traceback != traceback_none && !crtl->is_thunk)
+      && rs6000_traceback != traceback_none && !cfun->is_thunk)
     {
       const char *fname = NULL;
       const char *language_string = lang_hooks.name;

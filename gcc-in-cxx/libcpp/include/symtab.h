@@ -1,9 +1,10 @@
 /* Hash tables.
-   Copyright (C) 2000, 2001, 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2001, 2003, 2004, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
-Free Software Foundation; either version 2, or (at your option) any
+Free Software Foundation; either version 3, or (at your option) any
 later version.
 
 This program is distributed in the hope that it will be useful,
@@ -12,8 +13,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.  */
+along with this program; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef LIBCPP_SYMTAB_H
 #define LIBCPP_SYMTAB_H
@@ -31,8 +32,7 @@ extern "C" {
 /* This is what each hash table entry points to.  It may be embedded
    deeply within another object.  */
 typedef struct ht_identifier ht_identifier;
-struct ht_identifier GTY(())
-{
+struct GTY(()) ht_identifier {
   const unsigned char *str;
   unsigned int len;
   unsigned int hash_value;
@@ -41,7 +41,7 @@ struct ht_identifier GTY(())
 #define HT_LEN(NODE) ((NODE)->len)
 #define HT_STR(NODE) ((NODE)->str)
 
-typedef struct ht cpp_hash_table;
+typedef struct ht hash_table;
 typedef struct ht_identifier *hashnode;
 
 enum ht_lookup_option {HT_NO_INSERT = 0, HT_ALLOC};
@@ -54,7 +54,7 @@ struct ht
 
   hashnode *entries;
   /* Call back, allocate a node.  */
-  hashnode (*alloc_node) (cpp_hash_table *);
+  hashnode (*alloc_node) (hash_table *);
   /* Call back, allocate something that hangs off a node like a cpp_macro.  
      NULL means use the usual allocator.  */
   void * (*alloc_subobject) (size_t);
@@ -74,14 +74,14 @@ struct ht
 };
 
 /* Initialize the hashtable with 2 ^ order entries.  */
-extern cpp_hash_table *ht_create (unsigned int order);
+extern hash_table *ht_create (unsigned int order);
 
 /* Frees all memory associated with a hash table.  */
-extern void ht_destroy (cpp_hash_table *);
+extern void ht_destroy (hash_table *);
 
-extern hashnode ht_lookup (cpp_hash_table *, const unsigned char *,
+extern hashnode ht_lookup (hash_table *, const unsigned char *,
 			   size_t, enum ht_lookup_option);
-extern hashnode ht_lookup_with_hash (cpp_hash_table *, const unsigned char *,
+extern hashnode ht_lookup_with_hash (hash_table *, const unsigned char *,
                                      size_t, unsigned int,
                                      enum ht_lookup_option);
 #define HT_HASHSTEP(r, c) ((r) * 67 + ((c) - 113));
@@ -91,18 +91,18 @@ extern hashnode ht_lookup_with_hash (cpp_hash_table *, const unsigned char *,
    TABLE->PFILE, the node, and a PTR, and the callback sequence stops
    if the callback returns zero.  */
 typedef int (*ht_cb) (struct cpp_reader *, hashnode, const void *);
-extern void ht_forall (cpp_hash_table *, ht_cb, const void *);
+extern void ht_forall (hash_table *, ht_cb, const void *);
 
 /* For all nodes in TABLE, call the callback.  If the callback returns
    a nonzero value, the node is removed from the table.  */
-extern void ht_purge (cpp_hash_table *, ht_cb, const void *);
+extern void ht_purge (hash_table *, ht_cb, const void *);
 
 /* Restore the hash table.  */
-extern void ht_load (cpp_hash_table *ht, hashnode *entries,
+extern void ht_load (hash_table *ht, hashnode *entries,
 		     unsigned int nslots, unsigned int nelements, bool own);
 
 /* Dump allocation statistics to stderr.  */
-extern void ht_dump_statistics (cpp_hash_table *);
+extern void ht_dump_statistics (hash_table *);
 
 #ifdef __cplusplus
 }

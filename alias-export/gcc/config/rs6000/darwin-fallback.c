@@ -1,31 +1,26 @@
 /* Fallback frame-state unwinder for Darwin.
-   Copyright (C) 2004, 2005, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2009 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
+   the Free Software Foundation; either version 3, or (at your option)
    any later version.
-
-   In addition to the permissions in the GNU General Public License, the
-   Free Software Foundation gives you unlimited permission to link the
-   compiled version of this file into combinations with other programs,
-   and to distribute those combinations without any restriction coming
-   from the use of this file.  (The General Public License restrictions
-   do apply in other respects; for example, they cover modification of
-   the file, and distribution when not linked into a combined
-   executable.)
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
    License for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the Free
-   Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.  */
+   Under Section 7 of GPL version 3, you are granted additional
+   permissions described in the GCC Runtime Library Exception, version
+   3.1, as published by the Free Software Foundation.
+
+   You should have received a copy of the GNU General Public License and
+   a copy of the GCC Runtime Library Exception along with this program;
+   see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifdef __ppc__
 
@@ -40,6 +35,15 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <signal.h>
+
+#define R_LR		65
+#define R_CTR		66
+#define R_CR2		70
+#define R_XER		76
+#define R_VR0		77
+#define R_VRSAVE	109
+#define R_VSCR		110
+#define R_SPEFSCR	112
 
 typedef unsigned long reg_unit;
 
@@ -63,7 +67,7 @@ interpret_libc (reg_unit gprs[32], struct _Unwind_Context *context)
   gprs[1] = _Unwind_GetCFA (context);
   for (; i < 32; i++)
     gprs[i] = _Unwind_GetGR (context, i);
-  cr = _Unwind_GetGR (context, CR2_REGNO);
+  cr = _Unwind_GetGR (context, R_CR2);
 
   /* For each supported Libc, we have to track the code flow
      all the way back into the kernel.
@@ -383,14 +387,14 @@ handle_syscall (_Unwind_FrameState *fs, const reg_unit gprs[32],
 
       new_cfa = m64->gpr[1][1];
       
-      set_offset (CR2_REGNO, &m64->cr);
+      set_offset (R_CR2, &m64->cr);
       for (i = 0; i < 32; i++)
 	set_offset (i, m64->gpr[i] + 1);
-      set_offset (XER_REGNO, m64->xer + 1);
-      set_offset (LINK_REGISTER_REGNUM, m64->lr + 1);
-      set_offset (COUNT_REGISTER_REGNUM, m64->ctr + 1);
+      set_offset (R_XER, m64->xer + 1);
+      set_offset (R_LR, m64->lr + 1);
+      set_offset (R_CTR, m64->ctr + 1);
       if (is_vector)
-	set_offset (VRSAVE_REGNO, &m64->vrsave);
+	set_offset (R_VRSAVE, &m64->vrsave);
       
       /* Sometimes, srr0 points to the instruction that caused the exception,
 	 and sometimes to the next instruction to be executed; we want
@@ -411,15 +415,15 @@ handle_syscall (_Unwind_FrameState *fs, const reg_unit gprs[32],
       
       new_cfa = m->gpr[1];
 
-      set_offset (CR2_REGNO, &m->cr);
+      set_offset (R_CR2, &m->cr);
       for (i = 0; i < 32; i++)
 	set_offset (i, m->gpr + i);
-      set_offset (XER_REGNO, &m->xer);
-      set_offset (LINK_REGISTER_REGNUM, &m->lr);
-      set_offset (COUNT_REGISTER_REGNUM, &m->ctr);
+      set_offset (R_XER, &m->xer);
+      set_offset (R_LR, &m->lr);
+      set_offset (R_CTR, &m->ctr);
 
       if (is_vector)
-	set_offset (VRSAVE_REGNO, &m->vrsave);
+	set_offset (R_VRSAVE, &m->vrsave);
 
       /* Sometimes, srr0 points to the instruction that caused the exception,
 	 and sometimes to the next instruction to be executed; we want
@@ -449,13 +453,13 @@ handle_syscall (_Unwind_FrameState *fs, const reg_unit gprs[32],
 
   for (i = 0; i < 32; i++)
     set_offset (32 + i, float_vector_state->fpregs + i);
-  set_offset (SPEFSCR_REGNO, &float_vector_state->fpscr);
+  set_offset (R_SPEFSCR, &float_vector_state->fpscr);
   
   if (is_vector)
     {
       for (i = 0; i < 32; i++)
-	set_offset (FIRST_ALTIVEC_REGNO + i, float_vector_state->save_vr + i);
-      set_offset (VSCR_REGNO, float_vector_state->save_vscr);
+	set_offset (R_VR0 + i, float_vector_state->save_vr + i);
+      set_offset (R_VSCR, float_vector_state->save_vscr);
     }
 
   return true;

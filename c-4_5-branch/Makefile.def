@@ -4,7 +4,8 @@ AutoGen definitions Makefile.tpl;
 // Makefile.in is generated from Makefile.tpl by 'autogen Makefile.def'.
 // This file was originally written by Nathanael Nerode.
 //
-//   Copyright 2002, 2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation
+//   Copyright 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
+//   Free Software Foundation
 //
 // This file is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -93,6 +94,14 @@ host_modules= { module= libcpp; bootstrap=true; };
 host_modules= { module= libdecnumber; bootstrap=true; };
 host_modules= { module= libgui; };
 host_modules= { module= libiberty; bootstrap=true; };
+// We abuse missing to avoid installing anything for libiconv.
+host_modules= { module= libiconv;
+		extra_configure_flags='--disable-shared';
+		no_install= true;
+		missing= install-info;
+		missing= install-pdf;
+		missing= install-html;
+		missing= install-info; };
 host_modules= { module= libtool; };
 host_modules= { module= m4; };
 host_modules= { module= make; };
@@ -338,7 +347,11 @@ dependencies = { module=configure-cloog; on=all-ppl; };
 dependencies = { module=configure-gdb; on=all-intl; };
 dependencies = { module=configure-gdb; on=configure-sim; };
 dependencies = { module=configure-gdb; on=all-bfd; };
+// Depend on all-libiconv so that configure checks for iconv
+// functions will work.
+dependencies = { module=configure-gdb; on=all-libiconv; };
 dependencies = { module=all-gdb; on=all-libiberty; };
+dependencies = { module=all-gdb; on=all-libiconv; };
 dependencies = { module=all-gdb; on=all-opcodes; };
 dependencies = { module=all-gdb; on=all-readline; };
 dependencies = { module=all-gdb; on=all-build-bison; };
@@ -357,6 +370,8 @@ dependencies = { module=configure-bfd; on=configure-libiberty; hard=true; };
 dependencies = { module=configure-bfd; on=configure-intl; };
 dependencies = { module=all-bfd; on=all-libiberty; };
 dependencies = { module=all-bfd; on=all-intl; };
+dependencies = { module=configure-opcodes; on=configure-libiberty; hard=true; };
+dependencies = { module=all-opcodes; on=all-libiberty; };
 
 dependencies = { module=configure-binutils; on=configure-intl; };
 dependencies = { module=all-binutils; on=all-libiberty; };

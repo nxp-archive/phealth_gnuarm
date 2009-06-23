@@ -1,14 +1,14 @@
 /* Definitions of target machine for GNU compiler.
    Matsushita MN10300 series
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+   2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Jeff Law (law@cygnus.com).
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -17,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 #undef ASM_SPEC
@@ -172,6 +171,13 @@ extern enum processor_type mn10300_processor;
   , 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 \
   }
 
+/* Note: The definition of CALL_REALLY_USED_REGISTERS is not
+   redundant.  It is needed when compiling in PIC mode because
+   the a2 register becomes fixed (and hence must be marked as
+   call_used) but in order to preserve the ABI it is not marked
+   as call_really_used.  */
+#define CALL_REALLY_USED_REGISTERS CALL_USED_REGISTERS
+
 #define REG_ALLOC_ORDER \
   { 0, 1, 4, 5, 2, 3, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 8, 9 \
   , 42, 43, 44, 45, 46, 47, 48, 49, 34, 35, 36, 37, 38, 39, 40, 41 \
@@ -294,6 +300,19 @@ enum reg_class {
  { 0x03fc0000, 0 },	/* FP_ACC_REGS */	\
  { 0x3fdff, 0 }, 	/* GENERAL_REGS */	\
  { 0xffffffff, 0x3ffff } /* ALL_REGS 	*/	\
+}
+
+/* The following macro defines cover classes for Integrated Register
+   Allocator.  Cover classes is a set of non-intersected register
+   classes covering all hard registers used for register allocation
+   purpose.  Any move between two registers of a cover class should be
+   cheaper than load or store of the registers.  The macro value is
+   array of register classes with LIM_REG_CLASSES used as the end
+   marker.  */
+
+#define IRA_COVER_CLASSES                                                    \
+{                                                                            \
+  GENERAL_REGS, FP_REGS, LIM_REG_CLASSES \
 }
 
 /* The same information, inverted:
@@ -472,7 +491,6 @@ enum reg_class {
 
 /* We can debug without frame pointers on the mn10300, so eliminate
    them whenever possible.  */
-#define FRAME_POINTER_REQUIRED 0
 #define CAN_DEBUG_WITHOUT_FP
 
 /* Value is the number of bytes of arguments automatically
@@ -487,7 +505,7 @@ enum reg_class {
 /* We use d0/d1 for passing parameters, so allocate 8 bytes of space
    for a register flushback area.  */
 #define REG_PARM_STACK_SPACE(DECL) 8
-#define OUTGOING_REG_PARM_STACK_SPACE 1
+#define OUTGOING_REG_PARM_STACK_SPACE(FNTYPE) 1
 #define ACCUMULATE_OUTGOING_ARGS 1
 
 /* So we can allocate space for return pointers once for the function
@@ -625,10 +643,6 @@ struct cum_arg {int nbytes; };
   ((COUNT == 0)                         \
    ? gen_rtx_MEM (Pmode, arg_pointer_rtx) \
    : (rtx) 0)
-
-/* Implement `va_start' for varargs and stdarg.  */
-#define EXPAND_BUILTIN_VA_START(valist, nextarg) \
-  mn10300_va_start (valist, nextarg)
 
 /* 1 if X is an rtx for a constant that is a valid address.  */
 
@@ -641,26 +655,6 @@ struct cum_arg {int nbytes; };
 
 #define HAVE_POST_INCREMENT (TARGET_AM33)
 
-/* GO_IF_LEGITIMATE_ADDRESS recognizes an RTL expression
-   that is a valid memory address for an instruction.
-   The MODE argument is the machine mode for the MEM expression
-   that wants to use this address.
-
-   The other macros defined here are used only in GO_IF_LEGITIMATE_ADDRESS,
-   except for CONSTANT_ADDRESS_P which is actually
-   machine-independent.
-
-   On the mn10300, the value in the address register must be
-   in the same memory space/segment as the effective address.
-
-   This is problematical for reload since it does not understand
-   that base+index != index+base in a memory reference.
-
-   Note it is still possible to use reg+reg addressing modes,
-   it's just much more difficult.  For a discussion of a possible
-   workaround and solution, see the comments in pa.c before the
-   function record_unscaled_index_insn_codes.  */
-
 /* Accept either REG or SUBREG where a register is valid.  */
 
 #define RTX_OK_FOR_BASE_P(X, strict)				\
@@ -670,38 +664,7 @@ struct cum_arg {int nbytes; };
        && REGNO_STRICT_OK_FOR_BASE_P (REGNO (SUBREG_REG (X)),	\
  				      (strict))))
 
-#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)    	\
-do							\
-  {							\
-    if (legitimate_address_p ((MODE), (X), REG_STRICT))	\
-      goto ADDR;					\
-  }							\
-while (0)
-
 
-/* Try machine-dependent ways of modifying an illegitimate address
-   to be legitimate.  If we find one, return the new, valid address.
-   This macro is used in only one place: `memory_address' in explow.c.
-
-   OLDX is the address as it was before break_out_memory_refs was called.
-   In some cases it is useful to look at this to decide what needs to be done.
-
-   MODE and WIN are passed so that this macro can use
-   GO_IF_LEGITIMATE_ADDRESS.
-
-   It is always safe for this macro to do nothing.  It exists to recognize
-   opportunities to optimize the output.  */
-
-#define LEGITIMIZE_ADDRESS(X, OLDX, MODE, WIN)  \
-{ rtx orig_x = (X);				\
-  (X) = legitimize_address (X, OLDX, MODE);	\
-  if ((X) != orig_x && memory_address_p (MODE, X)) \
-    goto WIN; }
-
-/* Go to LABEL if ADDR (a legitimate address expression)
-   has an effect that depends on the machine mode it is used for.  */
-
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
 
 /* Nonzero if the constant value X is a legitimate general operand.
    It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.  */
@@ -730,12 +693,12 @@ while (0)
    constants.  Used for PIC-specific UNSPECs.  */
 #define OUTPUT_ADDR_CONST_EXTRA(STREAM, X, FAIL) \
   do									\
-    if (GET_CODE (X) == UNSPEC && XVECLEN ((X), 0) == 1)	\
+    if (GET_CODE (X) == UNSPEC)						\
       {									\
 	switch (XINT ((X), 1))						\
 	  {								\
 	  case UNSPEC_INT_LABEL:					\
-	    asm_fprintf ((STREAM), ".%LLIL%d",				\
+	    asm_fprintf ((STREAM), ".%LLIL" HOST_WIDE_INT_PRINT_DEC,	\
  			 INTVAL (XVECEXP ((X), 0, 0)));			\
 	    break;							\
 	  case UNSPEC_PIC:						\
@@ -753,6 +716,12 @@ while (0)
 	  case UNSPEC_PLT:						\
 	    output_addr_const ((STREAM), XVECEXP ((X), 0, 0));		\
 	    fputs ("@PLT", (STREAM));					\
+	    break;							\
+	  case UNSPEC_GOTSYM_OFF:					\
+	    assemble_name (STREAM, GOT_SYMBOL_NAME);			\
+	    fputs ("-(", STREAM);					\
+	    output_addr_const (STREAM, XVECEXP (X, 0, 0));		\
+	    fputs ("-.)", STREAM);					\
 	    break;							\
 	  default:							\
 	    goto FAIL;							\
@@ -794,19 +763,11 @@ while (0)
    than accessing full words.  */
 #define SLOW_BYTE_ACCESS 1
 
-/* Dispatch tables on the mn10300 are extremely expensive in terms of code
-   and readonly data size.  So we crank up the case threshold value to
-   encourage a series of if/else comparisons to implement many small switch
-   statements.  In theory, this value could be increased much more if we
-   were solely optimizing for space, but we keep it "reasonable" to avoid
-   serious code efficiency lossage.  */
-#define CASE_VALUES_THRESHOLD 6
-
 #define NO_FUNCTION_CSE
 
 /* According expr.c, a value of around 6 should minimize code size, and
    for the MN10300 series, that's our primary concern.  */
-#define MOVE_RATIO 6
+#define MOVE_RATIO(speed) 6
 
 #define TEXT_SECTION_ASM_OP "\t.section .text"
 #define DATA_SECTION_ASM_OP "\t.section .data"

@@ -1,12 +1,12 @@
 /* Definitions for CPP library.
    Copyright (C) 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
-   2004, 2005, 2007, 2008
+   2004, 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Written by Per Bothner, 1994-95.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
-Free Software Foundation; either version 2, or (at your option) any
+Free Software Foundation; either version 3, or (at your option) any
 later version.
 
 This program is distributed in the hope that it will be useful,
@@ -15,8 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+along with this program; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
  In other words, you are welcome to use, share and improve this program.
  You are forbidden to forbid anyone else to use, share and improve
@@ -516,13 +516,16 @@ struct cpp_dir
   char *name;
   unsigned int len;
 
-  /* The canonicalized NAME as determined by lrealpath.  This field 
-     is only used by hosts that lack reliable inode numbers.  */
-  char *canonical_name;
-
   /* One if a system header, two if a system header that has extern
      "C" guards for C++.  */
   unsigned char sysp;
+
+  /* Is this a user-supplied directory? */
+  bool user_supplied_p;
+
+  /* The canonicalized NAME as determined by lrealpath.  This field 
+     is only used by hosts that lack reliable inode numbers.  */
+  char *canonical_name;
 
   /* Mapping of file names for this directory for MS-DOS and related
      platforms.  A NULL-terminated array of (from, to) pairs.  */
@@ -538,9 +541,6 @@ struct cpp_dir
      directories in the search path.  */
   ino_t ino;
   dev_t dev;
-
-  /* Is this a user-supplied directory? */
-  bool user_supplied_p;
 };
 
 /* Name under which this program was invoked.  */

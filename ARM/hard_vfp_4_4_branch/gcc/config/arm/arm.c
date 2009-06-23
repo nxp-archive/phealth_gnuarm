@@ -111,6 +111,7 @@ static unsigned long arm_compute_save_reg_mask (void);
 static unsigned long arm_isr_value (tree);
 static unsigned long arm_compute_func_type (void);
 static tree arm_handle_fndecl_attribute (tree *, tree, tree, int, bool *);
+static tree arm_handle_pcs_attribute (tree *, tree, tree, int, bool *);
 static tree arm_handle_isr_attribute (tree *, tree, tree, int, bool *);
 #if TARGET_DLLIMPORT_DECL_ATTRIBUTES
 static tree arm_handle_notshared_attribute (tree *, tree, tree, int, bool *);
@@ -194,6 +195,9 @@ static void arm_cxx_determine_class_data_visibility (tree);
 static bool arm_cxx_class_data_always_comdat (void);
 static bool arm_cxx_use_aeabi_atexit (void);
 static void arm_init_libfuncs (void);
+static tree arm_build_builtin_va_list (void);
+static void arm_expand_builtin_va_start (tree, rtx);
+static tree arm_gimplify_va_arg_expr (tree, tree, gimple_seq *, gimple_seq *);
 static bool arm_handle_option (size_t, const char *, int);
 static void arm_target_help (void);
 static unsigned HOST_WIDE_INT arm_shift_truncation_mask (enum machine_mode);
@@ -396,6 +400,13 @@ static bool arm_allocate_stack_slots_for_args (void);
 
 #undef TARGET_MANGLE_TYPE
 #define TARGET_MANGLE_TYPE arm_mangle_type
+
+#undef TARGET_BUILD_BUILTIN_VA_LIST
+#define TARGET_BUILD_BUILTIN_VA_LIST arm_build_builtin_va_list
+#undef TARGET_EXPAND_BUILTIN_VA_START
+#define TARGET_EXPAND_BUILTIN_VA_START arm_expand_builtin_va_start
+#undef TARGET_GIMPLIFY_VA_ARG_EXPR
+#define TARGET_GIMPLIFY_VA_ARG_EXPR arm_gimplify_va_arg_expr
 
 #ifdef HAVE_AS_TLS
 #undef TARGET_ASM_OUTPUT_DWARF_DTPREL
@@ -928,6 +939,93 @@ arm_init_libfuncs (void)
   set_optab_libfunc (umod_optab, DImode, NULL);
   set_optab_libfunc (smod_optab, SImode, NULL);
   set_optab_libfunc (umod_optab, SImode, NULL);
+}
+
+/* On AAPCS systems, this is the "struct __va_list".  */
+static GTY(()) tree va_list_type;
+
+/* Return the type to use as __builtin_va_list.  */
+static tree
+arm_build_builtin_va_list (void)
+{
+  tree va_list_name;
+  tree ap_field;
+  
+  if (!TARGET_AAPCS_BASED)
+    return std_build_builtin_va_list ();
+
+  /* AAPCS \S 7.1.4 requires that va_list be a typedef for a type
+     defined as:
+
+       struct __va_list 
+       {
+	 void *__ap;
+       };
+
+     The C Library ABI further reinforces this definition in \S
+     4.1.
+
+     We must follow this definition exactly.  The structure tag
+     name is visible in C++ mangled names, and thus forms a part
+     of the ABI.  The field name may be used by people who
+     #include <stdarg.h>.  */
+  /* Create the type.  */
+  va_list_type = lang_hooks.types.make_type (RECORD_TYPE);
+  /* Give it the required name.  */
+  va_list_name = build_decl (TYPE_DECL,
+			     get_identifier ("__va_list"),
+			     va_list_type);
+  DECL_ARTIFICIAL (va_list_name) = 1;
+  TYPE_NAME (va_list_type) = va_list_name;
+  /* Create the __ap field.  */
+  ap_field = build_decl (FIELD_DECL, 
+			 get_identifier ("__ap"),
+			 ptr_type_node);
+  DECL_ARTIFICIAL (ap_field) = 1;
+  DECL_FIELD_CONTEXT (ap_field) = va_list_type;
+  TYPE_FIELDS (va_list_type) = ap_field;
+  /* Compute its layout.  */
+  layout_type (va_list_type);
+
+  return va_list_type;
+}
+
+/* Return an expression of type "void *" pointing to the next
+   available argument in a variable-argument list.  VALIST is the
+   user-level va_list object, of type __builtin_va_list.  */
+static tree
+arm_extract_valist_ptr (tree valist)
+{
+  if (TREE_TYPE (valist) == error_mark_node)
+    return error_mark_node;
+
+  /* On an AAPCS target, the pointer is stored within "struct
+     va_list".  */
+  if (TARGET_AAPCS_BASED)
+    {
+      tree ap_field = TYPE_FIELDS (TREE_TYPE (valist));
+      valist = build3 (COMPONENT_REF, TREE_TYPE (ap_field), 
+		       valist, ap_field, NULL_TREE);
+    }
+
+  return valist;
+}
+
+/* Implement TARGET_EXPAND_BUILTIN_VA_START.  */
+static void
+arm_expand_builtin_va_start (tree valist, rtx nextarg)
+{
+  valist = arm_extract_valist_ptr (valist);
+  std_expand_builtin_va_start (valist, nextarg);
+}
+
+/* Implement TARGET_GIMPLIFY_VA_ARG_EXPR.  */
+static tree
+arm_gimplify_va_arg_expr (tree valist, tree type, gimple_seq *pre_p, 
+			  gimple_seq *post_p)
+{
+  valist = arm_extract_valist_ptr (valist);
+  return std_gimplify_va_arg_expr (valist, type, pre_p, post_p);
 }
 
 /* Implement TARGET_HANDLE_OPTION.  */
@@ -2901,6 +2999,8 @@ arm_return_in_memory (const_tree type, const_tree fntype)
 {
   HOST_WIDE_INT size;
 
+  size = int_size_in_bytes (type);  /* Negative if not fixed size.  */
+
   if (TARGET_AAPCS_BASED)
     {
       /* Simple, non-aggregate types (ie not including vectors and
@@ -2914,7 +3014,6 @@ arm_return_in_memory (const_tree type, const_tree fntype)
 
       /* Any return value that is no larger than one word can be
 	 returned in r0.  */
-      size = int_size_in_bytes (type);  /* Negative if not fixed size.  */
       if (((unsigned HOST_WIDE_INT) size) <= UNITS_PER_WORD)
 	return false;
 
@@ -2925,15 +3024,16 @@ arm_return_in_memory (const_tree type, const_tree fntype)
       if (aapcs_select_return_coproc (type, fntype) >= 0)
 	return false;
 
+      /* Vector values should be returned using ARM registers, not
+	 memory (unless they're over 16 bytes, which will break since
+	 we only have four call-clobbered registers to play with).  */
+      if (TREE_CODE (type) == VECTOR_TYPE)
+	return (size < 0 || size > (4 * UNITS_PER_WORD));
+
       /* The rest go in memory.  */
       return true;
     }
-  
-  size = int_size_in_bytes (type);
 
-  /* Vector values should be returned using ARM registers, not memory (unless
-     they're over 16 bytes, which will break since we only have four
-     call-clobbered registers to play with).  */
   if (TREE_CODE (type) == VECTOR_TYPE)
     return (size < 0 || size > (4 * UNITS_PER_WORD));
 
@@ -3107,7 +3207,7 @@ arm_get_pcs_model (const_tree type, const_tree decl)
   attr = lookup_attribute ("pcs", TYPE_ATTRIBUTES (type));
   if (attr)
     {
-      user_pcs = arm_pcs_from_attribute (attr);
+      user_pcs = arm_pcs_from_attribute (TREE_VALUE (attr));
       user_convention = true;
     }
 
@@ -3171,6 +3271,7 @@ static int
 aapcs_vfp_sub_candidate (const_tree type, enum machine_mode *modep)
 {
   enum machine_mode mode;
+  HOST_WIDE_INT size;
 
   switch (TREE_CODE (type))
     {
@@ -3201,10 +3302,21 @@ aapcs_vfp_sub_candidate (const_tree type, enum machine_mode *modep)
       break;
 
     case VECTOR_TYPE:
-      mode = TYPE_MODE (type);
-      if (GET_MODE_CLASS (mode) != MODE_VECTOR_INT
-	  && GET_MODE_CLASS (mode) != MODE_VECTOR_FLOAT)
-	return -1;
+      /* Use V2SImode and V4SImode as representatives of all 64-bit
+	 and 128-bit vector types, whether or not those modes are
+	 supported with the present options.  */
+      size = int_size_in_bytes (type);
+      switch (size)
+	{
+	case 8:
+	  mode = V2SImode;
+	  break;
+	case 16:
+	  mode = V4SImode;
+	  break;
+	default:
+	  return -1;
+	}
 
       if (*modep == VOIDmode)
 	*modep = mode;
@@ -3212,9 +3324,7 @@ aapcs_vfp_sub_candidate (const_tree type, enum machine_mode *modep)
       /* Vector modes are considered to be opaque: two vectors are
 	 equivalent for the purposes of being homogeneous aggregates
 	 if they are the same size.  */
-      if ((GET_MODE_CLASS (*modep) == MODE_VECTOR_INT
-	   || GET_MODE_CLASS (*modep) == MODE_VECTOR_FLOAT)
-	  && GET_MODE_SIZE (*modep) == GET_MODE_SIZE (mode))
+      if (*modep == mode)
 	return 1;
 
       break;
@@ -3338,7 +3448,7 @@ aapcs_vfp_is_call_or_return_candidate (enum machine_mode mode, const_tree type,
       *base_mode = (mode == DCmode ? DFmode : SFmode);
       return true;
     }
-  else if (mode == BLKmode && type)
+  else if (type && (mode == BLKmode || TREE_CODE (type) == VECTOR_TYPE))
     {
       enum machine_mode aggregate_mode = VOIDmode;
       int ag_count = aapcs_vfp_sub_candidate (type, &aggregate_mode);
@@ -3392,18 +3502,33 @@ aapcs_vfp_allocate (CUMULATIVE_ARGS *pcum, enum machine_mode mode,
     if (((pcum->aapcs_vfp_regs_free >> regno) & mask) == mask)
       {
 	pcum->aapcs_vfp_reg_alloc = mask << regno;
-	if (mode == BLKmode)
+	if (mode == BLKmode || (mode == TImode && !TARGET_NEON))
 	  {
 	    int i;
-	    rtx par = gen_rtx_PARALLEL (BLKmode,
-					rtvec_alloc (pcum->aapcs_vfp_rcount));
-	    for (i = 0; i < pcum->aapcs_vfp_rcount; i++)
+	    int rcount = pcum->aapcs_vfp_rcount;
+	    int rshift = shift;
+	    enum machine_mode rmode = pcum->aapcs_vfp_rmode;
+	    rtx par;
+	    if (!TARGET_NEON)
 	      {
-		rtx tmp = gen_rtx_REG (pcum->aapcs_vfp_rmode, 
-				       FIRST_VFP_REGNUM + regno + i * shift);
+		/* Avoid using unsupported vector modes.  */
+		if (rmode == V2SImode)
+		  rmode = DImode;
+		else if (rmode == V4SImode)
+		  {
+		    rmode = DImode;
+		    rcount *= 2;
+		    rshift /= 2;
+		  }
+	      }
+	    par = gen_rtx_PARALLEL (mode, rtvec_alloc (rcount));
+	    for (i = 0; i < rcount; i++)
+	      {
+		rtx tmp = gen_rtx_REG (rmode, 
+				       FIRST_VFP_REGNUM + regno + i * rshift);
 		tmp = gen_rtx_EXPR_LIST
 		  (VOIDmode, tmp, 
-		   GEN_INT (i * GET_MODE_SIZE (pcum->aapcs_vfp_rmode)));
+		   GEN_INT (i * GET_MODE_SIZE (rmode)));
 		XVECEXP (par, 0, i) = tmp;
 	      }
 
@@ -3425,7 +3550,7 @@ aapcs_vfp_allocate_return_reg (enum arm_pcs pcs_variant ATTRIBUTE_UNUSED,
 	|| (pcs_variant == ARM_PCS_AAPCS_LOCAL
 	    && TARGET_32BIT && TARGET_VFP && TARGET_HARD_FLOAT)))
     return false;
-  if (mode == BLKmode)
+  if (mode == BLKmode || (mode == TImode && !TARGET_NEON))
     {
       int count;
       int ag_mode;
@@ -3435,8 +3560,18 @@ aapcs_vfp_allocate_return_reg (enum arm_pcs pcs_variant ATTRIBUTE_UNUSED,
       
       aapcs_vfp_is_call_or_return_candidate (mode, type, &ag_mode, &count);
 
+      if (!TARGET_NEON)
+	{
+	  if (ag_mode == V2SImode)
+	    ag_mode = DImode;
+	  else if (ag_mode == V4SImode)
+	    {
+	      ag_mode = DImode;
+	      count *= 2;
+	    }
+	}
       shift = GET_MODE_SIZE(ag_mode) / GET_MODE_SIZE(SFmode);
-      par = gen_rtx_PARALLEL (BLKmode, rtvec_alloc (count));
+      par = gen_rtx_PARALLEL (mode, rtvec_alloc (count));
       for (i = 0; i < count; i++)
 	{
 	  rtx tmp = gen_rtx_REG (ag_mode, FIRST_VFP_REGNUM + i * shift);
@@ -3644,27 +3779,36 @@ aapcs_layout_arg (CUMULATIVE_ARGS *pcum, enum machine_mode mode,
   /* Is this a potential co-processor register candidate?  */
   if (pcum->pcs_variant != ARM_PCS_AAPCS)
     {
-      pcum->aapcs_cprc_slot = aapcs_select_call_coproc (pcum, mode, type);
+      int slot = aapcs_select_call_coproc (pcum, mode, type);
+      pcum->aapcs_cprc_slot = slot;
 
       /* We don't have to apply any of the rules from part B of the
 	 preparation phase, these are handled elsewhere in the
 	 compiler.  */
 
-      if (pcum->aapcs_cprc_slot >= 0
-	  && !pcum->aapcs_cprc_failed[pcum->aapcs_cprc_slot])
+      if (slot >= 0)
 	{
-	  /* C1.cp - Try to allocate the argument to co-processor
-	     registers.  */
-	  if (aapcs_cp_arg_layout[pcum->aapcs_cprc_slot].allocate (pcum, mode,
-								   type))
-	    return;
-	  /* C2.cp - Put the argument on the stack and note that we
-	     can't assign any more candidates in this slot.  We also
-	     need to note that we have allocated stack space, so that
-	     we won't later try to split a non-cprc candidate between
-	     core registers and the stack.  */
-	  pcum->aapcs_cprc_failed[pcum->aapcs_cprc_slot] = true;
-	  pcum->can_split = false;
+	  /* A Co-processor register candidate goes either in its own
+	     class of registers or on the stack.  */
+	  if (!pcum->aapcs_cprc_failed[slot])
+	    {
+	      /* C1.cp - Try to allocate the argument to co-processor
+		 registers.  */
+	      if (aapcs_cp_arg_layout[slot].allocate (pcum, mode, type))
+		return;
+
+	      /* C2.cp - Put the argument on the stack and note that we
+		 can't assign any more candidates in this slot.  We also
+		 need to note that we have allocated stack space, so that
+		 we won't later try to split a non-cprc candidate between
+		 core registers and the stack.  */
+	      pcum->aapcs_cprc_failed[slot] = true;
+	      pcum->can_split = false;
+	    }
+
+	  /* We didn't get a register, so this argument goes on the
+	     stack.  */
+	  gcc_assert (pcum->can_split == false);
 	  return;
 	}
     }
@@ -3733,6 +3877,16 @@ arm_init_cumulative_args (CUMULATIVE_ARGS *pcum, tree fntype,
 	 them using the base rules too; for example the floating point
 	 support functions always work this way.  */
 
+       if (rtx_equal_p (libname,
+		       convert_optab_libfunc (sfix_optab, DImode, DFmode))
+	  || rtx_equal_p (libname,
+			  convert_optab_libfunc (ufix_optab, DImode, DFmode))
+	  || rtx_equal_p (libname,
+			  convert_optab_libfunc (sfix_optab, DImode, SFmode))
+	  || rtx_equal_p (libname,
+			  convert_optab_libfunc (ufix_optab, DImode, SFmode)))
+	pcum->pcs_variant = ARM_PCS_AAPCS;
+ 
       pcum->aapcs_ncrn = pcum->aapcs_next_ncrn = 0;
       pcum->aapcs_reg = NULL_RTX;
       pcum->aapcs_partial = 0;
@@ -3964,6 +4118,8 @@ const struct attribute_spec arm_attribute_table[] =
   /* Whereas these functions are always known to reside within the 26 bit
      addressing range.  */
   { "short_call",   0, 0, false, true,  true,  NULL },
+  /* Specify the procedure call conventions for a function.  */
+  { "pcs",          1, 1, false, true,  true,  arm_handle_pcs_attribute },
   /* Interrupt Service Routines have special prologue and epilogue requirements.  */
   { "isr",          0, 1, false, false, false, arm_handle_isr_attribute },
   { "interrupt",    0, 1, false, false, false, arm_handle_isr_attribute },
@@ -4063,6 +4219,21 @@ arm_handle_isr_attribute (tree *node, tree name, tree args, int flags,
 	}
     }
 
+  return NULL_TREE;
+}
+
+/* Handle a "pcs" attribute; arguments as in struct
+   attribute_spec.handler.  */
+static tree
+arm_handle_pcs_attribute (tree *node ATTRIBUTE_UNUSED, tree name, tree args,
+			  int flags ATTRIBUTE_UNUSED, bool *no_add_attrs)
+{
+  if (arm_pcs_from_attribute (args) == ARM_PCS_UNKNOWN)
+    {
+      warning (OPT_Wattributes, "%qs attribute ignored",
+	       IDENTIFIER_POINTER (name));
+      *no_add_attrs = true;
+    }
   return NULL_TREE;
 }
 
@@ -4316,7 +4487,8 @@ require_pic_register (void)
       gcc_assert (can_create_pseudo_p ());
       if (arm_pic_register != INVALID_REGNUM)
 	{
-	  cfun->machine->pic_reg = gen_rtx_REG (Pmode, arm_pic_register);
+	  if (!cfun->machine->pic_reg)
+	    cfun->machine->pic_reg = gen_rtx_REG (Pmode, arm_pic_register);
 
 	  /* Play games to avoid marking the function as needing pic
 	     if we are being called as part of the cost-estimation
@@ -4328,7 +4500,8 @@ require_pic_register (void)
 	{
 	  rtx seq;
 
-	  cfun->machine->pic_reg = gen_reg_rtx (Pmode);
+	  if (!cfun->machine->pic_reg)
+	    cfun->machine->pic_reg = gen_reg_rtx (Pmode);
 
 	  /* Play games to avoid marking the function as needing pic
 	     if we are being called as part of the cost-estimation
@@ -17634,7 +17807,7 @@ thumb_pushpop (FILE *f, unsigned long mask, int push, int *cfa_offset,
 
   if (push && pushed_words && dwarf2out_do_frame ())
     {
-      char *l = dwarf2out_cfi_label ();
+      char *l = dwarf2out_cfi_label (false);
       int pushed_mask = real_regs;
 
       *cfa_offset += pushed_words * 4;
@@ -18532,7 +18705,7 @@ thumb1_output_function_prologue (FILE *f, HOST_WIDE_INT size ATTRIBUTE_UNUSED)
 	 the stack pointer.  */
       if (dwarf2out_do_frame ())
 	{
-	  char *l = dwarf2out_cfi_label ();
+	  char *l = dwarf2out_cfi_label (false);
 
 	  cfa_offset = cfa_offset + crtl->args.pretend_args_size;
 	  dwarf2out_def_cfa (l, SP_REGNUM, cfa_offset);
@@ -18581,7 +18754,7 @@ thumb1_output_function_prologue (FILE *f, HOST_WIDE_INT size ATTRIBUTE_UNUSED)
 
       if (dwarf2out_do_frame ())
 	{
-	  char *l = dwarf2out_cfi_label ();
+	  char *l = dwarf2out_cfi_label (false);
 
 	  cfa_offset = cfa_offset + 16;
 	  dwarf2out_def_cfa (l, SP_REGNUM, cfa_offset);
@@ -19780,9 +19953,10 @@ arm_vector_mode_supported_p (enum machine_mode mode)
       || mode == V16QImode || mode == V4SFmode || mode == V2DImode))
     return true;
 
-  if ((mode == V2SImode)
-      || (mode == V4HImode)
-      || (mode == V8QImode))
+  if ((TARGET_NEON || TARGET_IWMMXT)
+      && ((mode == V2SImode)
+	  || (mode == V4HImode)
+	  || (mode == V8QImode)))
     return true;
 
   return false;
@@ -20360,6 +20534,21 @@ const char *
 arm_mangle_type (const_tree type)
 {
   arm_mangle_map_entry *pos = arm_mangle_map;
+
+  /* The ARM ABI documents (10th October 2008) say that "__va_list"
+     has to be managled as if it is in the "std" namespace.  */
+  if (TARGET_AAPCS_BASED 
+      && lang_hooks.types_compatible_p (CONST_CAST_TREE (type), va_list_type))
+    {
+      static bool warned;
+      if (!warned && warn_psabi)
+	{
+	  warned = true;
+	  inform (input_location,
+		  "the mangling of %<va_list%> has changed in GCC 4.4");
+	}
+      return "St9__va_list";
+    }
 
   if (TREE_CODE (type) != VECTOR_TYPE)
     return NULL;

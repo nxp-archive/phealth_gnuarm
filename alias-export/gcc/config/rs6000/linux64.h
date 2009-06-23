@@ -1,13 +1,13 @@
 /* Definitions of target machine for GNU compiler,
    for 64 bit PowerPC linux.
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006
-   Free Software Foundation, Inc.
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
+   2009  Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -15,10 +15,14 @@
    or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
    License for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the
-   Free Software Foundation, 51 Franklin Street, Fifth Floor, Boston,
-   MA 02110-1301, USA.  */
+   Under Section 7 of GPL version 3, you are granted additional
+   permissions described in the GCC Runtime Library Exception, version
+   3.1, as published by the Free Software Foundation.
+
+   You should have received a copy of the GNU General Public License and
+   a copy of the GCC Runtime Library Exception along with this program;
+   see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifndef RS6000_BI_ARCH
 
@@ -100,7 +104,7 @@ extern int dot_symbols;
 	    }							\
 	  if (TARGET_PROTOTYPE)					\
 	    {							\
-	      TARGET_PROTOTYPE = 0;				\
+	      target_prototype = 0;				\
 	      error (INVALID_64BIT, "prototype");		\
 	    }							\
 	  if ((target_flags & MASK_POWERPC64) == 0)		\
@@ -135,6 +139,10 @@ extern int dot_symbols;
 #undef	ASM_SPEC
 #undef	LINK_OS_LINUX_SPEC
 
+/* FIXME: This will quite possibly choose the wrong dynamic linker.  */
+#undef	LINK_OS_GNU_SPEC
+#define	LINK_OS_GNU_SPEC LINK_OS_LINUX_SPEC
+
 #ifndef	RS6000_BI_ARCH
 #define	ASM_DEFAULT_SPEC "-mppc64"
 #define	ASM_SPEC	 "%(asm_spec64) %(asm_spec_common)"
@@ -153,7 +161,7 @@ extern int dot_symbols;
 
 #define ASM_SPEC32 "-a32 %{n} %{T} %{Ym,*} %{Yd,*} \
 %{mrelocatable} %{mrelocatable-lib} %{fpic:-K PIC} %{fPIC:-K PIC} \
-%{memb} %{!memb: %{msdata: -memb} %{msdata=eabi: -memb}} \
+%{memb} %{!memb: %{msdata=eabi: -memb}} \
 %{!mlittle: %{!mlittle-endian: %{!mbig: %{!mbig-endian: \
     %{mcall-freebsd: -mbig} \
     %{mcall-i960-old: -mlittle} \
@@ -218,9 +226,7 @@ extern int dot_symbols;
    ? 128								\
    : (TARGET_64BIT							\
       && TARGET_ALIGN_NATURAL == 0					\
-      && TYPE_MODE (TREE_CODE (TREE_TYPE (FIELD)) == ARRAY_TYPE		\
-		    ? get_inner_array_type (FIELD)			\
-		    : TREE_TYPE (FIELD)) == DFmode)			\
+      && TYPE_MODE (strip_array_types (TREE_TYPE (FIELD))) == DFmode)	\
    ? MIN ((COMPUTED), 32)						\
    : (COMPUTED))
 
@@ -465,9 +471,8 @@ extern int dot_symbols;
    we also do this for floating-point constants.  We actually can only
    do this if the FP formats of the target and host machines are the
    same, but we can't check that since not every file that uses
-   GO_IF_LEGITIMATE_ADDRESS_P includes real.h.  We also do this when
-   we can write the entry into the TOC and the entry is not larger
-   than a TOC entry.  */
+   the macros includes real.h.  We also do this when we can write the
+   entry into the TOC and the entry is not larger than a TOC entry.  */
 
 #undef  ASM_OUTPUT_SPECIAL_POOL_ENTRY_P
 #define ASM_OUTPUT_SPECIAL_POOL_ENTRY_P(X, MODE)			\
@@ -480,8 +485,7 @@ extern int dot_symbols;
 	   && GET_MODE_BITSIZE (MODE) <= GET_MODE_BITSIZE (Pmode))	\
        || (GET_CODE (X) == CONST_DOUBLE					\
 	   && ((TARGET_64BIT						\
-		&& (TARGET_POWERPC64					\
-		    || TARGET_MINIMAL_TOC				\
+		&& (TARGET_MINIMAL_TOC					\
 		    || (SCALAR_FLOAT_MODE_P (GET_MODE (X))		\
 			&& ! TARGET_NO_FP_IN_TOC)))			\
 	       || (!TARGET_64BIT					\

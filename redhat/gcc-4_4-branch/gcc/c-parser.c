@@ -2578,6 +2578,7 @@ c_parser_parms_list_declarator (c_parser *parser, tree attrs)
 			     "expected %<;%>, %<,%> or %<)%>"))
 	{
 	  c_parser_skip_until_found (parser, CPP_CLOSE_PAREN, NULL);
+	  get_pending_sizes ();
 	  return NULL;
 	}
       if (c_parser_next_token_is (parser, CPP_ELLIPSIS))
@@ -2605,6 +2606,7 @@ c_parser_parms_list_declarator (c_parser *parser, tree attrs)
 	    {
 	      c_parser_skip_until_found (parser, CPP_CLOSE_PAREN,
 					 "expected %<)%>");
+	      get_pending_sizes ();
 	      return NULL;
 	    }
 	}
@@ -3034,6 +3036,7 @@ c_parser_braced_init (c_parser *parser, tree type, bool nested_p)
       ret.value = error_mark_node;
       ret.original_code = ERROR_MARK;
       c_parser_skip_until_found (parser, CPP_CLOSE_BRACE, "expected %<}%>");
+      pop_init_level (0);
       return ret;
     }
   c_parser_consume_token (parser);
@@ -3304,7 +3307,13 @@ c_parser_compound_statement (c_parser *parser)
 {
   tree stmt;
   if (!c_parser_require (parser, CPP_OPEN_BRACE, "expected %<{%>"))
-    return error_mark_node;
+    {
+      /* Ensure a scope is entered and left anyway to avoid confusion
+	 if we have just prepared to enter a function body.  */
+      stmt = c_begin_compound_stmt (true);
+      c_end_compound_stmt (stmt, true);
+      return error_mark_node;
+    }
   stmt = c_begin_compound_stmt (true);
   c_parser_compound_statement_nostart (parser);
   return c_end_compound_stmt (stmt, true);
@@ -4175,6 +4184,12 @@ c_parser_asm_statement (c_parser *parser)
       return NULL_TREE;
     }
   str = c_parser_asm_string_literal (parser);
+  if (str == NULL_TREE)
+    {
+      parser->lex_untranslated_string = false;
+      c_parser_skip_until_found (parser, CPP_CLOSE_PAREN, NULL);
+      return NULL_TREE;
+    }
   if (c_parser_next_token_is (parser, CPP_CLOSE_PAREN))
     {
       simple = true;
@@ -5575,8 +5590,6 @@ c_parser_postfix_expression_after_primary (c_parser *parser,
 				     "expected %<)%>");
 	  expr.value = build_function_call (expr.value, exprlist);
 	  expr.original_code = ERROR_MARK;
-          if (warn_disallowed_functions)
-            warn_if_disallowed_function_p (expr.value);
 	  break;
 	case CPP_DOT:
 	  /* Structure element reference.  */
@@ -6551,7 +6564,7 @@ c_parser_objc_message_args (c_parser *parser)
     {
       tree keywordexpr;
       if (!c_parser_require (parser, CPP_COLON, "expected %<:%>"))
-	return list;
+	return error_mark_node;
       keywordexpr = c_parser_objc_keywordexpr (parser);
       list = chainon (list, build_tree_list (sel, keywordexpr));
       sel = c_parser_objc_selector (parser);
@@ -7643,9 +7656,23 @@ c_parser_omp_for_loop (c_parser *parser, tree clauses, tree *par_clauses)
       if (c_parser_next_token_is_not (parser, CPP_SEMICOLON))
 	{
 	  location_t cond_loc = c_parser_peek_token (parser)->location;
+	  struct c_expr cond_expr = c_parser_binary_expression (parser, NULL);
 
-	  cond = c_parser_expression_conv (parser).value;
+	  cond = cond_expr.value;
 	  cond = c_objc_common_truthvalue_conversion (cond_loc, cond);
+	  switch (cond_expr.original_code)
+	    {
+	    case GT_EXPR:
+	    case GE_EXPR:
+	    case LT_EXPR:
+	    case LE_EXPR:
+	      break;
+	    default:
+	      /* Can't be cond = error_mark_node, because we want to preserve
+		 the location until c_finish_omp_for.  */
+	      cond = build1 (NOP_EXPR, boolean_type_node, error_mark_node);
+	      break;
+	    }
 	  protected_set_expr_location (cond, cond_loc);
 	}
       c_parser_skip_until_found (parser, CPP_SEMICOLON, "expected %<;%>");

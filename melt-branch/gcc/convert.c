@@ -1,6 +1,6 @@
 /* Utility routines for data type conversion for GCC.
    Copyright (C) 1987, 1988, 1991, 1992, 1993, 1994, 1995, 1997, 1998,
-   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -326,7 +326,8 @@ convert_to_real (tree type, tree expr)
 		      && (flag_unsafe_math_optimizations
 			  || (TYPE_PRECISION (newtype) == TYPE_PRECISION (type)
 			      && real_can_shorten_arithmetic (TYPE_MODE (itype),
-							      TYPE_MODE (type)))))
+							      TYPE_MODE (type))
+			      && !excess_precision_type (newtype))))
 		    {
 		      expr = build2 (TREE_CODE (expr), newtype,
 				     fold (convert_to_real (newtype, arg0)),
@@ -474,6 +475,37 @@ convert_to_integer (tree type, tree expr)
 	  break;
 	}
       
+      if (fn)
+        {
+	  tree newexpr = build_call_expr (fn, 1, CALL_EXPR_ARG (s_expr, 0));
+	  return convert_to_integer (type, newexpr);
+	}
+    }
+
+  /* Convert (int)logb(d) -> ilogb(d).  */
+  if (optimize
+      && flag_unsafe_math_optimizations
+      && !flag_trapping_math && !flag_errno_math && flag_finite_math_only
+      && integer_type_node
+      && (outprec > TYPE_PRECISION (integer_type_node)
+	  || (outprec == TYPE_PRECISION (integer_type_node)
+	      && !TYPE_UNSIGNED (type))))
+    {
+      tree s_expr = strip_float_extensions (expr);
+      tree s_intype = TREE_TYPE (s_expr);
+      const enum built_in_function fcode = builtin_mathfn_code (s_expr);
+      tree fn = 0;
+       
+      switch (fcode)
+	{
+	CASE_FLT_FN (BUILT_IN_LOGB):
+	  fn = mathfn_built_in (s_intype, BUILT_IN_ILOGB);
+	  break;
+
+	default:
+	  break;
+	}
+
       if (fn)
         {
 	  tree newexpr = build_call_expr (fn, 1, CALL_EXPR_ARG (s_expr, 0));

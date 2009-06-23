@@ -50,7 +50,8 @@ extern GTY(()) int spu_tune;
 
 /* Default target_flags if no switches specified.  */
 #ifndef TARGET_DEFAULT
-#define TARGET_DEFAULT (MASK_ERROR_RELOC | MASK_SAFE_DMA | MASK_BRANCH_HINTS)
+#define TARGET_DEFAULT (MASK_ERROR_RELOC | MASK_SAFE_DMA | MASK_BRANCH_HINTS \
+			| MASK_SAFE_HINTS)
 #endif
 
 
@@ -632,4 +633,34 @@ targetm.resolve_overloaded_builtin = spu_resolve_overloaded_builtin;	\
    conditional branches. */
 extern GTY(()) rtx spu_compare_op0;
 extern GTY(()) rtx spu_compare_op1;
+
+
+/* Builtins.  */
+
+enum spu_builtin_type
+{
+  B_INSN,
+  B_JUMP,
+  B_BISLED,
+  B_CALL,
+  B_HINT,
+  B_OVERLOAD,
+  B_INTERNAL
+};
+
+struct spu_builtin_description GTY(())
+{
+  int fcode;
+  int icode;
+  const char *name;
+  enum spu_builtin_type type;
+
+  /* The first element of parm is always the return type.  The rest
+     are a zero terminated list of parameters.  */
+  int parm[5];
+
+  tree fndecl;
+};
+
+extern struct spu_builtin_description spu_builtins[];
 

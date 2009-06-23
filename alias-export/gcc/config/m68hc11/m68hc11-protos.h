@@ -1,5 +1,5 @@
 /* Prototypes for exported functions defined in m68hc11.c
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
    Free Software Foundation, Inc.
    Contributed by Stephane Carrez (stcarrez@nerim.fr)
 
@@ -7,7 +7,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 
 extern int m68hc11_override_options (void);
@@ -48,10 +47,6 @@ extern void m68hc11_initialize_trampoline (rtx, rtx, rtx);
 
 extern rtx m68hc11_expand_compare_and_branch (enum rtx_code, rtx, rtx, rtx);
 extern enum reg_class preferred_reload_class (rtx, enum reg_class);
-
-extern int m68hc11_go_if_legitimate_address (rtx, enum machine_mode, int);
-
-extern int m68hc11_legitimize_address (rtx*, rtx, enum machine_mode);
 
 extern void m68hc11_notice_update_cc (rtx, rtx);
 extern void m68hc11_notice_keep_cc (rtx);
@@ -112,7 +107,7 @@ extern void m68hc11_init_cumulative_args (CUMULATIVE_ARGS*, tree, rtx);
 extern rtx m68hc11_function_arg (const CUMULATIVE_ARGS* ,
                                  enum machine_mode,
                                  tree, int);
-extern int m68hc11_function_arg_padding (enum machine_mode, tree);
+extern int m68hc11_function_arg_padding (enum machine_mode, const_tree);
 
 extern void m68hc11_function_epilogue (FILE*,int);
 

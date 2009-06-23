@@ -1,23 +1,22 @@
 /* LTO symbol table.
-   Copyright 2006 Free Software Foundation, Inc.
+   Copyright 2009 Free Software Foundation, Inc.
    Contributed by CodeSourcery, Inc.
 
 This file is part of GCC.
 
-GCC is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
-any later version.
+GCC is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3, or (at your option) any later
+version.
 
-GCC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -25,31 +24,32 @@ Boston, MA 02110-1301, USA.  */
 #include "toplev.h"
 #include "tree.h"
 #include "gimple.h"
-#include "lto-tree-in.h"
 #include "ggc.h"	/* lambda.h needs this */
 #include "lambda.h"	/* gcd */
 #include "hashtab.h"
+#include "plugin-api.h"
+#include "lto-streamer.h"
 
 /* Vector to keep track of external variables we've seen so far.  */
 VEC(tree,gc) *lto_global_var_decls;
 
 /* Base type for resolution map. It maps NODE to resolution.  */
 
-struct lto_symtab_base_def GTY(())
+struct GTY(()) lto_symtab_base_def
 {
   /* Key is either an IDENTIFIER or a DECL.  */
   tree node;
 };
 typedef struct lto_symtab_base_def *lto_symtab_base_t;
 
-struct lto_symtab_identifier_def GTY (())
+struct GTY(()) lto_symtab_identifier_def
 {
   struct lto_symtab_base_def base;
   tree decl;
 };
 typedef struct lto_symtab_identifier_def *lto_symtab_identifier_t;
 
-struct lto_symtab_decl_def GTY (())
+struct GTY(()) lto_symtab_decl_def
 {
   struct lto_symtab_base_def base;
   enum ld_plugin_symbol_resolution resolution;
@@ -143,201 +143,31 @@ lto_symtab_maybe_init_hash_tables (void)
     }
 }
 
-/* Returns true iff TYPE_1 and TYPE_2 are the same type.  */
-
-static bool
-lto_same_type_p (tree type_1, tree type_2)
-{
-  unsigned int code;
-
-  /* Check first for the obvious case of pointer identity.  */
-  if (type_1 == type_2)
-    return true;
-
-  /* Check that we have two types to compare.  */
-  if (type_1 == NULL_TREE || type_2 == NULL_TREE)
-    return false;
-
-  /* Can't be the same type if the types don't have the same code.  */
-  code = TREE_CODE (type_1);
-  if (code != TREE_CODE (type_2))
-    return false;
-
-  /* "If GNU attributes are present, types which could be the same be it not
-     for their GNU attributes may in fact be different due to the use of GNU
-     attributes."  Hmmm.  Punt on this for now and assume they're different
-     if we see attributes on either type.  */
-  if (TYPE_ATTRIBUTES (type_1) || TYPE_ATTRIBUTES (type_2))
-    return false;
-
-  switch (code)
-    {
-    case VOID_TYPE:
-      /* Void types are the same in all translation units.  */
-      return true;
-
-    case INTEGER_TYPE:
-    case BOOLEAN_TYPE:
-      /* Corresponding integral types are the same.  */
-      return (TYPE_PRECISION (type_1) == TYPE_PRECISION (type_2)
-	      && TYPE_UNSIGNED (type_1) == TYPE_UNSIGNED (type_2)
-	      && tree_int_cst_equal (TYPE_SIZE (type_1), TYPE_SIZE (type_2))
-	      && TYPE_ALIGN (type_1) == TYPE_ALIGN (type_2)
-	      && TYPE_STRING_FLAG (type_1) == TYPE_STRING_FLAG (type_2));
-      
-    case REAL_TYPE:
-      /* Corresponding float types are the same.  */
-      return (TYPE_PRECISION (type_1) == TYPE_PRECISION (type_2)
-	      && tree_int_cst_equal (TYPE_SIZE (type_1), TYPE_SIZE (type_2))
-	      && TYPE_ALIGN (type_1) == TYPE_ALIGN (type_2));
-
-    case ARRAY_TYPE:
-      /* Array types are the same if the element types are the same and
-	 the number of elements are the same.  */
-      if (!lto_same_type_p (TREE_TYPE (type_1), TREE_TYPE (type_2))
-	  || TYPE_STRING_FLAG (type_1) != TYPE_STRING_FLAG (type_2))
-	return false;
-      else
-	{
-	  tree index_1 = TYPE_DOMAIN (type_1);
-	  tree index_2 = TYPE_DOMAIN (type_2);
-	  /* For an incomplete external array, the type domain can be
- 	     NULL_TREE.  Check this condition also.  */
-	  if (!index_1 || !index_2)
-	    return (!index_1 && !index_2);
-	  else
-	    {
-	      tree min_1 = TYPE_MIN_VALUE (index_1);
-	      tree min_2 = TYPE_MIN_VALUE (index_2);
-	      tree max_1 = TYPE_MAX_VALUE (index_1);
-	      tree max_2 = TYPE_MAX_VALUE (index_2);
-	      /* If the array types both have unspecified bounds, then
-		 MAX_{1,2} will be NULL_TREE.  */
-	      if (min_1 && min_2 && !max_1 && !max_2)
-		return (integer_zerop (min_1)
-			&& integer_zerop (min_2));
-	      /* Otherwise, we need the bounds to be fully
-		 specified.  */
-	      if (!min_1 || !min_2 || !max_1 || !max_2)
-		return false;
-	      if (TREE_CODE (min_1) != INTEGER_CST
-		  || TREE_CODE (min_2) != INTEGER_CST
-		  || TREE_CODE (max_1) != INTEGER_CST
-		  || TREE_CODE (max_2) != INTEGER_CST)
-		return false;
-	      if (tree_int_cst_equal (min_1, min_2))
-		return tree_int_cst_equal (max_1, max_2);
-	      else
-		{
-		  tree nelts_1 = array_type_nelts (type_1);
-		  tree nelts_2 = array_type_nelts (type_2);
-		  if (! nelts_1 || ! nelts_2)
-		    return false;
-		  if (TREE_CODE (nelts_1) != INTEGER_CST
-		      || TREE_CODE (nelts_2) != INTEGER_CST)
-		    return false;
-		  return tree_int_cst_equal (nelts_1, nelts_2);
-		}
-	    }
-	}
-
-    case FUNCTION_TYPE:
-      /* Function types are the same if the return type and arguments types
-	 are the same.  */
-      if (!lto_same_type_p (TREE_TYPE (type_1), TREE_TYPE (type_2)))
-	return false;
-      else
-	{
-	  tree parms_1 = TYPE_ARG_TYPES (type_1);
-	  tree parms_2 = TYPE_ARG_TYPES (type_2);
-	  if (parms_1 == parms_2)
-	    return true;
-	  else
-	    {
-	      while (parms_1 && parms_2)
-		{
-		  if (!lto_same_type_p (TREE_VALUE (parms_1),
-					TREE_VALUE (parms_2)))
-		    return false;
-		  parms_1 = TREE_CHAIN (parms_1);
-		  parms_2 = TREE_CHAIN (parms_2);
-		}
-	      return !parms_1 && !parms_2;
-	    }
-	}
-
-    case POINTER_TYPE:
-    case REFERENCE_TYPE:
-      /* Pointer and reference types are the same if the pointed-to types are
-	 the same.  */
-      return lto_same_type_p (TREE_TYPE (type_1), TREE_TYPE (type_2));
-
-    case ENUMERAL_TYPE:
-    case RECORD_TYPE:
-    case UNION_TYPE:
-    case QUAL_UNION_TYPE:
-      /* Enumeration and class types are the same if they have the same
-	 name.  */
-      {
-	tree variant_1 = TYPE_MAIN_VARIANT (type_1);
-	tree variant_2 = TYPE_MAIN_VARIANT (type_2);
-	tree name_1 = TYPE_NAME (type_1);
-	tree name_2 = TYPE_NAME (type_2);
-	if (!name_1 || !name_2)
-	  /* Presumably, anonymous types are all unique.  */
-	  return false;
-
-	if (TREE_CODE (name_1) == TYPE_DECL)
-	  {
-	    name_1 = DECL_NAME (name_1);
-	    if (! name_1)
-	      return false;
-	  }
-	gcc_assert (TREE_CODE (name_1) == IDENTIFIER_NODE);
-
-	if (TREE_CODE (name_2) == TYPE_DECL)
-	  {
-	    name_2 = DECL_NAME (name_2);
-	    if (! name_2)
-	      return false;
-	  }
-	gcc_assert (TREE_CODE (name_2) == IDENTIFIER_NODE);
-
-	/* Identifiers can be compared with pointer equality rather
-	   than a string comparison.  */
-	if (name_1 == name_2)
-	  return true;
-
-	/* If either type has a variant type, compare that.  This finds
-	   the case where a struct is typedef'ed in one module but referred
-	   to as 'struct foo' in the other; here, the main type for one is
-	   'foo', and for the other 'foo_t', but the variants have the same
-	   name 'foo'.  */
-	if (variant_1 != type_1 || variant_2 != type_2)
-	  return lto_same_type_p (variant_1, variant_2);
-	else
-	  return false;
-      }
-
-      /* FIXME:  add pointer to member types.  */
-    default:
-      return false;
-    }
-}
-
-/* Transfer TYPE_2 qualifiers to TYPE_1 so that TYPE_1's qualifiers are
-   conservatively correct with respect to optimization done before the
-   merge.  */
+/* Transfer qualifiers between TYPE_1 and TYPE_2 so that qualifiers
+   for both types are conservatively correct with respect to
+   optimization done before the merge.  */
 
 static void
 lto_merge_qualifiers (tree type_1, tree type_2)
 {
+  /* If one is volatile, the other should also be.  */
   if (TYPE_VOLATILE (type_2))
-    TYPE_VOLATILE (type_1) = TYPE_VOLATILE (type_2);
-  if (! TYPE_READONLY (type_2))
-    TYPE_READONLY (type_1) = TYPE_READONLY (type_2);
-  if (! TYPE_RESTRICT (type_2))
-    TYPE_RESTRICT (type_1) = TYPE_RESTRICT (type_2);
+    TYPE_VOLATILE (type_1) = 1;
+  else if (TYPE_VOLATILE (type_1))
+    TYPE_VOLATILE (type_2) = 1;
+
+  /* If one type is writable, the other should also be.  */
+  if (!TYPE_READONLY (type_2))
+    TYPE_READONLY (type_1) = 0;
+  else if (!TYPE_READONLY (type_1))
+    TYPE_READONLY (type_2) = 0;
+
+  /* If one type does not have the restrict qualifier, the other
+     should not have it either.  */
+  if (!TYPE_RESTRICT (type_2))
+    TYPE_RESTRICT (type_1) = 0;
+  else if (!TYPE_RESTRICT (type_1))
+    TYPE_RESTRICT (type_2) = 0;
 }
 
 /* If TYPE_1 and TYPE_2 can be merged to form a common type, do it.
@@ -349,23 +179,21 @@ static tree
 lto_merge_types (tree type_1, tree type_2)
 {
   if (TREE_CODE (type_1) == ARRAY_TYPE
-      && (TREE_CODE (type_2) == ARRAY_TYPE)
-      && ! TYPE_ATTRIBUTES (type_1) && ! TYPE_ATTRIBUTES (type_2)
-      && (lto_same_type_p (TREE_TYPE (type_1), TREE_TYPE (type_2))))
+      && TREE_CODE (type_2) == ARRAY_TYPE
+      && !TYPE_ATTRIBUTES (type_1)
+      && !TYPE_ATTRIBUTES (type_2)
+      && gimple_types_compatible_p (TREE_TYPE (type_1), TREE_TYPE (type_2)))
     {
+      lto_merge_qualifiers (type_1, type_2);
+
       if (COMPLETE_TYPE_P (type_1) && !COMPLETE_TYPE_P (type_2))
-        {
-	  lto_merge_qualifiers (type_1, type_2);
-	  return type_1;
-	}
+	return type_1;
       else if (COMPLETE_TYPE_P (type_2) && !COMPLETE_TYPE_P (type_1))
-        {
-	  lto_merge_qualifiers (type_2, type_1);
-	  return type_2;
-	}
+	return type_2;
       else
-	return NULL_TREE;
+	return type_1;
     }
+
   return NULL_TREE;
 }
 
@@ -427,7 +255,7 @@ lto_symtab_compatible (tree old_decl, tree new_decl)
 	}
     }
 
-  if (!lto_same_type_p (TREE_TYPE (old_decl), TREE_TYPE (new_decl)))
+  if (!gimple_types_compatible_p (TREE_TYPE (old_decl), TREE_TYPE (new_decl)))
     {
       /* Allow an array type with unspecified bounds to
 	 be merged with an array type whose bounds are specified, so
@@ -438,19 +266,6 @@ lto_symtab_compatible (tree old_decl, tree new_decl)
 				       TREE_TYPE (new_decl));
       else if (TREE_CODE (new_decl) == FUNCTION_DECL)
 	{
-	  if (DECL_IS_BUILTIN (old_decl) || DECL_IS_BUILTIN (new_decl))
-	    {
-	      tree candidate;
-	      
-	      candidate = match_builtin_function_types (TREE_TYPE (new_decl),
-							TREE_TYPE (old_decl));
-
-	      /* We don't really have source location information at this
-		 point, so the above matching was a bit of a gamble.  */
-	      if (candidate)
-		merged_type = candidate;
-	    }
-
 	  if (!merged_type
 	      /* We want either of the types to have argument types,
 		 but not both.  */
@@ -718,16 +533,14 @@ lto_symtab_merge_decl (tree new_decl,
      properties inconsistent with having external linkage.  If any of
      these asertions fail, then the object file reader has failed to
      detect these cases and issue appropriate error messages.  */
-  /* FIXME lto: The assertion below may fail incorrectly on a static
-     class member.  The problem seems to be the (documented) fact
-     that DECL_NONLOCAL may be set for class instance variables as
-     well as for variables referenced from inner functions.  */
-  /*gcc_assert (!DECL_NONLOCAL (new_decl));*/
   if (TREE_CODE (new_decl) == VAR_DECL)
     gcc_assert (!(DECL_EXTERNAL (new_decl) && DECL_INITIAL (new_decl)));
 
   /* Remember the resolution of this symbol. */
   lto_symtab_set_resolution_and_file_data (new_decl, resolution, file_data);
+
+  /* Ensure DECL_ASSEMBLER_NAME will not set assembler name.  */
+  gcc_assert (DECL_ASSEMBLER_NAME_SET_P (new_decl));
 
   /* Retrieve the previous declaration.  */
   name = DECL_ASSEMBLER_NAME (new_decl);
@@ -813,12 +626,16 @@ lto_symtab_prevailing_decl (tree decl)
   tree ret;
   gcc_assert (decl);
 
-  if (!TREE_PUBLIC (decl))
+  /* Builtins and local symbols are their own prevailing decl.  */
+  if (!TREE_PUBLIC (decl) || DECL_IS_BUILTIN (decl))
     return decl;
 
   /* FIXME lto. There should be no DECL_ABSTRACT in the middle end. */
   if (TREE_CODE (decl) == FUNCTION_DECL && DECL_ABSTRACT (decl))
     return decl;
+
+  /* Ensure DECL_ASSEMBLER_NAME will not set assembler name.  */
+  gcc_assert (DECL_ASSEMBLER_NAME_SET_P (decl));
 
   ret = lto_symtab_get_identifier_decl (DECL_ASSEMBLER_NAME (decl));
 

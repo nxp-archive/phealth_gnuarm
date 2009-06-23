@@ -1,5 +1,5 @@
 /* Loop optimizations over tree-ssa.
-   Copyright (C) 2003, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
    
 This file is part of GCC.
    
@@ -36,6 +36,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "flags.h"
 #include "tree-inline.h"
 #include "tree-scalar-evolution.h"
+#include "toplev.h"
 
 /* The loop superpass.  */
 
@@ -306,8 +307,11 @@ gate_graphite_transforms (void)
   /* Enable -fgraphite pass if any one of the graphite optimization flags 
      is turned on.  */
   if (flag_loop_block || flag_loop_interchange || flag_loop_strip_mine
-      || flag_graphite_identity)
+      || flag_graphite_identity || flag_graphite_force_parallel)
     flag_graphite = 1;
+
+  if (flag_loop_block)
+    sorry ("loop blocking not implemented");
 
   return flag_graphite != 0;
 }

@@ -1,5 +1,5 @@
 /* Building internal representation for IRA.
-   Copyright (C) 2006, 2007, 2008
+   Copyright (C) 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
@@ -468,7 +468,7 @@ ira_create_allocno (int regno, bool cap_p, ira_loop_tree_node_t loop_tree_node)
   ALLOCNO_CONFLICT_HARD_REG_COSTS (a) = NULL;
   ALLOCNO_UPDATED_HARD_REG_COSTS (a) = NULL;
   ALLOCNO_UPDATED_CONFLICT_HARD_REG_COSTS (a) = NULL;
-  ALLOCNO_LEFT_CONFLICTS_NUM (a) = -1;
+  ALLOCNO_LEFT_CONFLICTS_SIZE (a) = -1;
   ALLOCNO_COVER_CLASS (a) = NO_REGS;
   ALLOCNO_UPDATED_COVER_CLASS_COST (a) = 0;
   ALLOCNO_COVER_CLASS_COST (a) = 0;
@@ -2275,14 +2275,14 @@ setup_min_max_conflict_allocno_ids (void)
   ira_allocno_t a;
 
   live_range_min = (int *) ira_allocate (sizeof (int) * ira_allocnos_num);
-  cover_class = LIM_REG_CLASSES;
+  cover_class = -1;
   first_not_finished = -1;
   for (i = 0; i < ira_allocnos_num; i++)
     {
       a = ira_conflict_id_allocno_map[i];
       if (a == NULL)
 	continue;
-      if (cover_class == LIM_REG_CLASSES
+      if (cover_class < 0
 	  || (flag_ira_algorithm != IRA_ALGORITHM_PRIORITY
 	      && cover_class != (int) ALLOCNO_COVER_CLASS (a)))
 	{
@@ -2311,14 +2311,14 @@ setup_min_max_conflict_allocno_ids (void)
       ALLOCNO_MIN (a) = min;
     }
   last_lived = (int *) ira_allocate (sizeof (int) * ira_max_point);
-  cover_class = LIM_REG_CLASSES;
+  cover_class = -1;
   filled_area_start = -1;
   for (i = ira_allocnos_num - 1; i >= 0; i--)
     {
       a = ira_conflict_id_allocno_map[i];
       if (a == NULL)
 	continue;
-      if (cover_class == LIM_REG_CLASSES
+      if (cover_class < 0
 	  || (flag_ira_algorithm != IRA_ALGORITHM_PRIORITY
 	      && cover_class != (int) ALLOCNO_COVER_CLASS (a)))
 	{
@@ -2394,7 +2394,8 @@ static ira_allocno_t *regno_top_level_allocno_map;
 static bool
 copy_info_to_removed_store_destinations (int regno)
 {
-  ira_allocno_t a, parent_a;
+  ira_allocno_t a;
+  ira_allocno_t parent_a = NULL;
   ira_loop_tree_node_t parent;
   allocno_live_range_t r;
   bool merged_p;

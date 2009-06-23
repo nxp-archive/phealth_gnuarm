@@ -1,6 +1,6 @@
 /* Definitions of target machine for GCC for IA-32.
    Copyright (C) 1988, 1992, 1994, 1995, 1996, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -128,6 +128,7 @@ extern int ix86_check_movabs (rtx, int);
 extern rtx assign_386_stack_local (enum machine_mode, enum ix86_stack_slot);
 extern int ix86_attr_length_immediate_default (rtx, int);
 extern int ix86_attr_length_address_default (rtx);
+extern int ix86_attr_length_vex_default (rtx, int, int);
 
 extern enum machine_mode ix86_fp_compare_mode (enum rtx_code);
 
@@ -203,7 +204,7 @@ extern int ix86_constant_alignment (tree, int);
 extern tree ix86_handle_shared_attribute (tree *, tree, tree, int, bool *);
 extern tree ix86_handle_selectany_attribute (tree *, tree, tree, int, bool *);
 extern int x86_field_alignment (tree, int);
-extern tree ix86_valid_option_attribute_tree (tree);
+extern tree ix86_valid_target_attribute_tree (tree);
 #endif
 
 extern rtx ix86_tls_get_addr (void);
@@ -271,3 +272,7 @@ extern enum rtx_code ix86_fp_compare_code_to_integer (enum rtx_code);
 extern rtx construct_plt_address (rtx);
 #endif
 extern int asm_preferred_eh_data_format (int, int);
+
+#ifdef HAVE_ATTR_cpu
+extern enum attr_cpu ix86_schedule;
+#endif

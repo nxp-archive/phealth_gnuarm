@@ -46,7 +46,6 @@ Boston, MA 02110-1301, USA.  */
 #include "tree-inline.h"
 #include "basic-block.h"
 #include "timevar.h"
-#include "errors.h"
 #include "ggc.h"
 #include "cgraph.h"
 #include "diagnostic.h"
@@ -62,7 +61,6 @@ Boston, MA 02110-1301, USA.  */
 
 /* basilys or MELT specific includes */
 
-#include "compiler-probe.h"
 
 
 #if HAVE_PARMAPOLY
@@ -71,11 +69,6 @@ Boston, MA 02110-1301, USA.  */
 #error required parma polyedral library PPL
 #endif /*HAVE_PARMAPOLY */
 
-#if HAVE_LIBTOOLDYNL
-#include <ltdl.h>
-#else
-#error required libtool dynamic loader library LTDL
-#endif /*HAVE_LIBTOOLDYNL */
 
 #if ENABLE_BASILYSMELT
 #include "basilys.h"
@@ -92,4 +85,5 @@ Boston, MA 02110-1301, USA.  */
 extern const char basilys_compiled_timestamp[];
 extern const char basilys_md5[];
 
+#define flag_basilys_debug flag_melt_debug
 /* eof run-basilys.h */

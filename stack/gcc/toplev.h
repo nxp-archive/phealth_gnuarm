@@ -1,6 +1,6 @@
 /* toplev.h - Various declarations for functions found in toplev.c
-   Copyright (C) 1998, 1999, 2000, 2001, 2003, 2004, 2005, 2006, 2007
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2003, 2004, 2005, 2006, 2007, 2008,
+   2009 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -61,6 +61,7 @@ extern bool warning (int, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
 extern bool warning_at (location_t, int, const char *, ...)
     ATTRIBUTE_GCC_DIAG(3,4);
 extern void error (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2);
+extern void error_at (location_t, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
 extern void fatal_error (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2)
      ATTRIBUTE_NORETURN;
 /* Pass one of the OPT_W* from options.h as the second parameter.  */
@@ -139,7 +140,6 @@ extern int flag_unroll_all_loops;
 extern int flag_unswitch_loops;
 extern int flag_cprop_registers;
 extern int time_report;
-extern int flag_ira;
 extern int flag_ira_coalesce;
 extern int flag_ira_move_spills;
 extern int flag_ira_share_save_slots;

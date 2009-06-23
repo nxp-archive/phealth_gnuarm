@@ -1,5 +1,6 @@
 /* Chains of recurrences.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
 This file is part of GCC.
@@ -131,7 +132,8 @@ build_polynomial_chrec (unsigned loop_num,
       || right == chrec_dont_know)
     return chrec_dont_know;
 
-  if (no_evolution_in_loop_p (left, loop_num, &val) && !val)
+  if (!no_evolution_in_loop_p (left, loop_num, &val)
+      || !val)
     return chrec_dont_know;
 
   /* Pointer types should occur only on the left hand side, i.e. in

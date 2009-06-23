@@ -1,5 +1,5 @@
 /* Loop header copying on trees.
-   Copyright (C) 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
    
 This file is part of GCC.
    
@@ -56,6 +56,13 @@ should_duplicate_loop_header_p (basic_block header, struct loop *loop,
   /* Do not copy one block more than once (we do not really want to do
      loop peeling here).  */
   if (header->aux)
+    return false;
+
+  /* Loop header copying usually increases size of the code.  This used not to
+     be true, since quite often it is possible to verify that the condition is
+     satisfied in the first iteration and therefore to eliminate it.  Jump
+     threading handles these cases now.  */
+  if (optimize_loop_for_size_p (loop))
     return false;
 
   gcc_assert (EDGE_COUNT (header->succs) > 0);

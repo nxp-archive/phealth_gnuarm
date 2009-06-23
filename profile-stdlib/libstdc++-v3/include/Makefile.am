@@ -1,6 +1,6 @@
 #o# Makefile for the include subdirectory of the GNU C++ Standard library.
 ##
-## Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+## Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
 ## Free Software Foundation, Inc.
 ##
 ## This file is part of the libstdc++ version 3 distribution.
@@ -9,7 +9,7 @@
 ## This file is part of the GNU ISO C++ Library.  This library is free
 ## software; you can redistribute it and/or modify it under the
 ## terms of the GNU General Public License as published by the
-## Free Software Foundation; either version 2, or (at your option)
+## Free Software Foundation; either version 3, or (at your option)
 ## any later version.
 
 ## This library is distributed in the hope that it will be useful,
@@ -18,9 +18,8 @@
 ## GNU General Public License for more details.
 
 ## You should have received a copy of the GNU General Public License along
-## with this library; see the file COPYING.  If not, write to the Free
-## Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
-## USA.
+## with this library; see the file COPYING3.  If not see
+## <http://www.gnu.org/licenses/>.
 
 include $(top_srcdir)/fragment.am
 
@@ -36,6 +35,7 @@ std_headers = \
 	${std_srcdir}/complex \
 	${std_srcdir}/condition_variable \
 	${std_srcdir}/deque \
+	${std_srcdir}/forward_list \
 	${std_srcdir}/fstream \
 	${std_srcdir}/functional \
 	${std_srcdir}/iomanip \
@@ -77,6 +77,10 @@ bits_builddir = ./bits
 bits_headers = \
         ${bits_srcdir}/algorithmfwd.h \
 	${bits_srcdir}/allocator.h \
+	${bits_srcdir}/atomicfwd_c.h \
+	${bits_srcdir}/atomicfwd_cxx.h \
+	${bits_srcdir}/atomic_0.h \
+	${bits_srcdir}/atomic_2.h \
 	${bits_srcdir}/basic_ios.h \
 	${bits_srcdir}/basic_ios.tcc \
 	${bits_srcdir}/basic_string.h \
@@ -87,6 +91,8 @@ bits_headers = \
 	${bits_srcdir}/concept_check.h \
 	${bits_srcdir}/cpp_type_traits.h \
 	${bits_srcdir}/deque.tcc \
+	${bits_srcdir}/forward_list.h \
+	${bits_srcdir}/forward_list.tcc \
 	${bits_srcdir}/fstream.tcc \
 	${bits_srcdir}/functexcept.h \
 	${bits_srcdir}/functional_hash.h \
@@ -109,6 +115,8 @@ bits_headers = \
 	${bits_srcdir}/ostream.tcc \
 	${bits_srcdir}/ostream_insert.h \
 	${bits_srcdir}/postypes.h \
+	${bits_srcdir}/random.h \
+	${bits_srcdir}/random.tcc \
 	${bits_srcdir}/stream_iterator.h \
 	${bits_srcdir}/streambuf_iterator.h \
 	${bits_srcdir}/shared_ptr.h \
@@ -481,10 +489,12 @@ ext_headers = \
 	${ext_srcdir}/atomicity.h \
 	${ext_srcdir}/array_allocator.h \
 	${ext_srcdir}/bitmap_allocator.h \
+	${ext_srcdir}/cast.h \
 	${ext_srcdir}/codecvt_specializations.h \
 	${ext_srcdir}/concurrence.h \
 	${ext_srcdir}/debug_allocator.h \
 	${ext_srcdir}/enc_filebuf.h \
+	${ext_srcdir}/extptr_allocator.h \
 	${ext_srcdir}/stdio_filebuf.h \
 	${ext_srcdir}/stdio_sync_filebuf.h \
 	${ext_srcdir}/functional \
@@ -496,6 +506,7 @@ ext_headers = \
 	${ext_srcdir}/numeric \
 	${ext_srcdir}/numeric_traits.h \
 	${ext_srcdir}/pod_char_traits.h \
+	${ext_srcdir}/pointer.h \
 	${ext_srcdir}/pool_allocator.h \
 	${ext_srcdir}/rb_tree \
 	${ext_srcdir}/rope \
@@ -560,6 +571,8 @@ tr1_headers = \
 	${tr1_srcdir}/poly_laguerre.tcc \
 	${tr1_srcdir}/legendre_function.tcc \
 	${tr1_srcdir}/random \
+	${tr1_srcdir}/random.h \
+	${tr1_srcdir}/random.tcc \
 	${tr1_srcdir}/regex \
 	${tr1_srcdir}/riemann_zeta.tcc \
 	${tr1_srcdir}/shared_ptr.h \
@@ -598,8 +611,6 @@ tr1_impl_headers = \
 	${tr1_impl_srcdir}/functional_hash.h \
 	${tr1_impl_srcdir}/hashtable \
 	${tr1_impl_srcdir}/hashtable_policy.h \
-	${tr1_impl_srcdir}/random \
-	${tr1_impl_srcdir}/random.tcc \
 	${tr1_impl_srcdir}/regex \
 	${tr1_impl_srcdir}/type_traits \
 	${tr1_impl_srcdir}/unordered_map \
@@ -765,7 +776,7 @@ profile_builddir = ./profile
 profile_headers = \
 	${profile_srcdir}/base.h \
 	${profile_srcdir}/unordered_map \
-	${profile_srcdir}/unordered_set \ 
+	${profile_srcdir}/unordered_set \
 	${profile_srcdir}/vector \
 	${profile_srcdir}/bitset \
 	${profile_srcdir}/deque \
@@ -775,8 +786,21 @@ profile_headers = \
 	${profile_srcdir}/multimap.h \
 	${profile_srcdir}/multiset.h \
 	${profile_srcdir}/set \
-	${profile_srcdir}/set.h \  
-	${profile_srcdir}/hashtable.h 
+	${profile_srcdir}/set.h \
+	${profile_srcdir}/hashtable.h
+profile_impl_srcdir = ${glibcxx_srcdir}/include/profile/impl
+profile_impl_builddir = ./profile/impl
+profile_impl_headers = \
+	${profile_impl_srcdir}/profiler.h \
+	${profile_impl_srcdir}/profiler_container_size.h \
+	${profile_impl_srcdir}/profiler_hash_func.h \
+	${profile_impl_srcdir}/profiler_hashtable_size.h \
+	${profile_impl_srcdir}/profiler_map_to_unordered_map.h \
+	${profile_impl_srcdir}/profiler_node.h \
+	${profile_impl_srcdir}/profiler_state.h \
+	${profile_impl_srcdir}/profiler_trace.h \
+	${profile_impl_srcdir}/profiler_vector_size.h \
+	${profile_impl_srcdir}/profiler_vector_to_list.h
 
 # Some of the different "C" header models need extra files.
 # Some "C" header schemes require the "C" compatibility headers.
@@ -837,7 +861,7 @@ pch1_source = ${glibcxx_srcdir}/include/precompiled/stdc++.h
 pch1_output_builddir = ${host_builddir}/stdc++.h.gch
 pch1_output_anchor = ${host_builddir}/stdc++.h
 pch1_output_installdir = ${host_installdir}/stdc++.h.gch
-pch1a_output = ${pch1_output_builddir}/O0g.gch
+pch1a_output = ${pch1_output_builddir}/O2ggnu++0x.gch
 pch1b_output = ${pch1_output_builddir}/O2g.gch
 pch1_output = ${pch1a_output} ${pch1b_output}
 
@@ -859,7 +883,7 @@ pch_output_dirs = \
 	${pch1_output_builddir} ${pch2_output_builddir} ${pch3_output_builddir}
 pch_output_anchors = \
 	${pch1_output_anchor} ${pch2_output_anchor} ${pch3_output_anchor}
-PCHFLAGS=-Winvalid-pch -x c++-header $(CXXFLAGS)
+PCHFLAGS=-x c++-header $(CXXFLAGS)
 if GLIBCXX_BUILD_PCH
 pch_build = ${pch_output}
 else
@@ -872,7 +896,7 @@ allstamped = \
 	stamp-std stamp-bits stamp-c_base stamp-c_base_extra \
 	stamp-c_compatibility  stamp-backward stamp-ext stamp-pb \
 	stamp-tr1 stamp-tr1-impl stamp-debug stamp-parallel stamp-host \
-    stamp-profile
+    stamp-profile stamp-profile-impl
 
 # List of all files that are created by explicit building, editing, or
 # catenation.
@@ -1001,6 +1025,11 @@ stamp-profile: ${profile_headers}
 	@-cd ${profile_builddir} && $(LN_S) $? . 2>/dev/null
 	@$(STAMP) stamp-profile
 
+stamp-profile-impl: ${profile_impl_headers}
+	@-mkdir -p ${profile_impl_builddir}
+	@-cd ${profile_impl_builddir} && $(LN_S) $? . 2>/dev/null
+	@$(STAMP) stamp-profile-impl
+
 stamp-${host_alias}:
 	@-mkdir -p ${host_builddir}
 	@$(STAMP) stamp-${host_alias}
@@ -1112,7 +1141,8 @@ ${host_builddir}/gthr-default.h: ${toplevel_srcdir}/gcc/${glibcxx_thread_h} \
 # Build two precompiled C++ includes, stdc++.h.gch/*.gch
 ${pch1a_output}: ${allstamped} ${host_builddir}/c++config.h ${pch1_source}
 	-mkdir -p ${pch1_output_builddir}
-	$(CXX) $(PCHFLAGS) $(AM_CPPFLAGS) -O0 -g ${pch1_source} -o $@
+	$(CXX) $(PCHFLAGS) $(AM_CPPFLAGS) -O2 -g -std=gnu++0x ${pch1_source} \
+	-o $@
 
 ${pch1b_output}: ${allstamped} ${host_builddir}/c++config.h ${pch1_source}
 	-mkdir -p ${pch1_output_builddir}
@@ -1231,6 +1261,9 @@ install-headers:
 	$(mkinstalldirs) $(DESTDIR)${gxx_include_dir}/${profile_builddir}
 	for file in ${profile_headers}; do \
 	  $(INSTALL_DATA) $${file} $(DESTDIR)${gxx_include_dir}/${profile_builddir}; done
+	$(mkinstalldirs) $(DESTDIR)${gxx_include_dir}/${profile_impl_builddir}
+	for file in ${profile_impl_headers}; do \
+	  $(INSTALL_DATA) $${file} $(DESTDIR)${gxx_include_dir}/${profile_impl_builddir}; done
 	$(mkinstalldirs) $(DESTDIR)${host_installdir}
 	for file in ${host_headers} ${host_headers_extra} \
 	 ${thread_host_headers}; do \

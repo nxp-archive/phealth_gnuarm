@@ -695,9 +695,9 @@ getLoadRequests (MAYBE_UNUSED ClassLoader *cl)
 MethodResult *
 gnu::classpath::jdwp::VMVirtualMachine::
 executeMethod (MAYBE_UNUSED jobject obj, MAYBE_UNUSED Thread *thread,
-	       MAYBE_UNUSED jclass clazz, MAYBE_UNUSED reflect::Method *method,
-	       MAYBE_UNUSED jobjectArray values,
-	       MAYBE_UNUSED jboolean nonVirtual)
+	       MAYBE_UNUSED jclass clazz, MAYBE_UNUSED VMMethod *method,
+	       MAYBE_UNUSED JArray<value::Value *> *values,
+	       MAYBE_UNUSED jint options)
 {
   return NULL;
 }
@@ -900,9 +900,9 @@ handle_single_step (jvmtiEnv *env, struct step_info *sinfo, jthread thread,
 
   VMMethod *vmmethod = new VMMethod (klass, reinterpret_cast<jlong> (method));
   Location *loc = new Location (vmmethod, location);
-  JvAssert (thread->frame.frame_type == frame_interpreter);
   _Jv_InterpFrame *iframe
     = reinterpret_cast<_Jv_InterpFrame *> (thread->interp_frame);  
+  JvAssert (iframe->frame_type == frame_interpreter);
   jobject instance = iframe->get_this_ptr ();
   event::SingleStepEvent *event
     = new event::SingleStepEvent (thread, loc, instance);
@@ -957,9 +957,9 @@ jdwpBreakpointCB (jvmtiEnv *env, MAYBE_UNUSED JNIEnv *jni_env,
   jlong methodId = reinterpret_cast<jlong> (method);
   VMMethod *meth = VMVirtualMachine::getClassMethod (klass, methodId);
   Location *loc = new Location (meth, location);
-  JvAssert (thread->frame.frame_type == frame_interpreter);
   _Jv_InterpFrame *iframe
     = reinterpret_cast<_Jv_InterpFrame *> (thread->interp_frame);
+  JvAssert (iframe->frame_type == frame_interpreter);
   jobject instance = iframe->get_this_ptr ();
   BreakpointEvent *event = new BreakpointEvent (thread, loc, instance);
   

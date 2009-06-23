@@ -1,6 +1,6 @@
 /* Subroutines for manipulating rtx's in semantically interesting ways.
    Copyright (C) 1987, 1991, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -698,10 +698,8 @@ force_reg (enum machine_mode mode, rtx x)
 
 	align = MIN (sa, ca);
       }
-    else if (MEM_P (x) && MEM_POINTER (x))
-      align = MEM_ALIGN (x);
 
-    if (align)
+    if (align || (MEM_P (x) && MEM_POINTER (x)))
       mark_reg_pointer (temp, align);
   }
 

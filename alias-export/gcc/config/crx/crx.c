@@ -1,12 +1,12 @@
 /* Output routines for GCC for CRX.
    Copyright (C) 1991, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001,
-   2002, 2003, 2004  Free Software Foundation, Inc.
+   2002, 2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -15,9 +15,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to
-   the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-   Boston, MA 02110-1301, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 /*****************************************************************************/
 /* HEADER INCLUDES							     */
@@ -125,10 +124,6 @@ static enum machine_mode output_memory_reference_mode;
 /* Table of machine attributes.  */
 const struct attribute_spec crx_attribute_table[];
 
-/* Test and compare insns use these globals to generate branch insns.  */
-rtx crx_compare_op0 = NULL_RTX;
-rtx crx_compare_op1 = NULL_RTX;
-
 /*****************************************************************************/
 /* TARGETM FUNCTION PROTOTYPES						     */
 /*****************************************************************************/
@@ -136,8 +131,16 @@ rtx crx_compare_op1 = NULL_RTX;
 static bool crx_fixed_condition_code_regs (unsigned int *, unsigned int *);
 static rtx crx_struct_value_rtx (tree fntype ATTRIBUTE_UNUSED,
 				 int incoming ATTRIBUTE_UNUSED);
-static bool crx_return_in_memory (tree type, tree fntype ATTRIBUTE_UNUSED);
-static int crx_address_cost (rtx);
+static bool crx_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED);
+static int crx_address_cost (rtx, bool);
+static bool crx_legitimate_address_p (enum machine_mode, rtx, bool);
+
+/*****************************************************************************/
+/* RTL VALIDITY								     */
+/*****************************************************************************/
+
+#undef TARGET_LEGITIMATE_ADDRESS_P
+#define TARGET_LEGITIMATE_ADDRESS_P	crx_legitimate_address_p
 
 /*****************************************************************************/
 /* STACK LAYOUT AND CALLING CONVENTIONS					     */
@@ -205,7 +208,7 @@ crx_struct_value_rtx (tree fntype ATTRIBUTE_UNUSED,
 /* Implements hook TARGET_RETURN_IN_MEMORY.  */
 
 static bool
-crx_return_in_memory (tree type, tree fntype ATTRIBUTE_UNUSED)
+crx_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 {
   if (TYPE_MODE (type) == BLKmode)
     {
@@ -272,7 +275,7 @@ crx_compute_save_regs (void)
 	     * for the sake of its sons.  */
 	    save_regs[regno] = 1;
 
-	  else if (regs_ever_live[regno])
+	  else if (df_regs_ever_live_p (regno))
 	    /* This reg is used - save it.  */
 	    save_regs[regno] = 1;
 	  else
@@ -282,7 +285,7 @@ crx_compute_save_regs (void)
       else
 	{
 	  /* If this reg is used and not call-used (except RA), save it. */
-	  if (regs_ever_live[regno]
+	  if (df_regs_ever_live_p (regno)
 	      && (!call_used_regs[regno] || regno == RETURN_ADDRESS_REGNUM))
 	    save_regs[regno] = 1;
 	  else
@@ -319,7 +322,7 @@ crx_compute_frame (void)
   local_vars_size += padding_locals;
 
   size_for_adjusting_sp = local_vars_size + (ACCUMULATE_OUTGOING_ARGS ?
-				     current_function_outgoing_args_size : 0);
+				     crtl->outgoing_args_size : 0);
 }
 
 /* Implements the macro INITIAL_ELIMINATION_OFFSET, return the OFFSET. */
@@ -335,13 +338,13 @@ crx_initial_elimination_offset (int from, int to)
 
   if ((from) == FRAME_POINTER_REGNUM && (to) == STACK_POINTER_REGNUM)
     return (ACCUMULATE_OUTGOING_ARGS ?
-	    current_function_outgoing_args_size : 0);
+	    crtl->outgoing_args_size : 0);
   else if ((from) == ARG_POINTER_REGNUM && (to) == FRAME_POINTER_REGNUM)
     return (sum_regs + local_vars_size);
   else if ((from) == ARG_POINTER_REGNUM && (to) == STACK_POINTER_REGNUM)
     return (sum_regs + local_vars_size +
 	    (ACCUMULATE_OUTGOING_ARGS ?
-	     current_function_outgoing_args_size : 0));
+	     crtl->outgoing_args_size : 0));
   else
     abort ();
 }
@@ -372,11 +375,11 @@ crx_regno_reg_class (int regno)
 /* Transfer between HILO_REGS and memory via secondary reloading. */
 
 enum reg_class
-crx_secondary_reload_class (enum reg_class class,
+crx_secondary_reload_class (enum reg_class rclass,
 			    enum machine_mode mode ATTRIBUTE_UNUSED,
 			    rtx x ATTRIBUTE_UNUSED)
 {
-  if (reg_classes_intersect_p (class, HILO_REGS)
+  if (reg_classes_intersect_p (rclass, HILO_REGS)
       && true_regnum (x) == -1)
     return GENERAL_REGS;
 
@@ -542,7 +545,7 @@ crx_function_arg_regno_p (int n)
 /* ADDRESSING MODES */
 /* ---------------- */
 
-/* Implements the macro GO_IF_LEGITIMATE_ADDRESS defined in crx.h.
+/* Implements the hook for TARGET_LEGITIMATE_ADDRESS_P defined in crx.h.
  * The following addressing modes are supported on CRX:
  *
  * Relocations		--> const | symbol_ref | label_ref
@@ -727,9 +730,9 @@ crx_decompose_address (rtx addr, struct crx_address *out)
   return retval;
 }
 
-int
+bool
 crx_legitimate_address_p (enum machine_mode mode ATTRIBUTE_UNUSED,
-			  rtx addr, int strict)
+			  rtx addr, bool strict)
 {
   enum crx_addrtype addrtype;
   struct crx_address address;
@@ -801,7 +804,7 @@ crx_legitimate_address_p (enum machine_mode mode ATTRIBUTE_UNUSED,
 /* Return cost of the memory address x. */
 
 static int
-crx_address_cost (rtx addr)
+crx_address_cost (rtx addr, bool speed ATTRIBUTE_UNUSED)
 {
   enum crx_addrtype addrtype;
   struct crx_address address;
@@ -840,22 +843,22 @@ crx_address_cost (rtx addr)
 }
 
 /* Return the cost of moving data of mode MODE between a register of class
- * CLASS and memory; IN is zero if the value is to be written to memory,
+ * RCLASS and memory; IN is zero if the value is to be written to memory,
  * nonzero if it is to be read in. This cost is relative to those in
  * REGISTER_MOVE_COST.  */
 
 int
 crx_memory_move_cost (enum machine_mode mode,
-		  enum reg_class class ATTRIBUTE_UNUSED,
+		  enum reg_class rclass ATTRIBUTE_UNUSED,
 		  int in ATTRIBUTE_UNUSED)
 {
   /* One LD or ST takes twice the time of a simple reg-reg move */
-  if (reg_classes_intersect_p (class, GENERAL_REGS))
+  if (reg_classes_intersect_p (rclass, GENERAL_REGS))
     {
       /* printf ("GENERAL_REGS LD/ST = %d\n", 4 * HARD_REGNO_NREGS (0, mode));*/
       return 4 * HARD_REGNO_NREGS (0, mode);
     }	
-  else if (reg_classes_intersect_p (class, HILO_REGS))
+  else if (reg_classes_intersect_p (rclass, HILO_REGS))
     {
       /* HILO to memory and vice versa */
       /* printf ("HILO_REGS %s = %d\n", in ? "LD" : "ST",
@@ -1216,43 +1219,6 @@ crx_expand_movmem (rtx dstbase, rtx srcbase, rtx count_exp, rtx align_exp)
   gcc_assert (offset == count);
 
   return 1;
-}
-
-rtx
-crx_expand_compare (enum rtx_code code, enum machine_mode mode)
-{
-  rtx op0, op1, cc_reg, ret;
-
-  op0 = crx_compare_op0;
-  op1 = crx_compare_op1;
-
-  /* Emit the compare that writes into CC_REGNUM) */
-  cc_reg = gen_rtx_REG (CCmode, CC_REGNUM);
-  ret = gen_rtx_COMPARE (CCmode, op0, op1);
-  emit_insn (gen_rtx_SET (VOIDmode, cc_reg, ret));
-  /* debug_rtx (get_last_insn ()); */
-
-  /* Return the rtx for using the result in CC_REGNUM */
-  return gen_rtx_fmt_ee (code, mode, cc_reg, const0_rtx);
-}
-
-void
-crx_expand_branch (enum rtx_code code, rtx label)
-{
-  rtx tmp = crx_expand_compare (code, VOIDmode);
-  tmp = gen_rtx_IF_THEN_ELSE (VOIDmode, tmp,
-			      gen_rtx_LABEL_REF (VOIDmode, label),
-			      pc_rtx);
-  emit_jump_insn (gen_rtx_SET (VOIDmode, pc_rtx, tmp));
-  /* debug_rtx (get_last_insn ()); */
-}
-
-void
-crx_expand_scond (enum rtx_code code, rtx dest)
-{
-  rtx tmp = crx_expand_compare (code, GET_MODE (dest));
-  emit_move_insn (dest, tmp);
-  /* debug_rtx (get_last_insn ()); */
 }
 
 static void

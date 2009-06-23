@@ -1,6 +1,7 @@
 /* Definitions of target machine for GNU compiler.  VAX version.
    Copyright (C) 1987, 1988, 1991, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -648,7 +649,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
    Branches are extremely cheap on the VAX while the shift insns often
    used to replace branches can be expensive.  */
 
-#define BRANCH_COST 0
+#define BRANCH_COST(speed_p, predictable_p) 0
 
 /* Tell final.c how to eliminate redundant test instructions.  */
 

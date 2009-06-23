@@ -1,6 +1,7 @@
 /* Subroutines shared by all languages that are variants of C.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -2232,53 +2233,77 @@ c_common_signed_or_unsigned_type (int unsignedp, tree type)
   if (type1 == intQI_type_node || type1 == unsigned_intQI_type_node)
     return unsignedp ? unsigned_intQI_type_node : intQI_type_node;
 
-#define C_COMMON_FIXED_TYPES(SAT,NAME) \
-  if (type1 == SAT ## short_ ## NAME ## _type_node \
-      || type1 == SAT ## unsigned_short_ ## NAME ## _type_node) \
-    return unsignedp ? SAT ## unsigned_short_ ## NAME ## _type_node \
-		     : SAT ## short_ ## NAME ## _type_node; \
-  if (type1 == SAT ## NAME ## _type_node \
-      || type1 == SAT ## unsigned_ ## NAME ## _type_node) \
-    return unsignedp ? SAT ## unsigned_ ## NAME ## _type_node \
-		     : SAT ## NAME ## _type_node; \
-  if (type1 == SAT ## long_ ## NAME ## _type_node \
-      || type1 == SAT ## unsigned_long_ ## NAME ## _type_node) \
-    return unsignedp ? SAT ## unsigned_long_ ## NAME ## _type_node \
-		     : SAT ## long_ ## NAME ## _type_node; \
-  if (type1 == SAT ## long_long_ ## NAME ## _type_node \
-      || type1 == SAT ## unsigned_long_long_ ## NAME ## _type_node) \
-    return unsignedp ? SAT ## unsigned_long_long_ ## NAME ## _type_node \
-		     : SAT ## long_long_ ## NAME ## _type_node;
+#define C_COMMON_FIXED_TYPES(NAME)	    \
+  if (type1 == short_ ## NAME ## _type_node \
+      || type1 == unsigned_short_ ## NAME ## _type_node) \
+    return unsignedp ? unsigned_short_ ## NAME ## _type_node \
+		     : short_ ## NAME ## _type_node; \
+  if (type1 == NAME ## _type_node \
+      || type1 == unsigned_ ## NAME ## _type_node) \
+    return unsignedp ? unsigned_ ## NAME ## _type_node \
+		     : NAME ## _type_node; \
+  if (type1 == long_ ## NAME ## _type_node \
+      || type1 == unsigned_long_ ## NAME ## _type_node) \
+    return unsignedp ? unsigned_long_ ## NAME ## _type_node \
+		     : long_ ## NAME ## _type_node; \
+  if (type1 == long_long_ ## NAME ## _type_node \
+      || type1 == unsigned_long_long_ ## NAME ## _type_node) \
+    return unsignedp ? unsigned_long_long_ ## NAME ## _type_node \
+		     : long_long_ ## NAME ## _type_node;
 
-#define C_COMMON_FIXED_MODE_TYPES(SAT,NAME) \
-  if (type1 == SAT ## NAME ## _type_node \
-      || type1 == SAT ## u ## NAME ## _type_node) \
-    return unsignedp ? SAT ## u ## NAME ## _type_node \
-		     : SAT ## NAME ## _type_node;
+#define C_COMMON_FIXED_MODE_TYPES(NAME) \
+  if (type1 == NAME ## _type_node \
+      || type1 == u ## NAME ## _type_node) \
+    return unsignedp ? u ## NAME ## _type_node \
+		     : NAME ## _type_node;
 
-  C_COMMON_FIXED_TYPES (, fract);
-  C_COMMON_FIXED_TYPES (sat_, fract);
-  C_COMMON_FIXED_TYPES (, accum);
-  C_COMMON_FIXED_TYPES (sat_, accum);
+#define C_COMMON_FIXED_TYPES_SAT(NAME) \
+  if (type1 == sat_ ## short_ ## NAME ## _type_node \
+      || type1 == sat_ ## unsigned_short_ ## NAME ## _type_node) \
+    return unsignedp ? sat_ ## unsigned_short_ ## NAME ## _type_node \
+		     : sat_ ## short_ ## NAME ## _type_node; \
+  if (type1 == sat_ ## NAME ## _type_node \
+      || type1 == sat_ ## unsigned_ ## NAME ## _type_node) \
+    return unsignedp ? sat_ ## unsigned_ ## NAME ## _type_node \
+		     : sat_ ## NAME ## _type_node; \
+  if (type1 == sat_ ## long_ ## NAME ## _type_node \
+      || type1 == sat_ ## unsigned_long_ ## NAME ## _type_node) \
+    return unsignedp ? sat_ ## unsigned_long_ ## NAME ## _type_node \
+		     : sat_ ## long_ ## NAME ## _type_node; \
+  if (type1 == sat_ ## long_long_ ## NAME ## _type_node \
+      || type1 == sat_ ## unsigned_long_long_ ## NAME ## _type_node) \
+    return unsignedp ? sat_ ## unsigned_long_long_ ## NAME ## _type_node \
+		     : sat_ ## long_long_ ## NAME ## _type_node;
 
-  C_COMMON_FIXED_MODE_TYPES (, qq);
-  C_COMMON_FIXED_MODE_TYPES (, hq);
-  C_COMMON_FIXED_MODE_TYPES (, sq);
-  C_COMMON_FIXED_MODE_TYPES (, dq);
-  C_COMMON_FIXED_MODE_TYPES (, tq);
-  C_COMMON_FIXED_MODE_TYPES (sat_, qq);
-  C_COMMON_FIXED_MODE_TYPES (sat_, hq);
-  C_COMMON_FIXED_MODE_TYPES (sat_, sq);
-  C_COMMON_FIXED_MODE_TYPES (sat_, dq);
-  C_COMMON_FIXED_MODE_TYPES (sat_, tq);
-  C_COMMON_FIXED_MODE_TYPES (, ha);
-  C_COMMON_FIXED_MODE_TYPES (, sa);
-  C_COMMON_FIXED_MODE_TYPES (, da);
-  C_COMMON_FIXED_MODE_TYPES (, ta);
-  C_COMMON_FIXED_MODE_TYPES (sat_, ha);
-  C_COMMON_FIXED_MODE_TYPES (sat_, sa);
-  C_COMMON_FIXED_MODE_TYPES (sat_, da);
-  C_COMMON_FIXED_MODE_TYPES (sat_, ta);
+#define C_COMMON_FIXED_MODE_TYPES_SAT(NAME)	\
+  if (type1 == sat_ ## NAME ## _type_node \
+      || type1 == sat_ ## u ## NAME ## _type_node) \
+    return unsignedp ? sat_ ## u ## NAME ## _type_node \
+		     : sat_ ## NAME ## _type_node;
+
+  C_COMMON_FIXED_TYPES (fract);
+  C_COMMON_FIXED_TYPES_SAT (fract);
+  C_COMMON_FIXED_TYPES (accum);
+  C_COMMON_FIXED_TYPES_SAT (accum);
+
+  C_COMMON_FIXED_MODE_TYPES (qq);
+  C_COMMON_FIXED_MODE_TYPES (hq);
+  C_COMMON_FIXED_MODE_TYPES (sq);
+  C_COMMON_FIXED_MODE_TYPES (dq);
+  C_COMMON_FIXED_MODE_TYPES (tq);
+  C_COMMON_FIXED_MODE_TYPES_SAT (qq);
+  C_COMMON_FIXED_MODE_TYPES_SAT (hq);
+  C_COMMON_FIXED_MODE_TYPES_SAT (sq);
+  C_COMMON_FIXED_MODE_TYPES_SAT (dq);
+  C_COMMON_FIXED_MODE_TYPES_SAT (tq);
+  C_COMMON_FIXED_MODE_TYPES (ha);
+  C_COMMON_FIXED_MODE_TYPES (sa);
+  C_COMMON_FIXED_MODE_TYPES (da);
+  C_COMMON_FIXED_MODE_TYPES (ta);
+  C_COMMON_FIXED_MODE_TYPES_SAT (ha);
+  C_COMMON_FIXED_MODE_TYPES_SAT (sa);
+  C_COMMON_FIXED_MODE_TYPES_SAT (da);
+  C_COMMON_FIXED_MODE_TYPES_SAT (ta);
 
   /* For ENUMERAL_TYPEs in C++, must check the mode of the types, not
      the precision; they have precision set to match their range, but
@@ -2295,7 +2320,7 @@ c_common_signed_or_unsigned_type (int unsignedp, tree type)
 
 #define TYPE_OK(node)							    \
   (TYPE_MODE (type) == TYPE_MODE (node)					    \
-   && (c_dialect_cxx () || TYPE_PRECISION (type) == TYPE_PRECISION (node)))
+   && TYPE_PRECISION (type) == TYPE_PRECISION (node))
   if (TYPE_OK (signed_char_type_node))
     return unsignedp ? unsigned_char_type_node : signed_char_type_node;
   if (TYPE_OK (integer_type_node))
@@ -2325,10 +2350,7 @@ c_common_signed_or_unsigned_type (int unsignedp, tree type)
     return unsignedp ? unsigned_intQI_type_node : intQI_type_node;
 #undef TYPE_OK
 
-  if (c_dialect_cxx ())
-    return type;
-  else
-    return build_nonstandard_integer_type (TYPE_PRECISION (type), unsignedp);
+  return build_nonstandard_integer_type (TYPE_PRECISION (type), unsignedp);
 }
 
 /* Build a bit-field integer type for the given WIDTH and UNSIGNEDP.  */
@@ -5513,7 +5535,12 @@ handle_alias_attribute (tree *node, tree name, tree args,
 {
   tree decl = *node;
 
-  if ((TREE_CODE (decl) == FUNCTION_DECL && DECL_INITIAL (decl))
+  if (TREE_CODE (decl) != FUNCTION_DECL && TREE_CODE (decl) != VAR_DECL)
+    {
+      warning (OPT_Wattributes, "%qE attribute ignored", name);
+      *no_add_attrs = true;
+    }
+  else if ((TREE_CODE (decl) == FUNCTION_DECL && DECL_INITIAL (decl))
       || (TREE_CODE (decl) != FUNCTION_DECL 
 	  && TREE_PUBLIC (decl) && !DECL_EXTERNAL (decl))
       /* A static variable declaration is always a tentative definition,
@@ -5577,7 +5604,9 @@ handle_weakref_attribute (tree *node, tree ARG_UNUSED (name), tree args,
   /* We must ignore the attribute when it is associated with
      local-scoped decls, since attribute alias is ignored and many
      such symbols do not even have a DECL_WEAK field.  */
-  if (decl_function_context (*node) || current_function_decl)
+  if (decl_function_context (*node)
+      || current_function_decl
+      || (TREE_CODE (*node) != VAR_DECL && TREE_CODE (*node) != FUNCTION_DECL))
     {
       warning (OPT_Wattributes, "%qE attribute ignored", name);
       *no_add_attrs = true;
@@ -5740,8 +5769,18 @@ c_determine_visibility (tree decl)
      visibility_specified depending on #pragma GCC visibility.  */
   if (!DECL_VISIBILITY_SPECIFIED (decl))
     {
-      DECL_VISIBILITY (decl) = default_visibility;
-      DECL_VISIBILITY_SPECIFIED (decl) = visibility_options.inpragma;
+      if (visibility_options.inpragma
+	  || DECL_VISIBILITY (decl) != default_visibility)
+	{
+	  DECL_VISIBILITY (decl) = default_visibility;
+	  DECL_VISIBILITY_SPECIFIED (decl) = visibility_options.inpragma;
+	  /* If visibility changed and DECL already has DECL_RTL, ensure
+	     symbol flags are updated.  */
+	  if (((TREE_CODE (decl) == VAR_DECL && TREE_STATIC (decl))
+	       || TREE_CODE (decl) == FUNCTION_DECL)
+	      && DECL_RTL_SET_P (decl))
+	    make_decl_rtl (decl);
+	}
     }
   return false;
 }
@@ -5759,7 +5798,7 @@ handle_tls_model_attribute (tree *node, tree name, tree args,
 
   *no_add_attrs = true;
 
-  if (!DECL_THREAD_LOCAL_P (decl))
+  if (TREE_CODE (decl) != VAR_DECL || !DECL_THREAD_LOCAL_P (decl))
     {
       warning (OPT_Wattributes, "%qE attribute ignored", name);
       return NULL_TREE;

@@ -1,5 +1,5 @@
 /* Definitions for code generation pass of GNU compiler.
-   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -36,8 +36,7 @@ along with GCC; see the file COPYING3.  If not see
    The `lib_call' slot is the name of the library function that
    can be used to perform the operation.
 
-   A few optabs, such as move_optab and cmp_optab, are used
-   by special code.  */
+   A few optabs, such as move_optab, are used by special code.  */
 
 struct optab_handlers
 {
@@ -49,7 +48,8 @@ struct optab_d
   enum rtx_code code;
   const char *libcall_basename;
   char libcall_suffix;
-  void (*libcall_gen)(struct optab_d *, const char *name, char suffix, enum machine_mode);
+  void (*libcall_gen)(struct optab_d *, const char *name, char suffix,
+		      enum machine_mode);
   struct optab_handlers handlers[NUM_MACHINE_MODES];
 };
 typedef struct optab_d * optab;
@@ -242,6 +242,8 @@ enum optab_index
   OTI_ldexp,
   /* Multiply floating-point number by integral power of radix */
   OTI_scalb,
+  /* Mantissa of a floating-point number */
+  OTI_significand,
   /* Radix-independent exponent */
   OTI_logb,
   OTI_ilogb,
@@ -271,12 +273,9 @@ enum optab_index
   /* Test for infinite value */
   OTI_isinf,
 
-  /* Compare insn; two operands.  */
+  /* Compare insn; two operands.  Used only for libcalls.  */
   OTI_cmp,
-  /* Used only for libcalls for unsigned comparisons.  */
   OTI_ucmp,
-  /* tst insn; compare one operand against 0 */
-  OTI_tst,
 
   /* Floating point comparison optabs - used primarily for libfuncs */
   OTI_eq,
@@ -290,10 +289,11 @@ enum optab_index
   /* String length */
   OTI_strlen,
 
-  /* Combined compare & jump/store flags/move operations.  */
+  /* Combined compare & jump/move/store flags/trap operations.  */
   OTI_cbranch,
   OTI_cmov,
   OTI_cstore,
+  OTI_ctrap,
 
   /* Push instruction.  */
   OTI_push,
@@ -464,6 +464,7 @@ extern struct optab_d optab_table[OTI_MAX];
 #define expm1_optab (&optab_table[OTI_expm1])
 #define ldexp_optab (&optab_table[OTI_ldexp])
 #define scalb_optab (&optab_table[OTI_scalb])
+#define significand_optab (&optab_table[OTI_significand])
 #define logb_optab (&optab_table[OTI_logb])
 #define ilogb_optab (&optab_table[OTI_ilogb])
 #define log_optab (&optab_table[OTI_log])
@@ -484,7 +485,6 @@ extern struct optab_d optab_table[OTI_MAX];
 
 #define cmp_optab (&optab_table[OTI_cmp])
 #define ucmp_optab (&optab_table[OTI_ucmp])
-#define tst_optab (&optab_table[OTI_tst])
 
 #define eq_optab (&optab_table[OTI_eq])
 #define ne_optab (&optab_table[OTI_ne])
@@ -499,6 +499,8 @@ extern struct optab_d optab_table[OTI_MAX];
 #define cbranch_optab (&optab_table[OTI_cbranch])
 #define cmov_optab (&optab_table[OTI_cmov])
 #define cstore_optab (&optab_table[OTI_cstore])
+#define ctrap_optab (&optab_table[OTI_ctrap])
+
 #define push_optab (&optab_table[OTI_push])
 #define addcc_optab (&optab_table[OTI_addcc])
 
@@ -605,17 +607,6 @@ extern optab code_to_optab[NUM_RTX_CODE + 1];
 
 typedef rtx (*rtxfun) (rtx);
 
-/* Indexed by the rtx-code for a conditional (e.g. EQ, LT,...)
-   gives the gen_function to make a branch to test that condition.  */
-
-extern rtxfun bcc_gen_fctn[NUM_RTX_CODE];
-
-/* Indexed by the rtx-code for a conditional (e.g. EQ, LT,...)
-   gives the insn code to make a store-condition insn
-   to test that condition.  */
-
-extern enum insn_code setcc_gen_code[NUM_RTX_CODE];
-
 #ifdef HAVE_conditional_move
 /* Indexed by the machine mode, gives the insn code to make a conditional
    move insn.  */
@@ -670,7 +661,6 @@ extern enum insn_code sync_new_nand_optab[NUM_MACHINE_MODES];
 
 /* Atomic compare and swap.  */
 extern enum insn_code sync_compare_and_swap[NUM_MACHINE_MODES];
-extern enum insn_code sync_compare_and_swap_cc[NUM_MACHINE_MODES];
 
 /* Atomic exchange with acquire semantics.  */
 extern enum insn_code sync_lock_test_and_set[NUM_MACHINE_MODES];
@@ -723,10 +713,6 @@ extern rtx expand_copysign (rtx, rtx, rtx);
    an input.  */
 extern void emit_unop_insn (int, rtx, rtx, enum rtx_code);
 extern bool maybe_emit_unop_insn (int, rtx, rtx, enum rtx_code);
-
-/* Emit one rtl insn to compare two rtx's.  */
-extern void emit_cmp_insn (rtx, rtx, enum rtx_code, rtx, enum machine_mode,
-			   int);
 
 /* An extra flag to control optab_for_tree_code's behavior.  This is needed to
    distinguish between machines with a vector shift that takes a scalar for the

@@ -1,6 +1,7 @@
 /* Definitions of target machine for GNU compiler.  
    Vitesse IQ2000 processors
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008
+   Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -128,8 +129,6 @@
 
 #define PCC_BITFIELD_TYPE_MATTERS 1
 
-#define TARGET_FLOAT_FORMAT IEEE_FLOAT_FORMAT
-
 
 /* Layout of Source Language Data Types.  */
 
@@ -202,6 +201,11 @@ enum reg_class
 #define GENERAL_REGS GR_REGS
 
 #define N_REG_CLASSES (int) LIM_REG_CLASSES
+
+#define IRA_COVER_CLASSES	\
+{				\
+  GR_REGS, LIM_REG_CLASSES	\
+}
 
 #define REG_CLASS_NAMES						\
 {								\
@@ -303,7 +307,7 @@ enum reg_class
 #define FRAME_GROWS_DOWNWARD 0
 
 #define STARTING_FRAME_OFFSET						\
-  (current_function_outgoing_args_size)
+  (crtl->outgoing_args_size)
 
 /* Use the default value zero.  */
 /* #define STACK_POINTER_OFFSET 0 */
@@ -341,8 +345,6 @@ enum reg_class
 
 /* Eliminating the Frame Pointer and the Arg Pointer.  */
 
-#define FRAME_POINTER_REQUIRED 0
-
 #define ELIMINABLE_REGS							\
 {{ ARG_POINTER_REGNUM,   STACK_POINTER_REGNUM},				\
  { ARG_POINTER_REGNUM,   HARD_FRAME_POINTER_REGNUM},			\
@@ -374,7 +376,7 @@ enum reg_class
 
 #define REG_PARM_STACK_SPACE(FNDECL) 0
 
-#define OUTGOING_REG_PARM_STACK_SPACE 1
+#define OUTGOING_REG_PARM_STACK_SPACE(FNTYPE) 1
 
 #define RETURN_POPS_ARGS(FUNDECL,FUNTYPE,SIZE) 0
 
@@ -476,12 +478,6 @@ typedef struct iq2000_args
 }
 
 
-/* Implementing the Varargs Macros.  */
-
-#define EXPAND_BUILTIN_VA_START(valist, nextarg) \
-  iq2000_va_start (valist, nextarg)
-
-
 /* Trampolines for Nested Functions.  */
 
 /* A C statement to output, on the stream FILE, assembler code for a
@@ -532,89 +528,7 @@ typedef struct iq2000_args
 
 #define MAX_REGS_PER_ADDRESS 1
 
-#ifdef REG_OK_STRICT
-#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)		\
-  {							\
-    if (iq2000_legitimate_address_p (MODE, X, 1))	\
-      goto ADDR;					\
-  }
-#else
-#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)		\
-  {							\
-    if (iq2000_legitimate_address_p (MODE, X, 0))	\
-      goto ADDR;					\
-  }
-#endif
-
 #define REG_OK_FOR_INDEX_P(X) 0
-
-
-/* For the IQ2000, transform:
-
-	memory(X + <large int>)
-   into:
-	Y = <large int> & ~0x7fff;
-	Z = X + Y
-	memory (Z + (<large int> & 0x7fff));
-*/
-
-#define LEGITIMIZE_ADDRESS(X,OLDX,MODE,WIN)				\
-{									\
-  rtx xinsn = (X);							\
-									\
-  if (TARGET_DEBUG_B_MODE)						\
-    {									\
-      GO_PRINTF ("\n========== LEGITIMIZE_ADDRESS\n");			\
-      GO_DEBUG_RTX (xinsn);						\
-    }									\
-									\
-  if (iq2000_check_split (X, MODE))		\
-    {									\
-      X = gen_rtx_LO_SUM (Pmode,					\
-			  copy_to_mode_reg (Pmode,			\
-					    gen_rtx_HIGH (Pmode, X)),	\
-			  X);						\
-      goto WIN;								\
-    }									\
-									\
-  if (GET_CODE (xinsn) == PLUS)						\
-    {									\
-      rtx xplus0 = XEXP (xinsn, 0);					\
-      rtx xplus1 = XEXP (xinsn, 1);					\
-      enum rtx_code code0 = GET_CODE (xplus0);				\
-      enum rtx_code code1 = GET_CODE (xplus1);				\
-									\
-      if (code0 != REG && code1 == REG)					\
-	{								\
-	  xplus0 = XEXP (xinsn, 1);					\
-	  xplus1 = XEXP (xinsn, 0);					\
-	  code0 = GET_CODE (xplus0);					\
-	  code1 = GET_CODE (xplus1);					\
-	}								\
-									\
-      if (code0 == REG && REG_MODE_OK_FOR_BASE_P (xplus0, MODE)		\
-	  && code1 == CONST_INT && !SMALL_INT (xplus1))			\
-	{								\
-	  rtx int_reg = gen_reg_rtx (Pmode);				\
-	  rtx ptr_reg = gen_reg_rtx (Pmode);				\
-									\
-	  emit_move_insn (int_reg,					\
-			  GEN_INT (INTVAL (xplus1) & ~ 0x7fff));	\
-									\
-	  emit_insn (gen_rtx_SET (VOIDmode,				\
-				  ptr_reg,				\
-				  gen_rtx_PLUS (Pmode, xplus0, int_reg))); \
-									\
-	  X = plus_constant (ptr_reg, INTVAL (xplus1) & 0x7fff);	\
-	  goto WIN;							\
-	}								\
-    }									\
-									\
-  if (TARGET_DEBUG_B_MODE)						\
-    GO_PRINTF ("LEGITIMIZE_ADDRESS could not fix.\n");			\
-}
-
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL) {}
 
 #define LEGITIMATE_CONSTANT_P(X) (1)
 
@@ -626,7 +540,7 @@ typedef struct iq2000_args
 #define MEMORY_MOVE_COST(MODE,CLASS,TO_P)	\
   (TO_P ? 2 : 16)
 
-#define BRANCH_COST 2
+#define BRANCH_COST(speed_p, predictable_p) 2
 
 #define SLOW_BYTE_ACCESS 1
 
@@ -1072,13 +986,6 @@ extern enum processor_type iq2000_tune;
 
 /* Which instruction set architecture to use.  */
 extern int iq2000_isa;
-
-/* Cached operands, and operator to compare for use in set/branch/trap
-   on condition codes.  */
-extern rtx branch_cmp[2];
-
-/* What type of branch to use.  */
-extern enum cmp_type branch_type;
 
 enum iq2000_builtins
 {

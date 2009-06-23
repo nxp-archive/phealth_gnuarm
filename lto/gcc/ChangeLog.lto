@@ -1,3 +1,1299 @@
+2009-06-19  Diego Novillo  <dnovillo@google.com>
+
+	* lto-cgraph.c: Remove code guarded by #ifdef LTO_STREAM_DEBUGGING.
+	Remove code guarded by #ifdef GLOBAL_STREAMER_TRACE.
+	Remove code guarded by #ifdef LOCAL_TRACE.
+	* lto-streamer-out.c: Likewise.
+	* lto-streamer-in.c: Likewise.
+	* lto-section-in.c: Likewise.
+	* lto-tags.h: Likewise.
+	* lto-opts.c: Likewise.
+	* lto-section-out.c: Likewise.
+	* lto-tree-tags.def: Likewise.
+	* lto-streamer.h: Likewise.
+	(struct lto_function_header): Remove fields
+	debug_decl_index_size, debug_decl_size, debug_label_size,
+	debug_ssa_names_size, debug_cfg_size, debug_main_size.
+	Update all users.
+	(struct lto_decl_header): Remove field debug_main_size.
+	Update all users.
+	(struct lto_simple_header): Likewise.
+	* lto-stream-debug.c: Remove.
+	Update all users.
+
+2009-06-18  Diego Novillo  <dnovillo@google.com>
+
+	* lto-tree-flags.def: Update license to GPLv3.
+	* lto-wrapper.c: Likewise.
+	* lto-tree-tags.def: Likewise.
+	* lto-section-in.c: Likewise.
+	* lto-tags.h: Likewise.
+	* lto-stream-debug.c: Likewise.
+	* lto-opts.c: Likewise.
+	* lto-symtab.c: Likewise.
+	Include plugin-api.h.
+	(lto_function_header): Move to lto-streamer.h.
+	* lto-streamer.c: Rename from lto-utils.c.  Update all users.
+	* lto-streamer.h: Rename from lto-utils.h.  Update all users.
+	* cgraph.h (struct cgraph_local_info): Update comment for
+	field lto_file_data.
+	* lto-streamer-out.c: Rename from lto-function-out.c.
+	Update license to GPLv3.
+	Update all users.
+	* lto-streamer-in.c: Rename from lto-function-in.c.
+	Update license to GPLv3.
+	Update all users.
+	(lto_init_reader): Rename from lto_static_init_local.
+	Update all users.
+	* lto-compress.h: Add multiple inclusion guards.
+	* lto-streamer-in.c: Rename from lto-function-in.c.
+	Update all users.
+	* lto-cgraph.c: Update license to GPLv3.
+	Do not include tree-pass.h, debug.h, dwarf2asm.h,
+	dwarf2out.h.
+	(lto_output_edge): Rename from output_edge.
+	Update all users.
+	(lto_output_node): Rename from output_node.
+	Update all users.
+	* lto-streamer.h: Rename from lto-util.h.
+	Update all users.
+	* lto-header.h: Remove.  Move contents to lto-streamer.h.
+	Update all users.
+	* lto-tree-in.h: Likewise.
+	* lto-section.h: Likewise.
+	* lto-section-in.h: Likewise.
+	* lto-tree-out.h: Likewise.
+	* lto-opts.h: Likewise.
+	* lto-section-out.h: Likewise.
+	* lto-wpa-fixup.c: Update license to GPLv3.
+	(lto_output_wpa_fixup): Rename from output_wpa_fixup.
+	Update all users.
+	(lto_input_wpa_fixup_1): Rename from input_wpa_fixup_1.
+	Update all users.
+	(lto_input_wpa_fixup): Rename from input_wpa_fixup.
+	Update all users.
+	* gcc/Makefile.in (LINKER_PLUGIN_API_H): Rename from PLUGIN_API_H.
+	(LTO_SYMTAB_H): Define.
+	(LTO_TAGS_H): Remove.  Update all users.
+	(LTO_HEADER_H): Likewise.
+	(LTO_SECTION_H): Likewise.
+	(LTO_SECTION_IN_H): Likewise.
+	(LTO_SECTION_OUT_H): Likewise.
+	(LTO_TREE_IN_H): Likewise.
+	(LTO_OPTS_H): Likewise.
+	(LTO_STREAMER_H): Define.
+	(LTO_TAGS_H): Define.
+
+2009-06-17  Diego Novillo  <dnovillo@google.com>
+
+	* tree-pass.h (pass_ipa_lto_cgraph): Remove.
+	* lto-function-out.c (lto_output): Call output_cgraph.
+	* ipa-reference.c (ipa_init): Prevent multiple initializations.
+	(ipa_reference_write_summary): Rename from write_summary.
+	Update all users.
+	Call lto_cgraph_encoder_encode to get a reference for NODE.
+	(ipa_reference_read_summary): Rename from read_summary.
+	Update all users.
+	Call lto_cgraph_encoder_deref to retrieve NODE from INDEX.
+	* cgraphunit.c (ipa_passes): Prevent lto1 from calling
+	ipa_write_summaries.
+	* lto-cgraph.c: Include lto-tree-out.h.
+	(struct lto_cgraph_encoder_d): Move to lto-tree-out.h
+	(lto_cgraph_encoder_t): Likewise.
+	(lto_cgraph_encoder_new): Make extern.
+	(lto_cgraph_encoder_delete): Likewise.
+	(lto_cgraph_encoder_encode): Likewise.
+	Return REF.
+	(lto_cgraph_encoder_lookup): Make extern.
+	(lto_cgraph_encoder_deref): Likewise.
+	(output_node): Tidy.
+	(output_cgraph): Make extern.
+	Use the cgraph node encoder in OB->DECL_STATE.
+	Do not call lto_cgraph_encoder_delete.
+	(input_cgraph_1): Call lto_cgraph_encoder_encode.
+	(input_cgraph): Call lto_cgraph_encoder_new.
+	(pass_ipa_lto_cgraph): Remove.
+	* lto-header.h: Include target.h and cgraph.h.
+	(struct lto_cgraph_encoder_d): Move from lto-cgraph.c.
+	(lto_cgraph_encoder_t): Likewise.
+	* ipa-pure-const.c (register_hooks): Preven multiple
+	initializations.
+	(generate_summary): Tidy.
+	(pure_const_write_summary): Rename from write_summary.
+	Update all users.
+	Call lto_cgraph_encoder_encode to get a reference for NODE.
+	(pure_const_read_summary): Rename from read_summary.
+	Update all users.
+	Call lto_cgraph_encoder_deref to get NODE from INDEX.
+	* lto-section-in.h: Do not include target.h, cgraph.h and
+	lto-header.h.
+	Include lto-section.h.
+	(struct lto_file_decl_data): Add field cgraph_node_encoder.
+	* Makefile.in (LTO_HEADER_H): New.  Update all references
+	to lto-header.h.
+	* passes.c (init_optimization_passes): Remove 'FIXME lto'
+	marker.
+	Remove reference to pass_ipa_lto_cgraph.
+	* lto-section-out.c (lto_new_out_decl_state): Call
+	lto_cgraph_encoder_new.
+	(produce_asm_for_decls): Call lto_cgraph_encoder_delete.
+	* lto-section-out.h (struct lto_out_decl_state): Add
+	field cgraph_node_encoder.
+
+2009-06-17  Rafael Espindola  <espindola@google.com>
+
+	Partial revert of 145103.
+
+2009-06-17  Rafael Espindola  <espindola@google.com>
+
+	Mainline merge @148497.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-06-16  Rafael Espindola  <espindola@google.com>
+
+	Mainline merge @148407.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-06-09  Jan Hubicka  <jh@suse.cz>
+
+	* ipa-reference.c (add_new_function, remove_node_data,
+	duplicate_node_data): Declare.
+	(ipa_init): Initialize hooks here.
+	(generate_summary): Do not initialize them here.
+	* ipa-pure-const.c (register_hooks): New function.
+	(generate_summary): Use it here instead of registering.
+	(read_summary): Likewise.
+	* passes.c (init_optimization_passes): Re-enable.
+
+	Revert:
+	2008-10-23 Rafael Espindola  <espindola@google.com>
+
+	* ipa-pure-const.c (node_duplication_hook_holder,
+	node_removal_hook_holder): Remove.
+	(get_function_state, set_function_state): Use DECL_UID.
+	(duplicate_node_data, remove_node_data): Remove.
+	(generate_summary): Don't use the removed functions. Iterate over
+	funct_state_vec and free the states.
+
+2009-06-08  Diego Novillo  <dnovillo@google.com>
+
+	* configure.ac: Check $enable_languages instead of
+	$language when testing if LTO is enabled or not.
+	* configure: Regenerate.
+
+2009-06-05  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @148228.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-06-03  Diego Novillo  <dnovillo@google.com>
+
+	* tree-ssa-copy.c (replace_exp_1): Only declare OP if
+	ENABLE_CHECKING is defined.
+
+2009-06-02  Jan Hubicka  <jh@suse.cz>
+	    Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @147915.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-06-02  Jan Hubicka  <jh@suse.cz>
+
+	* lto-cgraph.c (output_node): Output new inline summaries;
+	add FIXME about not output global info in LTO files.
+	(output_cgraph): Update comments.
+	(input_overwrite_node): Add new inline plan.
+	(input_node): Likewise.
+	(pass_ipa_lto_cgraph): Change to ipa_opt_pass_d.
+	* lto-function-in.c (input_eh_region): Change to eh_region_d.
+	(fixup_eh_region_pointers): Remove prev_try.
+	(input_gimple_stmt): Remove GIMPLE_CHANGE_DYNAMIC_TYPE.
+	(fixup_call_stmt_edges_1): New function.
+	(fixup_call_stmt_edges): New function.
+	(input_function): Update for new clones.
+	* lto-function-out.c (output_eh_region): Fix C++ compatibility.
+	(output_eh_region): Ignore ERT_CLEANUP.
+	(output_gimple_stmt): Remove GIMPLE_CHANGE_DYNAMIC_TYPE.
+	(pass_ipa_lto_gimple_out): Change to ipa_opt_pass_d.
+	* lto-section-out.c: (pass_ipa_lto_finish_out): Change to
+	ipa_opt_pass_d.
+	* lto-tree-flags.def (CHANGE_DYNAMIC_TYPE_EXPR): Remove;
+	Do not mention no_tbaa_flag.
+	* lto-tree-tags.def (GIMPLE_CHANGE_DYNAMIC_TYPE): Remove.
+	* lto-wpa-fixup.c (pass_ipa_lto_wpa_fixup): Change to ipa_opt_pass_d.
+	* cgraph.c (cgraph_clone_input_node): Update for new clones.
+	(cgraph_is_clone_node): Likewise.
+	* cgraphunit.c (ipa_passes): Update cast to struct ipa_opt_pass_d.
+	(cgraph_emit_thunks): Add FIXME comment.
+	* dwarf2out.c (current_unit_personality): New static var.
+	(output_call_frame_info): Use it.
+	(dwarf2out_begin_prologue): Set it.
+	* passes.c (init_optimization_passes): Temporarily disable
+	ipa-cp.
+
+2009-06-02  Diego Novillo  <dnovillo@google.com>
+
+	* tree.c (free_lang_data_in_decl): Do not clear
+	DECL_CONTEXT for FUNCTION_DECLs.
+	* lto-function-out.c (output_function): Do not expect
+	DECL_CONTEXT to be NULL.
+	(output_function_decl): Emit DECL_CONTEXT.
+	* lto-function-in.c (input_function): Do not clear
+	DECL_CONTEXT.
+	(input_function_decl): Read DECL_CONTEXT.
+	* lto-cgraph.c (input_cgraph): Tolerate extra cgraph
+	nodes created by cgraph_node while reading the call
+	graph.
+
+2009-06-01  Diego Novillo  <dnovillo@google.com>
+
+	* c.opt (Wabi): Add LTO.
+	(Wpsabi): Add LTO.
+
+2009-06-01  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_function_decl): Fix type of STR.
+
+2009-05-31  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_expr_operand): Handle
+	NULL_TREE values for EXPR.
+	<case COMPONENT_REF>: Write operand 2.
+	<case ARRAY_REF>: Write operands 2 and 3.
+	* lto-function-in.c (input_expr_operand): Corresponding
+	changes.
+
+2009-05-31  Diego Novillo  <dnovillo@google.com>
+
+	* lto-section-out.c (preload_common_node): Call
+	preload_common node on fields of structures.
+
+2009-05-31  Diego Novillo  <dnovillo@google.com>
+
+	* tree.h (set_builtin_user_assembler_name): Move from ...
+	* c-common.h (set_builtin_user_assembler_name): ... here.
+	* builtins.c (set_builtin_user_assembler_name): Move from ...
+	* c-common.c (set_builtin_user_assembler_name): ... here.
+	* lto-function-out.c (output_function_decl): Preserve
+	user-set assembler names for builtins.
+	* lto-function-in.c (input_function_decl): Call
+	set_builtin_user_assembler_name if needed.
+
+2009-05-31  Diego Novillo  <dnovillo@google.com>
+
+	* tree-pretty-print.c (dump_generic_node): Protect
+	against NULL op0.
+
+2009-05-27  Diego Novillo  <dnovillo@google.com>
+
+	* tree-ssa-live.c (dump_scope_block): Document arguments.
+	(dump_scope_blocks): Document.
+	(debug_scope_blocks): New.
+	* tree-flow.h (debug_scope_blocks): Declare.
+
+2009-05-27  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* lto-function-in.c (input_tree_block): Use HOST_WIDEST_INT
+	on block_flags.
+	* lto-function-out.c (output_tree_block): Likewise.
+
+2009-05-27  Diego Novillo  <dnovillo@google.com>
+
+	* tree-pretty-print.c (dump_block_node): Tidy white
+	space in dump.
+	* tree.c (dump_block_tree): Remove.
+	(debug_block_tree): Remove.
+	* tree.h (dump_block_tree): Remove.
+	(debug_block_tree): Remove.
+
+2009-05-27  Diego Novillo  <dnovillo@google.com>
+
+	* lto-section-out.c (write_symbol_vec): Tidy test for
+	symbols to keep out of the symbol table.
+
+2009-05-26  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_expr_operand): Move forward
+	declaration earlier in the file.
+	(output_tree_flags): Handle BLOCK nodes.
+	(output_block_or_decl): New.
+	(output_tree_block): New.
+	(output_tree_with_context): Call it to handle BLOCK nodes.
+	Handle BLOCK nodes when detecting nodes that have been
+	written out already.
+	(output_expr_operand): Handle every unhandled code with
+	the default label.
+	(output_local_var_decl): If DECL does not have a name,
+	set DECL_NAME to D.<uid>.
+	Write DECL_VALUE_EXPR, if it has one.
+	(output_gimple_stmt): Write gimple_block (STMT).
+	(lto_static_init): Remove BLOCK from set
+	lto_types_needed_for.
+	(output_function): Create a hash table for OB->MAIN_HASH_TABLE.
+	Write DECL_INITIAL (FUNCTION).
+	* lto-function-in.c (input_expr_operand): Forward declare.
+	(input_local_var_decl): Read DECL_VALUE_EXPR, if needed.
+	(input_gimple_stmt): Read gimple_block for STMT.
+	(input_function): Read DECL_INITIAL for FN_DECL.
+	(input_block_or_decl): New.
+	(input_tree_block): New.
+	(input_tree_operand): Call it.
+	* lto-tags.h (enum LTO_tags): Add LTO_block.
+	* lto-tree-tags.def: Call MAP_EXPR_TAG for LTO_block.
+	Call SET_NAME for LTO_block.
+	* lto-tree-flags.def: Remove asm_written_flag from BLOCK,
+	QUAL_UNION_TYPE, RECORD_TYPE and UNION_TYPE.
+
+2009-05-26  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_local_var_decl): if DECL has
+	no DECL_NAME, write the name D.<DECL_UID>.
+	Remove argument FN.  Update all users.
+	If DECL has a value expression, write it.
+	* lto-function-in.c (input_local_var_decl): If DECL has a
+	value expression, read it.
+
+2009-05-26  Diego Novillo  <dnovillo@google.com>
+
+	* tree-pretty-print.c (dump_location): New.
+	(dump_generic_node): Call it.
+	Factor code to handle BLOCK nodes ...
+	(dump_block_node): ... here.
+
+2009-05-26  Diego Novillo  <dnovillo@google.com>
+
+	* tree.c (free_lang_data_in_decl): Set DECL_CONTEXT for
+	every symbol in DECL_STRUCT_FUNCTION (DECL)->local_decls.
+
+2009-05-26  Diego Novillo  <dnovillo@google.com>
+
+	* tree.c (dump_block_tree): New.
+	(debug_block_tree): New.
+	* tree.h (dump_block_tree): Declare.
+	(debug_block_tree): Declare.
+
+2009-05-21  Simon Baldwin  <simonb@google.com>
+
+	* Makefile.in: Added ZLIBINC to lto-compress.o compilation.
+
+2009-05-21  Diego Novillo  <dnovillo@google.com>
+
+	* doc/install.texi: Document libelf requirements,
+	--with-libelf and --enable-lto.
+	* configure: Regenerate.
+	* aclocal.m4: Do not include ../config/libelf.m4.
+	* config.in: Regenerate.
+	* configure.ac: Remove calls to AC_CHECK_LIBELF and
+	AC_CHECK_GELF.
+	If LTO is enabled, define ENABLE_LTO.
+	Call AC_ARG_VAR for LIBELFLIBS and LIBELFINC.
+	* c-opts.c (c_common_post_options): Issue an error if
+	ENABLE_LTO is false and -flto or -fwhopr are used.
+	* Makefile.in (LIBELFLIBS): Define.
+	(LIBELFINC): Define.
+	(BACKENDLIBS): Add LIBELFLIB.
+	(INCLUDES): Add LIBELFINC.
+	* collect2.c (main): Issue an error if ENABLE_LTO is
+	false and -flto or -fwhopr are used.
+
+2009-05-19  Diego Novillo  <dnovillo@google.com>
+
+	* opts.c (complain_wrong_lang): Remove workaround to
+	quell warning message when LTO is not supported.
+
+2009-05-15  Diego Novillo  <dnovillo@google.com>
+
+	* lto-symtab.c (lto_symtab_merge_decl): Remove stale comment.
+	* lto-utils.h (emit_label_in_global_context_p): New.
+	Replace every reference to DECL_NONLOCAL to a reference
+	to emit_label_in_global_context_p.
+
+2009-05-15  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_stmt_location): New.
+	(output_gimple_stmt): Call it.
+	* lto-function-in.c (input_stmt_location): New.
+	(input_gimple_stmt): Call it.
+
+2009-05-15  Diego Novillo  <dnovillo@google.com>
+
+	* lto-tags.h (LTO_SOURCE_FILE): Add brackets around value.
+	(LTO_SOURCE_LINE): Likewise.
+	(LTO_SOURCE_COL): Likewise.
+	(LTO_SOURCE_HAS_LOC): Likewise.
+
+2009-05-15  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_tree_flags): Always emit
+	location information for expressions and symbols that
+	have them.
+	Make sure that FLAGS has enough space left to encode
+	location information.
+	* lto-function-in.c (input_line_info): Change return type
+	to void.
+	Update all callers.
+	Assert that FLAGS has LTO_SOURCE_HAS_LOC set.
+	* lto-tags.h: Update comment describing the LTO_SOURCE_*
+	flags.
+
+2009-05-15  Diego Novillo  <dnovillo@google.com>
+
+	* lto-symtab.c (lto_symtab_prevailing_decl): If DECL is a
+	builtin return it.
+	* lto-function-out.c (output_expr_operand)<FUNCTION_DECL>:
+	Set TAG to LTO_function_decl1 if EXPR is a builtin.
+	Otherwise, set it to LTO_function_decl0.
+	(output_function_decl): If DECL is a builtin, only write
+	its class and function code.
+	* lto-function-in.c (input_function_decl): Add argument TAG.
+	Update all users.
+	If TAG is LTO_function_decl1 retrieve the function symbol
+	from the built_in_decls array.
+	* lto-cgraph.c (input_node): Allow nodes of builtin
+	functions to be overwritten.
+	* lto-tree-tags.def: Add LTO_function_decl0 and
+	LTO_function_decl1.
+	Remove LTO_function_decl.  Update all users.
+	* lto-tags.h (enum LTO_tags): Add LTO_function_decl0 and
+	LTO_function_decl1.
+	Remove LTO_function_decl.
+
+2009-05-13  Diego Novillo  <dnovillo@google.com>
+
+	* lto-compress.c (struct lto_compression_stream): Change
+	size_t to unsigned.  Update all users.
+	(lto_zalloc): Likewise.
+	(lto_new_compression_stream): Likewise.
+	(lto_start_compression): Likewise.
+	(lto_start_uncompression): Likewise.
+	* lto-section-in.c (lto_apend_data): Likewise.
+
+2009-05-13  Diego Novillo  <dnovillo@google.com>
+
+	* gimple.c: Include alias.h.
+	(gimple_signed_or_unsigned_type): New.
+	(gimple_unsigned_type): New.
+	(gimple_signed_type): New.
+	(gimple_get_alias_set): New.
+	* gimple.h (gimple_unsigned_type): Declare.
+	(gimple_signed_type): Declare.
+	(gimple_get_alias_set): Declare.
+	* Makefile.in (gimple.o): Add dependency on ALIAS_H.
+
+2009-05-13  Simon Baldwin  <simonb@google.com>
+
+	* lto-compress.h: New file.
+	* lto-compress.c: New file.
+	* Makefile.in: Added entries to build lto-compress module, added
+	ZLIB to BACKENDLIBS.
+	* lto-header.h (struct lto_stats_d): Add counters to monitor
+	compression performance.
+	* langhooks.c (lhd_append_data): Omit call to assemble_string if
+	data to send is NULL.
+	* lto-section-in.c: Include lto-compress.h.
+	* (struct lto_buffer): New structure supporting data accumulation
+	from compression.
+	* (lto_append_data): New function, compression callback.
+	* (struct lto_data_header): New structure added to uncompressed
+	data streams to allow free to find the original compressed data.
+	* (lto_get_section_data): Uncompress retrieved section data, and
+	return instead the uncompressed text.
+	* (lto_free_section_data): Retrieve the address and length of the
+	original compressed data and free that, then free the uncompressed
+	data.
+	* lto-section-out.c: Include lto-compress.h.
+	* (lto_append_data): New function, compression callback.
+	* (compression_stream): Static pointer to current compression stream.
+	* (lto_begin_section): Add call to lto_start_compression.
+	* (lto_end_section): Add call to lto_end_compression.
+	* (lto_write_stream): Add call to lto_compress_block, general tidy up
+	of loop structure.
+	* common.opt: Add new flag -flto-compression-level.
+	* lto-utils.c (print_lto_report): Add report of (un-)compression
+	statistics.
+	* doc/invoke.texi: Documented -flto-compression-level.
+	* doc/sourcebuild.texi: Added information on new use of zlib.
+
+2009-05-13  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_bb): Write basic block
+	fields 'count', 'loop_depth', 'frequency' and 'flags'.
+	* lto-function-in.c (input_bb): Corresponding changes.
+
+2009-05-13  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* ipa-pure-const.c (write_summary): Replace
+	lto_output_uleb128_stream with
+	lto_output_widest_uint_uleb128_stream on HOST_WIDEST_INT.
+	(read_summary): Replace lto_input_uleb128 with
+	lto_input_widest_uint_uleb128 on HOST_WIDEST_INT.
+
+	* lto-cgraph.c (output_edge): Replace lto_output_uleb128_stream
+	with lto_output_widest_uint_uleb128_stream on HOST_WIDEST_INT.
+	(output_node): Likewise.
+	(input_edge): Replace lto_input_uleb128 with
+	lto_input_widest_uint_uleb128 on HOST_WIDEST_INT.
+
+	* lto-function-in.c (input_function): Use HOST_WIDEST_INT
+	for flags.
+	* lto-function-out.c (output_function): Likewise. 
+
+2009-05-12  Diego Novillo  <dnovillo@google.com>
+
+	* lto-tree-flags.def: Add public_flag for INTEGER_CSTs.
+	* lto-function-in.c (input_expr_operand): If there are
+	flags to be added on constants, create a copy of RESULT.
+
+2009-05-12  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_eh_regions): Only emit EH
+	regions when there is a region array for FN.
+	(output_cfg): Write profile status for the function.
+	Write fields 'probability' and 'count' for every basic
+	block.
+	(output_function): Write all bitfield flags in struct
+	function for FN.
+	* lto-function-in.c (input_cfg): Corresponding changes
+	for reading.
+	(input_function): Likewise.
+	* basic-block.h (enum profile_status_d): Rename from enum
+	profile_status.
+
+2009-05-12  Diego Novillo  <dnovillo@google.com>
+
+	* passes.c (ipa_write_summaries): Call cgraph_postorder
+	to sort the cgraph nodes before creating the cgraph set.
+
+2009-05-11  Diego Novillo  <dnovillo@google.com>
+
+	* tree.c (free_lang_data_in_decl): If a FIELD_DECL has a
+	non-constant offset, set it to NULL.
+	* lto-function-out.c (eq_label_slot_node): Use pointer
+	equality.
+	(hash_label_slot_node): Use pointer hashing.
+	(output_label_ref): Handle DECL_NONLOCAL labels.
+	(output_expr_operand) <CASE_LABEL_EXPR>: Assert that the
+	label is local.
+	<VAR_DECL>: Call decl_function_context to determine if
+	the symbol is local or global.
+	<LABEL_DECL>: Use LTO_label_decl1 for DECL_NONLOCAL
+	labels and LTO_label_decl0 for local labels.
+	(output_function): Write FN->STATIC_CHAIN_DECL and
+	FN->NONLOCAL_GOTO_SAVE_AREA.
+	(output_label_decl): Use LTO_label_decl1 for
+	DECL_NONLOCAL labels and LTO_label_decl0 for local
+	labels.
+	Emit the label context.
+	* lto-function-in.c (get_label_decl): Make sure that the
+	index read falls inside the label array.
+	Assert that the label is local.
+	(input_expr_operand) <TYPE_DECL>: Call
+	lto_file_decl_data_get_type_decl instead of
+	lto_file_decl_data_get_field_decl.
+	<LABEL_DECL>: Call lto_file_decl_data_get_label_decl for
+	LTO_label_decl1.
+	(input_labels): Set DATA_IN->NUM_NAMED_LABELS and
+	DATA_IN->NUM_UNNAMED_LABELS.
+	Set DECL_CONTEXT for every label built.
+	(input_eh_region): Add new LABEL_TAG local.  Use it as
+	argument to input_expr_operand when building the tree
+	label for the region.
+	(input_gimple_stmt): For GIMPLE_LABELs, assert that the
+	label is either DECL_NONLOCAL or its context is the
+	function being read.
+	(input_bb): Assert that after the statement there should
+	be an EH region or a null delimiter.
+	(input_function): Read FN->STATIC_CHAIN_DECL and
+	FN->NONLOCAL_GOTO_SAVE_AREA.
+	(lto_read_body): Do not set DATA_IN.NUM_NAMED_LABELS.
+	(input_label_decl): Read DECL_CONTEXT.
+	* lto-header.h (lto_decl_stream_e_t): Add LTO_DECL_STREAM_LABEL_DECL.
+	* lto-tree-in.h (struct data_in): Add field 'num_unnamed_labels'.
+	* lto-tree-tags.def: Call MAP_EXPR_TAGS for
+	LTO_label_decl0 and LTO_label_decl1.
+	Remove call to MAP_EXPR_TAG for LTO_label_decl.
+	Call SET_NAME for LTO_label_decl0 and LTO_label_decl1.
+	* lto-section-in.h: Call DEFINE_DECL_STREAM_FUNCS for
+	label_decl.
+	* lto-tags.h (enum LTO_tags): Add LTO_label_decl0 and
+	LTO_label_decl1.
+
+2009-05-11  Diego Novillo  <dnovillo@google.com>
+
+	* lto-cgraph.c: Update copyright year.
+
+2009-05-08  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (field_decl_is_local): Remove.
+	Update all users.
+	(type_decl_is_local): Remove.  Update all users.
+	* lto-function-in.c: Include ipa-utils.h.
+	Re-order static functions to avoid some forward references.
+	Cleanup formatting and comments throughout.
+	Add documentation for every function.
+	(input_expr_operand): Call get_base_var when
+	post-processing ADDR_EXPR nodes.
+	(input_tree_operand): Likewise.
+	* lto-cgraph.c: Cleanup formatting and comments throughout.
+	* lto-tree-in.h (struct): Likewise.
+	* lto-tree-tags.def: Call MAP_EXPR_TAG for FIELD_DECL and
+	TYPE_DECL.
+	* lto-tags.h (enum LTO_tags): Remove LTO_field_decl1.
+	Rename LTO_field_decl0 to LTO_field_decl.
+	Remove LTO_type_decl1.
+	Rename LTO_type_decl0 to LTO_type_decl.
+	Remove LTO_local_type_ref.
+	Rename LTO_global_type_ref to LTO_type_ref.
+	Update all users.
+	* Makefile.in (lto-function-in.o): Add dependency on
+	IPA_UTILS_H.
+
+2009-05-07  Diego Novillo  <dnovillo@google.com>
+
+	* lto-cgraph.c (input_edge): Add type casts for C++ warnings.
+	(input_cgraph_1): Likewise.
+	* lto-function-in.c (input_real): Likewise.
+	(process_tree_flags): Define ADD_TLS_FLAG.
+	(lto_static_init_local): Likewise.
+	(input_field_decl): Add type casts for C++ warnings.
+	(input_const_decl): Likewise.
+	(input_function_decl): Likewise.
+	(input_var_decl): Likewise.
+	(input_parm_decl): Likewise.
+	(input_result_decl): Likewise.
+	(input_type_decl): Likewise.
+	(input_label_decl): Likewise.
+	(input_type): Likewise.
+	* lto-function-out.c (expr_to_tag): Change type to enum LTO_tags.
+	(output_tree_flags): Define ADD_TLS_FLAG.
+	(lto_debug_tree_flags): Likewise.
+	* lto-section-out.c (get_ref_idx_for): If -funsigned-char is
+	given, replace T with unsigned_char_type_node.
+	* lto-tree-flags.def: Call ADD_TLS_FLAG instead of
+	ADD_VIS_FLAG_SIZE for field tls_model.
+
+2009-05-07  Diego Novillo  <dnovillo@google.com>
+
+	* ipa-pure-const.c (read_summary): Handle new fields
+	state_previously_known and looping_previously_known.
+	Handle field can_throw.
+	(write_summary): Likewise.
+
+2009-05-07  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @147098.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-04-25  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @146652.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-04-22  Diego Novillo  <dnovillo@google.com>
+
+	* lto-function-out.c (output_ssa_names): Do not emit
+	SSA names for memory symbols.
+	(output_tree_with_context): Call decl_function_context to
+	check if EXPR is a global symbol.
+	* lto-function-in.c: Do not include cpplib.h
+	(input_var_decl): Tidy.
+	* lto-cgraph.c (input_node): Tidy.
+	(input_cgraph_1): Tidy.
+	(input_cgraph): Call lto_mark_file_for_ltrans.
+	* lto-section-in.h: Include target.h and cgraph.h.
+	(struct lto_file_decl_data): Tidy.
+	Add field needs_ltrans_p.
+	(lto_file_needs_ltrans_p): New.
+	(lto_mark_file_for_ltrans): New.
+	(cgraph_node_set_needs_ltrans_p): New.
+	* Makefile.in (LTO_SECTION_IN_H): Add dependency on
+	TARGET_H and CGRAPH_H.
+	(LTO_SECTION_OUT_H): Fix incorrect dependencies.
+	(lto-function-in.o): Remove dependency on dwarf2asm.h and
+	dwarf2out.h.
+
+2009-04-20  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @146424.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-04-16  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @146125.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-04-08  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @146001.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-04-08  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @145637.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-04-08  Diego Novillo  <dnovillo@google.com>
+
+	* gimple.h (gimple_reset_mem_ops): Remove.  Update all users.
+	* ipa-cp.c (ipcp_ltrans_cloning_candidate_p): Remove.  Update all
+	users.
+	(ipcp_cloning_candidate_p): Do not check for LTRANS.
+	(ipcp_update_callgraph): Revert handling of cloned caller
+	nodes.
+	(graph_gate_cp): Add FIXME lto note.
+	* lto-function-in.c (input_expr_operand): Do not call build7.
+	Remove handling of NAME_MEMORY_TAG and SYMBOL_MEMORY_TAG.
+	(input_eh_region): Return NULL for LTO_eh_table_shared_region.
+	(fixup_eh_region_pointers): Setup region sharing using
+	AKA bitmap sets.
+	(input_gimple_stmt): Clear tuple fields with pointer values.
+	Mark the statement modified.
+	(input_function): Call update_ssa to update SSA on .MEM.
+	(input_tree_operand): Remove handling of NAME_MEMORY_TAG
+	and SYMBOL_MEMORY_TAG.
+	* lto-function-out.c (output_eh_region): Do not output
+	the region number for LTO_eh_table_shared_region.
+	(output_expr_operand): Remove handling of NAME_MEMORY_TAG
+	and SYMBOL_MEMORY_TAG.
+	(output_bb): Do not write PHI nodes for .MEM.
+	(output_tree_with_context): Remove handling of
+	NAME_MEMORY_TAG and SYMBOL_MEMORY_TAG.
+	* lto-tree-flags.def: Likewise.
+	* tree-into-ssa.c: Call bitmap_obstack_initialize.
+
+2009-04-06  Diego Novillo  <dnovillo@google.com>
+
+	* Makefile.in (lto-cgraph.o): Add dependency on lto-utils.h.
+	* cgraph.c (initialize_inline_failed): Check that E has a call
+	* except.c (debug_eh_tree): New.
+	* except.h (debug_eh_tree): Declare.
+	* lto-function-in.c (input_bitmap): New.
+	(input_eh_region): Handle LTO_eh_table_shared_region.  Return
+	a previously created EH region corresponding to the number
+	read.
+	(fixup_eh_region_pointers): Remove argument LAST_REGION.
+	Change type of ROOT_REGION to HOST_WIDE_INT.
+	Update all users.
+	Handle shared and NULL regions.
+	(input_eh_regions): Read size of EH region table before
+	reading the array.
+	(input_bb): Assert that CFUN is properly set.
+	(input_node): Rename WROTE_MASTER_P to CLONE_P.
+	(input_function): Look for the first clone in NODE's list
+	of clones.
+	* lto-cgraph.c (output_node): Rename WROTE_MASTER to
+	WRITTEN_DECLS.
+	(output_cgraph_verify_node): Remove.
+	(output_cgraph): Rename WROTE_MASTER to WRITTEN_DECLS.
+	* lto-function-out.c (output_bitmap): New.
+	(output_eh_region): For shared regions, output the marker
+	LTO_eh_table_shared_region and the region number of the shared
+	region.
+	(output_eh_regions): Output the AKA bitmap.
+	If there is no EH region tree, output -1 to mark its absence.
+	Call output_eh_region for every region, even NULL ones.
+	(output_parm_decl): Only check DECL_CONTEXT of DECL if FN has
+	a gimple body.
+	* lto-tags.h (enum LTO_tags): Add LTO_eh_table_shared_region.
+	* tree.c (free_lang_data_in_type): After building a qualified
+	type for an argument type, call free_lang_data_in_type on the
+	new type.
+	(free_lang_data_in_decl): Only reset DECL_CONTEXT on
+	FUNCTION_DECL arguments when the function has a gimple body.
+
+2009-04-06  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @145453.
+
+	* configure.ac (ACX_PKGVERSION): update revision merge string.
+	* configure: regenerate.
+
+2009-04-03  Rafael Avila de Espindola  <espindola@google.com>
+
+	* c-decl.c (match_builtin_function_types): Moved from tree.c
+	(merge_decls): Initialize olddecl_arguments.
+	* lto-symtab.c (lto_symtab_compatible): Remove special case for
+	builtin functions.
+	* tree.c (match_builtin_function_types): Move to c-decl.c.
+	* tree.h (match_builtin_function_types): Remove.
+
+2009-04-02  Rafael Avila de Espindola  <espindola@google.com>
+
+	* cgraph.c (cgraph_is_master_clone): Remove check_overwrite.
+	(cgraph_master_clone): Remove check_overwrite.
+	* cgraph.h (cgraph_is_master_clone): Remove check_overwrite.
+	(cgraph_master_clone): Remove check_overwrite.
+	* ipa-pure-const.c(write_summary): Update calls to
+	cgraph_is_master_clone.
+	* ipa-reference.c (write_node_summary_p): Update call to
+	cgraph_is_master_clone.
+	* ipa-type-escape.c (type_escape_execute): Update call to
+	cgraph_is_master_clone.
+	* tree-ssa-structalias.c (ipa_pta_execute): Update calls
+	cgraph_is_master_clone.
+
+2009-04-01  Rafael Avila de Espindola  <espindola@google.com>
+
+       Revert
+
+	2007-11-16  Nathan Froyd  <froydnj@codesourcery.com>
+
+        	* c-common.c (c_build_bitfield_integer_type): Rename this...
+        	* stor-layout.c (make_bitfield_integer_type): ...to this.
+        	* c-decl.c (finish_struct): Use new name.
+        	* c-common.h (c_build_bitfield_integer_type): Move declaration...
+        	* tree.h (make_bitfield_integer_type): ...here.
+
+	2007-11-16  Nathan Froyd  <froydnj@codesourcery.com>
+
+        	* class.c (layout_class_type): Use make_bitfield_integer_type.
+
+	2007-11-16  Nathan Froyd  <froydnj@codesourcery.com>
+
+        	* lto.c (lto_read_base_type_DIE): Use make_bitfield_integer_type to
+        	construct the integer type for bitfields.
+
+2009-04-01  Rafael Avila de Espindola  <espindola@google.com>
+
+	* gcc.c (lto_single): Remove.
+	(lto_single_spec_function): Remove. Update all uses.
+	(The Specs Language): Remove support for calling functions.
+	(invoke_lto_single): Remove. Update all uses.
+	(process_command): Don't handle -flto-single.
+	(handle_spec_predicate): Remove. Update all uses.
+	(lto_single_spec_function): Remove.
+
+2009-03-31  Rafael Avila de Espindola  <espindola@google.com>
+
+	Mainline merge @145119.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-03-31  Rafael Avila de Espindola  <espindola@google.com>
+
+	Mainline merge @145100.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-03-26  Diego Novillo  <dnovillo@google.com>
+
+	* tree-pretty-print.c (dump_generic_node): Merge handler
+	for METHOD_TYPE and FUNCTION_TYPE.  Dump type arguments.
+	Handle unnamed COMPLEX_TYPE, REAL_TYPE and
+	FIXED_POINT_TYPE.
+	* tree.c (iterative_hash_host_wide_int): Make extern.
+	(free_lang_data_in_type): Call build_qualified_type to
+	replace 'const' and 'volatile' function argument types.
+	* tree.h (iterative_hash_host_wide_int): Declare extern.
+	* gimple.c (gimple_compare_types): Do not test
+	TYPE_MAIN_VARIANT.
+	if T1 and T2 have different addressability, consider them
+	different.
+
+2009-03-26  Diego Novillo  <dnovillo@google.com>
+	    Simon Baldwin  <simonb@google.com>
+
+	* gimple.c: Include gimple.h.
+	(gimple_compare_types): Do not use TYPE_MAIN_VARIANT to
+	check compatibility.
+	Call targetm.comp_type_attributes.
+	Handle METHOD_TYPE.
+	(gimple_types): New.
+	(type_hash_cache): New.
+	(gimple_type_hash): New.
+	(gimple_type_eq): New.
+	(gimple_register_type): New.
+	(print_gimple_types_stats): New.
+	* gimple.h (gimple_register_type): Declare.
+	(print_gimple_types_stats): Declare.
+	* lto-utils.c: Include gimple.h.
+	(print_lto_report): Call print_gimple_stats.
+	* Makefile.in (lto-utils.o): Add dependency on GIMPLE_H.
+	(gimple.o): Add dependency on TARGET_H.
+
+2009-03-26  Rafael Avila de Espindola  <espindola@google.com>
+
+	PR 39001
+	* dwarf2out.c (dwarf2out_do_cfi_asm): Make the check for
+	current_function_decl being null the first thing in the function.
+
+2009-03-25  Rafael Avila de Espindola  <espindola@google.com>
+
+	Mainline merge @144635.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-03-23  Rafael Avila de Espindola  <espindola@google.com>
+
+	* gcc.c (LINK_COMMAND_SPEC): Pass the libgcc to the linker.
+	(lto_libgcc_spec): New.
+	(static_specs): Add lto_libgcc.
+	(main): Set lto_libgcc_spec.
+
+2009-03-24  Diego Novillo  <dnovillo@google.com>
+
+	* toplev.c (announce_function): Call get_name.
+
+2009-03-19  Rafael Avila de Espindola  <espindola@google.com>
+
+	* builtins.c (is_builtin_name): New.
+	(called_as_built_in): Use is_builtin_name. Make it static.
+	* tree.h (is_builtin_name): New.
+	(called_as_built_in): Remove.
+	* varasm.c (incorporeal_function_p):
+	Use is_builtin_name.
+
+2009-03-18  Simon Baldwin  <simonb@google.com>
+
+	Revert:
+
+	2009-03-16  Simon Baldwin  <simonb@google.com>
+
+		* lto-wrapper.c (close_unneeded_fds): New function, close as
+		many file descriptors as possible.
+		(main): Call it.
+
+2009-03-16  Simon Baldwin  <simonb@google.com>
+
+	* lto-wrapper.c (close_unneeded_fds): New function, close as many
+	file descriptors as possible.
+	(main): Call it.
+
+2009-03-15  Diego Novillo  <dnovillo@google.com>
+
+	* tree.c (need_assembler_name_p): Always set assembler
+	name on builtins.
+
+2009-03-14  Diego Novillo  <dnovillo@google.com>
+
+	* tree.c (free_lang_data_in_type): Remove all variants
+	except the main variant of TYPE.
+	Remove toplevel CV-qualifiers const and volatile from
+	function argument types.
+	* gimple.c (struct type_pair_d): Define.
+	(type_pair_t): Define.
+	(type_pair_hash): New.
+	(type_pair_eq): New.
+	(lookup_type_pair): New.
+	(gimple_compare_types): Factor out of gimple_types_compatible_p.
+	Compare type sizes, alignment, precision, mode and sign.
+	Compare values for enumeral types.
+	Compare all fields of structures and unions.
+	Fix comparison of TYPE_QUALS.
+	Compare TYPE_IS_SIZETYPE for integer types.
+	(gimple_types_compatible_p): Call gimple_compare_types.
+	(gimple_same_type_p): Remove.  Update all callers.
+	* gimple.h (gimple_same_type_p): Remove.
+
+2009-03-14  Simon Baldwin  <simonb@google.com>
+
+	* lto-symtab.c (lto_symtab_merge_decl): Added assertion to check
+	assembler name is already set.
+	* (lto_symtab_prevailing_decl): Ditto.
+
+2009-03-13  Rafael Avila de Espindola  <espindola@google.com>
+
+	* builtins.c (called_as_built_in): Make it non static.
+	* tree.h (called_as_built_in): New.
+	* varasm.c (incorporeal_function_p): Call called_as_built_in.
+
+2009-03-12  Rafael Avila de Espindola  <espindola@google.com>
+
+	* ipa-cp.c (cgraph_gate_cp): Disable ipcp if in ltrans.
+
+2009-03-11  Rafael Avila de Espindola  <espindola@google.com>
+
+	* tree.c (free_lang_data_in_decl): Free DECL_INITIAL of DECL_EXTERNAL
+	VAR_DECLs.
+
+2009-03-10  Diego Novillo  <dnovillo@google.com>
+
+	Revert:
+
+	2009-03-09  Diego Novillo  <dnovillo@google.com>
+
+		* tree.c (free_lang_data_in_type): Remove all variants
+		except the main variant of TYPE.
+		* gimple.c (struct type_pair_d): Define.
+		(type_pair_t): Define.
+		(type_pair_hash): New.
+		(type_pair_eq): New.
+		(lookup_type_pair): New.
+		(gimple_compare_types): Factor out of gimple_types_compatible_p.
+		Compare type sizes, alignment, precision, mode and sign.
+		Compare values for enumeral types.
+		Compare all fields of structures and unions.
+		Fix comparison of TYPE_QUALS.
+		Compare TYPE_IS_SIZETYPE for integer types.
+		(gimple_types_compatible_p): Call gimple_compare_types.
+		(gimple_same_type_p): Remove.  Update all callers.
+		* gimple.h (gimple_same_type_p): Remove.
+
+2009-03-10  Simon Baldwin  <simonb@google.com>
+
+	* lto-opts.c (lto_read_file_options): Corrected function comment.
+
+2009-03-10  Rafael Avila de Espindola  <espindola@google.com>
+
+	* tree-inline.c (expand_call_inline): Handle the case that DEST
+	has just been created.
+
+2009-03-09  Diego Novillo  <dnovillo@google.com>
+
+	* tree.c (free_lang_data_in_type): Remove all variants
+	except the main variant of TYPE.
+	* gimple.c (struct type_pair_d): Define.
+	(type_pair_t): Define.
+	(type_pair_hash): New.
+	(type_pair_eq): New.
+	(lookup_type_pair): New.
+	(gimple_compare_types): Factor out of gimple_types_compatible_p.
+	Compare type sizes, alignment, precision, mode and sign.
+	Compare values for enumeral types.
+	Compare all fields of structures and unions.
+	Fix comparison of TYPE_QUALS.
+	Compare TYPE_IS_SIZETYPE for integer types.
+	(gimple_types_compatible_p): Call gimple_compare_types.
+	(gimple_same_type_p): Remove.  Update all callers.
+	* gimple.h (gimple_same_type_p): Remove.
+
+2009-03-04  Diego Novillo  <dnovillo@google.com>
+
+	* lto/lto.c (lto_read_all_file_options): Factor out of ...
+	(read_cgraph_and_symbols): ... here.
+	* lto/lto.h (lto_read_all_file_options): Declare.
+	* lto/lto-lang.c (lto_post_options): Call lto_read_all_file_options.
+	* lto/Make-lang.in (lto-lang.o): Add dependency on
+	LTO_OPTS_H and opts.h.
+	* lto-opts.c (lto_reissue_options): Do not call target_reinit.
+	* lto-opts.h: Add include guards.
+
+2009-03-03  Diego Novillo  <dnovillo@google.com>
+
+	* doc/invoke.texi: Fix typo.
+
+2009-03-03  Diego Novillo  <dnovillo@google.com>
+
+	* doc/invoke.texi: Fix documentation for -fwhopr.
+
+2009-02-27  Diego Novillo  <dnovillo@google.com>
+
+	* gimple.c (gimple_same_type_p): Move from lto-symtab.c.
+	Rename from lto_same_type_p.  Update all users.
+	Compare TYPE_QUALS and TYPE_ATTRIBUTES.
+	* gimple.h (gimple_same_type_p): Declare.
+	* lto-tree-in.h: Fix comment.
+	* tree.c (free_lang_data_in_type): Remove variants that
+	are the same gimple type as the main variant.
+	* lto-symtab.c (lto_merge_qualifiers): Merge in both
+	directions.
+	(lto_merge_types): Always merge qualifiers for merged
+	ARRAY_TYPEs.
+
+2009-02-24  Rafael Avila de Espindola  <espindola@google.com>
+
+	* ipa.c (cgraph_remove_unreachable_nodes): Search all clones.
+	* lto-cgraph.c: Include lto-util.h
+	(maybe_redirect_inlined_node): Remove.
+	(output_edge): Don't worry about an edge poiting to a node not in know
+	by the encoder.
+	(output_node): Output the decl number instead of the master node
+	number in the case of a clone.
+	(output_cgraph_verify_node): Don't check that the master is in the set.
+	(output_cgraph): Don't output the current master for each decl. The
+	first node output will be the master in ltrans.
+	(input_node): If a clone, read the decl number and use that decls'
+	master node.
+	(input_cgraph_1): Update call to input_node.
+	* lto-function-out.c (lto_output): Proces each function once. Don't
+	care if the node is the master.
+
+2009-02-24  Diego Novillo  <dnovillo@google.com>
+
+	* doc/invoke.texi: Document -flto, -fwhopr and -flto-report.
+	* lto-function-in.c (global_vector_enter):
+	* lto-header.h (enum lto_section_type): Add LTO_N_SECTION_TYPES.
+	(lto_section_name): Declare.
+	(struct lto_stats_d): Declare.
+	(lto_stats): Declare.
+	* lto-section-in.c (lto_section_name): Declare.
+	(lto_get_section_data): Update lto_stats.section_size.
+	* common.opt (flto-report): Define.
+	* lto-stream-debug.c: Include tree.h before lto-header.h.
+	* Makefile.in (LTO_OPTS_H): Add dependency on lto-section-in.h
+	* lto-utils.c (lto_stats): New.
+	(print_lto_report): New.
+	* lto-utils.h (print_lto_report): Declare.
+
+2009-02-23  Rafael Avila de Espindola  <espindola@google.com>
+
+	* lto.c (lto_promote_cross_file_statics): Reset context.seen_node_decls
+	for each file.
+
+2009-02-22  Diego Novillo  <dnovillo@google.com>
+
+	* tree.c (free_lang_data_in_type): Remove non-FIELD_DECLs
+	from UNION_TYPE and QUAL_UNION_TYPE.
+
+2009-02-22  Diego Novillo  <dnovillo@google.com>
+
+	* gimple.c (gimple_types_compatible_p): Call itself
+	recursively when comparing fields of aggregates.
+	Handle unions.
+	Honor TYPE_CANONICAL and pointer equality.
+
+2009-02-20  Simon Baldwin  <simonb@google.com>
+
+	* cgraph.h (cgraph_is_clone_node): New function declaration.
+	* cgraph.c (cgraph_is_clone_node): Definition.
+	* ipa-cp.c (ipcp_ltrans_cloning_candidate_p): New function,
+	applies extra candidate check for ltrans.
+	(ipcp_cloning_candidate_p): Call it.
+
+2009-02-19  Diego Novillo  <dnovillo@google.com>
+
+	Revert
+
+	2009-02-19  Rafael Avila de Espindola  <espindola@google.com>
+
+		* lto-cgraph.c: Include lto-util.h
+		(maybe_redirect_inlined_node): Remove.
+		(output_edge): Don't worry about an edge poiting
+		to a node not in know by the encoder.
+		(output_node): Output the decl number instead of the master node
+		number in the case of a clone.
+		(output_cgraph_verify_node): Don't check that the
+		master is in the set.
+
+		(output_cgraph): Don't output the current master
+		for each decl. The
+
+		first node output will be the master in ltrans.
+		(input_node): If a clone, read the decl number
+		and use that decls' master node.
+		(input_cgraph_1): Update call to input_node.
+		* lto-function-out.c (lto_output): Proces each
+		function once. Don't care if the node is the
+		master.
+
+2009-02-18  Diego Novillo  <dnovillo@google.com>
+
+	* timevar.def (TV_WHOPR_WPA_IO): New timer.
+
+2009-02-18  Diego Novillo  <dnovillo@google.com>
+
+	Mainline merge @144262.
+
+	* configure.ac (ACX_PKGVERSION): Update revision merge string.
+	* configure: Regenerate.
+
+2009-02-18  Rafael Avila de Espindola  <espindola@google.com>
+
+	* lto-cgraph.c (output_node): Update calls to renamed functions.
+	* lto-function-out.c (output_function_decl): Remove saved_static.
+	Use lto_forced_extern_inline_p. Make forced functions "extern inline".
+	* lto-section-out.c (forced_static_inline): Rename to
+	forced_extern_inline.
+	(lto_new_static_inline_states): Rename to lto_new_extern_inline_states.
+	(lto_delete_static_inline_states): Rename to
+	lto_delete_extern_inline_states.
+	(lto_force_functions_static_inline): Rename to
+	lto_force_functions_extern_inline.
+	(lto_forced_static_inline_p): Rename to lto_forced_extern_inline_p.
+	* lto-section-out.h (lto_new_static_inline_states): Rename to
+	lto_new_extern_inline_states.
+	(lto_delete_static_inline_states): Rename to
+	lto_delete_extern_inline_states.
+	(lto_force_functions_static_inline): Rename to
+	lto_force_functions_extern_inline.
+	(lto_forced_static_inline_p): Rename to lto_forced_extern_inline_p.
+	* passes.c (ipa_write_summaries): Update calls to renamed functions.
+
+2009-02-17  Diego Novillo  <dnovillo@google.com>
+
+	PR 39203
+	* c-opts.c (c_common_post_options): Disable -fwhole-program
+	when generating IL.
+
+2009-02-16  Rafael Avila de Espindola  <espindola@google.com>
+
+	PR 39010
+	* lto-function-in.c (input_string): Rename to input_string_cst.
+	Read loc.
+	(input_identifier): New.
+	(input_string): New.
+	(input_line_info): Use input_string.
+	(input_expr_operand): Use input_string_cst, input_identifier.
+	(input_labels): Use input_identifier.
+	(input_local_var_decl): Use input_identifier.
+	(input_gimple_stmt): Use input_string_cst.
+	(input_tree_operand): Use input_string_cst, input_identifier.
+	* lto-function-out.c (output_string): Rename to
+	output_string_with_length. Add trailing '\0'.
+	(output_string): New.
+	(output_string_cst): New.
+	(output_identifier): New.
+	(output_real): Update call to output_string.
+	(output_tree_flags): Update call to output_string.
+	(output_expr_operand): Use output_string_cst, output_identifier.
+	(output_local_var_decl): Use output_identifier.
+	(output_named_labels): Use output_identifier.
+	(output_gimple_stmt): Update call to output_string.
+	(output_tree_with_context): Use output_string_cst, output_identifier.
+
+2009-02-13  Diego Novillo  <dnovillo@google.com>
+
+	* lto-tree-flags.def (VAR_DECL, FUNCTION_DECL): Remove
+	asm_written_flag.
+	* toplev.c (compile_file): Move call to coverage_finish ...
+	* cgraphunit.c (ipa_passes): ... here.
+	Include coverage.h.
+	(cgraph_build_static_cdtor): Set DECL_CONTEXT for RESDECL.
+	* ipa-utils.c (ipa_utils_reduced_inorder): Handle
+	CONSTRUCTOR nodes.
+	* ipa-inline.c (cgraph_decide_inlining): Do not expect
+	profile_info to be set in LTO.
+	* Makefile.in (cgraphunit.o): Add dependency on COVERAGE_H.
+
+2009-02-13  Diego Novillo  <dnovillo@google.com>
+
+	* lto-cgraph.c (output_node): Remove local variable
+	NEEDED.  Do not alter the status of the needed marker in
+	NODE.
+	* lto-section-out.c (lto_force_function_static_inline):
+	Remove unused function.
+	(lto_forced_static_inline_p): Add comment.
+	* lto-section-out.h (lot_force_function_static_inline):
+	Remove.
+
+2009-02-12  Diego Novillo  <dnovillo@google.com>
+
+	* varpool.c (debug_varpool): New.
+	* cgraph.h (debug_varpool): Declare.
+
 2009-02-10  Simon Baldwin  <simonb@google.com>
 
 	* lto-opts.h: New.

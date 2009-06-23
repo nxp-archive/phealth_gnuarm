@@ -1,6 +1,7 @@
 /* Garbage collection for the GNU compiler.
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
-   Free Software Foundation, Inc.
+
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007,
+   2008, 2009 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -120,6 +121,9 @@ extern int ggc_marked_p	(const void *);
 /* Mark the entries in the string pool.  */
 extern void ggc_mark_stringpool	(void);
 
+/* Purge the entries in the string pool.  */
+extern void ggc_purge_stringpool (void);
+
 /* Call ggc_set_mark on all the roots.  */
 
 extern void ggc_mark_roots (void);
@@ -134,7 +138,7 @@ extern void gt_pch_restore_stringpool (void);
 
 extern void gt_pch_p_S (void *, void *, gt_pointer_operator, void *);
 extern void gt_pch_n_S (const void *);
-extern void gt_ggc_m_S (void *);
+extern void gt_ggc_m_S (const void *);
 
 /* Initialize the string pool.  */
 extern void init_stringpool (void);
@@ -200,6 +204,12 @@ extern void ggc_pch_read (FILE *, void *);
 /* When set, ggc_collect will do collection.  */
 extern bool ggc_force_collect;
 
+/* When true, identifier nodes are considered as GC roots.  When
+   false, identifier nodes are treated like any other GC-allocated
+   object, and the identifier hash table is treated as a weak
+   hash.  */
+extern bool ggc_protect_identifiers;
+
 /* The internal primitive.  */
 extern void *ggc_alloc_stat (size_t MEM_STAT_DECL);
 #define ggc_alloc(s) ggc_alloc_stat (s MEM_STAT_INFO)
@@ -228,33 +238,36 @@ extern void dump_ggc_loc_statistics (bool);
 #define GGC_CNEW(T)		((T *) ggc_alloc_cleared (sizeof (T)))
 #define GGC_NEWVEC(T, N)	((T *) ggc_alloc ((N) * sizeof(T)))
 #define GGC_CNEWVEC(T, N)	((T *) ggc_alloc_cleared ((N) * sizeof(T)))
+#define GGC_RESIZEVEC(T, P, N)  ((T *) ggc_realloc ((P), (N) * sizeof (T)))
 #define GGC_NEWVAR(T, S)	((T *) ggc_alloc ((S)))
 #define GGC_CNEWVAR(T, S)	((T *) ggc_alloc_cleared ((S)))
-#define GGC_RESIZEVEC(T, P, N)  ((T *) ggc_realloc ((P), (N) * sizeof (T)))
+#define GGC_RESIZEVAR(T, P, N)  ((T *) ggc_realloc ((P), (N)))
+#define GGC_NEWVECVAR(T, S, N)  ((T *) ggc_alloc ((S) * (N)))
+#define GGC_CNEWVECVAR(T, S, N) ((T *) ggc_alloc_cleared ((S) * (N)))
 
-#define ggc_internal_alloc(T) ((T *) ggc_alloc (sizeof (T)))
-#define ggc_internal_cleared_alloc(T) ((T *) ggc_alloc_cleared (sizeof (T)))
-#define ggc_internal_vec_alloc(T, c) ((T *) ggc_alloc (sizeof (T) * c))
-#define ggc_internal_cleared_vec_alloc(T, c)    \
-  ((T *) ggc_alloc_cleared (sizeof (T) * c))
-#define ggc_internal_sized_alloc(T, n) ((T *) ggc_alloc (n))
-#define ggc_internal_cleared_sized_alloc(T, n) ((T *) ggc_alloc_cleared (n))
-#define ggc_internal_cleared_vec_sized_alloc(T, n, c) ((T *) \
-                                                 ggc_alloc_cleared ((n) * (c)))
+#define ggc_internal_alloc(T)       GGC_NEW(T)
+#define ggc_internal_cleared_alloc(T) GGC_CNEW(T)
+#define ggc_internal_vec_alloc(T, C)  GGC_NEWVEC(T, C)
+#define ggc_internal_cleared_vec_alloc(T, C) GGC_CNEWVEC(T, C)
+
+#define ggc_internal_sized_alloc(T, S) GGC_NEWVAR(T, S)
+#define ggc_internal_cleared_sized_alloc(T, S) GGC_CNEWVAR(T, S)
+#define ggc_internal_vec_sized_alloc(T, S, C) GGC_NEWVECVAR(T, S, C)
+#define ggc_internal_cleared_vec_sized_alloc(T, S, C) GGC_CNEWVECVAR(T, S, C)
+
+#define ggc_alloc_atomic(S)  (ggc_alloc (S))
 
 #define ggc_alloc_rtvec(NELT)						 \
   ((rtvec) ggc_alloc_zone (sizeof (struct rtvec_def) + ((NELT) - 1)	 \
 			   * sizeof (rtx), &rtl_zone))
 
-#define ggc_alloc_tree(LENGTH) ((tree) ggc_alloc_zone (LENGTH, &tree_zone))
-
 #define htab_create_ggc(SIZE, HASH, EQ, DEL) \
-  htab_create_alloc (SIZE, HASH, EQ, DEL, ggc_calloc, NULL)
+  htab_create_alloc (SIZE, HASH, EQ, DEL, ggc_calloc, ggc_free)
 
-#define splay_tree_new_ggc(COMPARE, ALLOC_TREE, ALLOC_NODE) \
-  splay_tree_new_with_separate_allocators (COMPARE, NULL, NULL, \
-                                           &ALLOC_TREE, &ALLOC_NODE,    \
-                                           &ggc_splay_dont_free, NULL)
+#define splay_tree_new_ggc(COMPARE, ALLOC_TREE, ALLOC_NODE)		      \
+  splay_tree_new_with_separate_allocators (COMPARE, NULL, NULL,	&ALLOC_TREE,  \
+					   &ALLOC_NODE, &ggc_splay_dont_free, \
+					   NULL)
 extern void *ggc_splay_alloc (enum gt_types_enum, int, void *);
 extern void ggc_splay_dont_free (void *, void *);
 
@@ -269,6 +282,10 @@ extern const char *ggc_alloc_string (const char *contents, int length);
 /* Invoke the collector.  Garbage collection occurs only when this
    function is called, not during allocations.  */
 extern void ggc_collect	(void);
+
+/* Register an additional root table.  This can be useful for some
+   plugins.  Does nothing if the passed pointer is null. */
+extern void ggc_register_root_tab (const struct ggc_root_tab *);
 
 /* Return the number of bytes allocated at the indicated address.  */
 extern size_t ggc_get_size (const void *);

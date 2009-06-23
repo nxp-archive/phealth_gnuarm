@@ -1,102 +1,203 @@
-2007-09-19  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+2009-06-22  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
 
-	* dwarf2asm.c (ggc_alloc_ip_splay_tree): New.
-	(ggc_alloc_ip_splay_node): New.
-	(record_alias_subset): Update splay_tree_new_gcc arguments.
-	* omp-low.c (ggc_alloc_cnm_splay_tree): New.
-	(ggc_alloc_cnm_splay_node): New.
-	(lower_omp_critical): Update splay_tree_new_gcc arguments.
-	* ipa-reference.c (ggc_alloc_rvtc_splay_tree): New.
-	(ggc_alloc_rvtc_splay_node): New.
-	(ipa_init): Update splay_tree_new_gcc arguments.
-	* alias.c (ggc_alloc_ase_splay_tree): New.
-	(ggc_alloc_ase_splay_node): New.
-	(record_alias_subset): Update splay_tree_new_gcc arguments.
-	* ggc.h (splay_tree_new_ggc): Add two allocator arguments, use
-	splay_tree_new_with_separate_allocators.
-	(ggc_splay_alloc): Add enum gt_types_enum type argument.
-	* ggc-common.c: include splay-tree.h.
-	(ggc_splay_alloc): New obj_type argument.  Call ggc_alloc_typed.
-	* Makefile.in (ggc-common.o): Add $(SPLAY_TREE_H) dependency.
+	* lambda.h (lambda_loop_new): Remove.
+	* lambda-code.c (lambda_loop_new): New function.
+	(compute_nest_using_fourier_motzkin): Pass lambda_obstack to
+	lambda_loop_new.
+	(lambda_compute_target_space): Likewise.
+	(gcc_loop_to_lambda_loop): Likewise.
+	* stringpool.c (stringpool_ggc_alloc): Use ggc_alloc_atomic.
 
-2007-09-14  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+2009-06-17  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
 
-	* gengtype.c (write_typed_typedef_alloc_def): Fix typo.
-	* optabs.c (set_optab_libfunc): Use typed GC allocators.
-	(set_conv_libfunc): Likewise.
-	* tree.c (decl_restrict_base_insert): Likewise.
-	(decl_debug_expr_insert): Likewise.
-	(decl_value_expr_insert): Likewise.
-	(type_hash_add): Likewise.
-	(build_omp_clause): Likewise.
-	* tree-phinodes.c (allocate_phi_node): Likewise.
-	* dwarf2out.c (new_cfi): Likewise.
-	(queue_reg_save): Likewise.
-	(new_loc_descr): Likewise.
-	(add_AT_string): Likewise.
-	(new_die): Likewise.
-	(add_var_loc_to_decl): Likewise.
-	(new_loc_list): Likewise.
-	(lookup_filename): Likewise.
-	(dwarf2out_var_locaton): Likewise.
-	* expr.c (init_exprt): Likewise.
-	* function.c (assign_stack_temp_for_type): Likewise.
-	(allocate_struct_function): Likewise.
-	* alias.c (record_alias_subset): Likewise.
-	* c-pragma.c (handle_pragma_push_macro): Likewise.
-	* except.c (init_eh_for_function): Likewise.
-	(gen_eh_region): Likewise.
-	(add_ehl_entry): Likewise.
-	(duplicate_eh_regions_1): Likewise.
-	* emit-rtl.c (get_mem_attrs): Likewise.
-	(get_reg_attrs): Likewise.
-	(start_sequence): Likewise.
-	(init_emit): Likewise.
-	* stringpool.c (gt_pch_save_stringpool): Likewise.
-	* varasm.c (emutls_decl): Likewise.
-	(get_block_for_section): Likewise.
-	(build_constant_desc): Likewise.
-	(create_constant_pool): Likewise.
-	(init_varasm_status): Likewise.
-	(force_constant_mem): Likewise.
-	* tree-inline.c (initialize_cfun): Likewise.
+	* c-tree.h (push_init_level, pop_init_level, set_init_index): new
+	argument of type struct obstack *.
+	(set_init_label, process_init_element): Likewise.
+
+	* c-parser.c (c_parser_braced_init): New variable
+	braced_init_obstack.  Initialize obstack, pass it down, destroy
+	afterwards.
+	(c_parser_initelt, c_parser_initval): New argument
+	braced_init_obstack, pass it further down.
+
+	* c-typeck.c (push_init_level): New argument braced_init_obstack,
+	pass it further down.
+	(pop_init_level, set_designator, set_init_index): Likewise.
+	set_nonincremental_init): Likewise.
+	(set_init_label, set_nonincremental_init): Likewise.
+	(set_nonincremental_init_from_string, find_init_member): Likewise.
+	(output_init_element, output_pending_init_elements): Likewise.
+	(process_init_element): Likewise.
+
+	(push_range_stack): New argument braced_init_obstack.  Allocate p
+	from obstack instead of GC.
+	(add_pending_init): New argument braced_init_obstack.  Allocate r
+	from obstack instead of GC.
+
+2009-05-30  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* tree-ssa-operands.h (struct ssa_operand_memory_d): Add
+	variable_size GTY option.
+	* tree-ssa-operands.c (ssa_operand_alloc): Use typed GC
+	allocation.
+
+2009-05-30  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* tree.c (build_fixed, build_real): Use typed GC allocation.
+
+2009-05-21  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* tree-phinodes.c (allocate_phi_node): Use typed GC allocation.
+	* gimple.c (gimple_alloc_stat, gimple_seq_alloc): Likewise.
+	* gimple.h (union gimple_statement_d): Add variable_size GTY
+	marker.
+
+2009-05-17  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* ggc-common.c (ggc_splay_alloc): Add enum gt_types_enum
+	parameter.
+	* ggc.h (splay_tree_new_ggc): Add typed GGC allocator parameters.
+	(ggc_splay_alloc): Add enum gt_types_enum parameter.
+	* gengtype.h: (error_at_line): Constify.
+	* gengtype.c (error_at_line): Constify.
+	(write_local_func_for_structure): Likewise.
+	(walk_type_data): constify line member.
+	(get_output_file_for_structure): New.
+	(write_func_for_structure): Use it.
+	(write_local_func_for_structure): Likewise.
+	(output_typename, write_splay_tree_allocator_def): New.
+	(write_splay_tree_allocators): New.
+	(main): Invoke write_splay_tree_allocators.
+	* alias.c (record_alias_subset): Update splay_tree_new_gcc
+	invocation.
+	* ipa-reference.c (ipa_init): Likewise.
+	* omp-low.c (lower_omp_critical): Likewise.
+	* dwarf2asm.c: (dw2_force_const_mem): Likewise.
+
+2009-05-10  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* ggc.h (ggc_alloc_atomic): New.
+	* c-common.c (parse_optimize_options): Use it.
+	* stringpool.c (ggc_alloc_string): Likewise.
+
+2009-05-08  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* varpool.c (varpool_node): Use typed GC allocation.
+	* cfgrtl.c (init_rtl_bb_info): Likewise.
+	* cfgloop.c (alloc_loop): Likewise.
+	* tree-ssa.c (init_tree_ssa): Likewise.
+	* graphite.c (if_region_set_false_region): Likewise.
+	* c-decl.c (push_scope, finish_struct, finish_enum): Likewise.
+	* loop-init.c (loop_optimizer_init): Likewise.
+	* tree-ssa-alias.c (get_ptr_info): Likewise.
+	* cfg.c (init_flow, alloc_block, unchecked_make_edge): Likewise.
+	* cgraph.c (cgraph_create_node, cgraph_add_asm_node): Likewise.
+	* tree-cfg.c (create_bb): Update comment not to refer to
+	ggc_alloc_cleared.  Use typed GC allocation.
+
+2009-05-07  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* doc/tm.texi (Per-Function Data): Replace reference to ggc_alloc
+	with GC allocation in general.
+	* tree-ssanames.c (duplicate_ssa_name_ptr_info): Use typed GC
+	allocation.
+	* c-parser.c (c_parse_file): Likewise.
+	* tree-ssa-structalias.c (heapvar_insert): Likewise.
+	* cfgloop.c (rescan_loop_exit): Likewise.
 	* integrate.c (get_hard_reg_initial_val): Likewise.
-	* tree-iterator.c (tsi_link_before): Likewise.
-	(tsi_link_after): Likewise.
-	* config/i386/i386.c (get_dllimport_decl): Likewise.
-	(ix86_init_machine_status): Likewise.
+	* lambda-code.c (replace_uses_equiv_to_x_with_y): Likewise.
+	* tree-eh.c (add_stmt_to_eh_region_fn): Likewise.
+	* c-decl.c (bind): Likewise.
+	(record_inline_static): Likewise.
+	(c_push_function_context): Likewise.
+	(c_dup_lang_specific_decl): Likewise.
+	* gimple-iterator.c (gsi_insert_before_without_update): Likewise.
+	(gsi_insert_after_without_update): Likewise.
+	* toplev.c (general_init): Likewise.
+	* tree-scalar-evolution.c (new_scev_info_str): Likewise.
+	* bitmap.c (bitmap_element_allocate): Likewise.
+	(bitmap_gc_alloc_stat): Likewise.
+	* cgraph.c (cgraph_create_edge): Likewise.
+	* tree-ssa-loop-niter.c (record_estimate): Likewise.
 
-2007-09-13  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+2009-05-06  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
 
-	* gengtype.c (walk_type): Handle "variable_size" option.
+	* rtl.h (struct rtx_def): Add variable_size GTY annotation.
+	* rtl.c (rtx_alloc_stat): Use typed GGC allocation.
+	(shallow_copy_rtx_stat): Likewise.
+	* varasm.c (create_block_symbol): Likewise.
+
+2009-05-05  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* gengtype.c (walk_type): Recognize variable_size option.
 	(variable_size_p): New.
-	(get_tag_string): New.
-	(write_typed_alloc_end): New.
+	(write_typed_alloc_end): Handle variable size types.
+	(write_typed_struct_alloc_def): Likewise.
+	* tree.c (build_string): Use typed GGC allocation.
+	(build_omp_clause): Likewise.
+	* tree.h (tree_node): Add variable_size GTY option.
+	* bitmap.h (bitmap_head_def): Update comment.
+	* ggc.h (GGC_NEWVECVAR, GGC_CNEWVECAR): New.
+	(ggc_internal_vec_alloc, ggc_internal_cleared_vec_alloc): Update
+	arguments.
+	(ggc_internal_sized_alloc, ggc_internal_cleared_sized_alloc): New.
+	(ggc_internal_vec_sized_alloc): New.
+	(ggc_internal_cleared_vec_sized_alloc): New.
+	(ggc_alloc_tree): Remove.
+
+2009-05-03  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* gengtype.c (write_typed_alloc_end): Print type cast to the
+	pointer to the type of object being allocated.
+
+2009-04-29  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
+
+	* gengtype.c: Update copyright year.
+	(get_file_gtfilename): Fix typo.
+	(get_tag_string, write_typed_alloc_end): New.
 	(write_typed_struct_alloc_def): New.
 	(write_typed_typedef_alloc_def): New.
+	(USED_BY_GC): New.
 	(write_typed_alloc_defns): New.
-	(main): Call write_typed_alloc_defns.
-	* tree.h (union tree_node): Add GTY option variable_size.
-	* ggc.h (ggc_internal_alloc): New.
-	(ggc_internal_cleared_alloc): New.
-	(ggc_internal_vec_alloc): New.
-	(ggc_internal_cleared_vec_alloc): New.
-	(ggc_internal_sized_alloc): New.
-	(ggc_internal_cleared_sized_alloc): New.
-	(ggc_internal_cleared_vec_sized_alloc): New.
-	* rtl.h (struct rtx_def): Add GTY option variable_size.
+	(main): Invoke write_typed_alloc_defns.
+	* ggc.h: Update copyright year.
+	(ggc_internal_alloc, ggc_internal_cleared_alloc): New.
+	(ggc_internal_vec_alloc, ggc_internal_cleared_vec_alloc): New.
+	* optabs.c (set_optab_libfunc, set_conv_libfunc): Use typed GC
+	allocators.
+	* tree.c (decl_priority_info, decl_restrict_base_insert): Likewise.
+	(decl_debug_expr_insert, decl_value_expr_insert, type_hash_add):
+	Likewise.
+	* dwarf2out.c (new_cfi, queue_reg_save, dwarf2out_frame_init):
+	Likewise.
+	(new_loc_descr, find_AT_string, new_die): Likewise.
+	(add_var_loc_to_decl, new_loc_list, lookup_filename): Likewise.
+	(dwarf2out_var_location): Likewise.
+	* function.c (insert_temp_slot_address): Likewise.
+	(assign_stack_temp_for_type, allocate_struct_function): Likewise.
+	* alias.c (record_alias_subset): Likewise.
+	* c-pragma.c: Update copyright year.
+	(push_alignment, handle_pragma_push_macro): Use typed GC
+	allocators.
+	(handle_pragma_push_options): Likewise.
+	* except.c (init_eh_for_function, gen_eh_region): Likewise.
+	(duplicate_eh_regions_1, add_call_site): Likewise.
+	* emit-rtl.c (get_mem_attrs, get_reg_attrs, start_sequence):
+	Likewise.
+	* stringpool.c: Update copyright year.
+	(gt_pch_save_stringpool): Use typed GC allocators.
+	* varasm.c (emutls_decl, get_unnamed_section, get_section):
+	Likewise.
+	(get_block_for_section, build_constant_desc): Likewise.
+	(create_constant_pool, force_const_mem): Likewise.
+	* tree-iterator.c: Likewise.
+	* config/i386/i386.c (get_dllimport_decl): Likewise.
+	(ix86_init_machine_status): Likewise.
+	(assign_386_stack_local): Likewise.
 
+2009-04-29  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
 
-2007-09-13  Laurynas Biveinis  <laurynas.biveinis@gmail.com>
-
-	* regrename.c (copyprop_hardreg_forward_1): New variable next. Use
-	FOR_BB_INSNS_SAFE.
-	* cse.c (cse_extended_basic_block): Likewise.
-	* lower-subreg.c (decompose_multiword_subregs): Likewise.
-	* postreload.c (reload_cse_regs_1): New variable next. Make sure
-	that the for loop does not invoke NEXT_INSN on a deleted insn.
-	* function.c (instantiate_virtual_regs): Likewise.
-	* reload1.c (reload): New variable next. Make sure that the for
-	loop does not invoke NEXT_INSN on a deleted insn.
-	(delete_output_reload): New variable prev. Make sure the the for
-	loops do not invoke PREV_INSN on a deleted insn.
+	* expr.c: Do not include ggc.h.
+	* tree-inline.c: Likewise.
+	* Makefile.in (expr.o): Remove $(GGC_H) dependency.
+	(tree-inline.o): Likewise.

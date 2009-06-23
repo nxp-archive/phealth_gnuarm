@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2005, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -110,7 +109,7 @@ package Lib.Load is
       Subunit           : Boolean;
       Corr_Body         : Unit_Number_Type := No_Unit;
       Renamings         : Boolean          := False;
-      From_Limited_With : Boolean          := False) return Unit_Number_Type;
+      With_Node         : Node_Id          := Empty) return Unit_Number_Type;
    --  This function loads and parses the unit specified by Load_Name (or
    --  returns the unit number for the previously constructed units table
    --  entry if this is not the first call for this unit). Required indicates
@@ -149,9 +148,18 @@ package Lib.Load is
    --  set to True, then Load_Name may not be the real unit name and it
    --  is necessary to load parents to find the real name.
    --
-   --  From_Limited_With is True if we are loading a unit X found in a
-   --  limited-with clause, or some unit in the context of X. It is used to
-   --  avoid the check on circular dependency (Ada 2005, AI-50217)
+   --  With_Node is set to the with_clause or limited_with_clause causing
+   --  the unit to be loaded, and is used to bypass the circular dependency
+   --  check in the case of a limited_with_clause (Ada 2005, AI-50217).
+
+   procedure Change_Main_Unit_To_Spec;
+   --  This procedure is called if the main unit file contains a No_Body pragma
+   --  and no other tokens. The effect is, if possible, to change the main unit
+   --  from the body it references now, to the corresponding spec. This has the
+   --  effect of ignoring the body, which is what we want. If it is impossible
+   --  to successfully make the change, then the call has no effect, and the
+   --  file is unchanged (this will lead to an error complaining about the
+   --  inappropriate No_Body spec).
 
    function Create_Dummy_Package_Unit
      (With_Node : Node_Id;
@@ -161,13 +169,27 @@ package Lib.Load is
    --  creates a dummy package unit so that compilation can continue without
    --  blowing up when the missing unit is referenced.
 
-   procedure Make_Instance_Unit (N : Node_Id);
+   procedure Make_Child_Decl_Unit (N : Node_Id);
+   --  For a child subprogram body without a spec, we create a subprogram
+   --  declaration in order to attach the required parent link. We create
+   --  a Units_Table entry for this declaration, in order to maintain a
+   --  one-to-one correspondence between compilation units and table entries.
+
+   procedure Make_Instance_Unit (N : Node_Id; In_Main : Boolean);
    --  When a compilation unit is an instantiation, it contains both the
    --  declaration and the body of the instance, each of which can have its
    --  own elaboration routine. The file itself corresponds to the declaration.
    --  We create an additional entry for the body, so that the binder can
    --  generate the proper elaboration calls to both. The argument N is the
    --  compilation unit node created for the body.
+   --
+   --  If the instance is not the main program, we still generate the instance
+   --  body even though we do not generate code for it. In that case we still
+   --  generate a compilation unit node for it, and we need to make an entry
+   --  for it in the units table, so as to maintain a one-to-one mapping
+   --  between table and nodes. The table entry is used among other things to
+   --  provide a canonical traversal order for context units for Inspector.
+   --  The flag In_Main indicates whether the instance is the main unit.
 
    procedure Version_Update (U : Node_Id; From : Node_Id);
    --  This routine is called when unit U is found to be semantically

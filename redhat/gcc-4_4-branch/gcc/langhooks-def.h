@@ -1,5 +1,6 @@
 /* Default macros to initialize the lang_hooks data structure.
-   Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Free Software Foundation, Inc.
    Contributed by Alexandre Oliva  <aoliva@redhat.com>
 
 This file is part of GCC.
@@ -96,7 +97,6 @@ extern void lhd_omp_firstprivatize_type_sizes (struct gimplify_omp_ctx *,
 #define LANG_HOOKS_STATICP		lhd_staticp
 #define LANG_HOOKS_DUP_LANG_SPECIFIC_DECL lhd_do_nothing_t
 #define LANG_HOOKS_SET_DECL_ASSEMBLER_NAME lhd_set_decl_assembler_name
-#define LANG_HOOKS_NO_BODY_BLOCKS	false
 #define LANG_HOOKS_PRINT_STATISTICS	lhd_do_nothing
 #define LANG_HOOKS_PRINT_XNODE		lhd_print_tree_nothing
 #define LANG_HOOKS_PRINT_DECL		lhd_print_tree_nothing
@@ -189,6 +189,7 @@ extern tree lhd_make_node (enum tree_code);
 #define LANG_HOOKS_GLOBAL_BINDINGS_P global_bindings_p
 #define LANG_HOOKS_PUSHDECL	pushdecl
 #define LANG_HOOKS_GETDECLS	getdecls
+#define LANG_HOOKS_FUNCTION_DECL_EXPLICIT_P hook_bool_tree_false
 #define LANG_HOOKS_WARN_UNUSED_GLOBAL_DECL lhd_warn_unused_global_decl
 #define LANG_HOOKS_WRITE_GLOBALS write_global_declarations
 #define LANG_HOOKS_DECL_OK_FOR_SIBCALL	lhd_decl_ok_for_sibcall
@@ -208,6 +209,7 @@ extern tree lhd_make_node (enum tree_code);
   LANG_HOOKS_GLOBAL_BINDINGS_P, \
   LANG_HOOKS_PUSHDECL, \
   LANG_HOOKS_GETDECLS, \
+  LANG_HOOKS_FUNCTION_DECL_EXPLICIT_P, \
   LANG_HOOKS_WARN_UNUSED_GLOBAL_DECL, \
   LANG_HOOKS_WRITE_GLOBALS, \
   LANG_HOOKS_DECL_OK_FOR_SIBCALL, \
@@ -245,7 +247,6 @@ extern tree lhd_make_node (enum tree_code);
   LANG_HOOKS_STATICP, \
   LANG_HOOKS_DUP_LANG_SPECIFIC_DECL, \
   LANG_HOOKS_SET_DECL_ASSEMBLER_NAME, \
-  LANG_HOOKS_NO_BODY_BLOCKS, \
   LANG_HOOKS_PRINT_STATISTICS, \
   LANG_HOOKS_PRINT_XNODE, \
   LANG_HOOKS_PRINT_DECL, \

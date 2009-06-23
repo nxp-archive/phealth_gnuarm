@@ -1,5 +1,5 @@
 /* High-level loop manipulation functions.
-   Copyright (C) 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
    
 This file is part of GCC.
    
@@ -99,6 +99,8 @@ create_iv (tree base, tree step, tree var, struct loop *loop,
     }
   if (POINTER_TYPE_P (TREE_TYPE (base)))
     {
+      if (TREE_CODE (base) == ADDR_EXPR)
+	mark_addressable (TREE_OPERAND (base, 0));
       step = fold_convert (sizetype, step);
       if (incr_op == MINUS_EXPR)
 	step = fold_build1 (NEGATE_EXPR, sizetype, step);
@@ -276,7 +278,7 @@ find_uses_to_rename_stmt (gimple stmt, bitmap *use_blocks, bitmap need_phis)
   tree var;
   basic_block bb = gimple_bb (stmt);
 
-  if (IS_DEBUG_STMT (stmt))
+  if (is_gimple_debug (stmt))
     return;
 
   FOR_EACH_SSA_TREE_OPERAND (var, stmt, iter, SSA_OP_ALL_USES)
@@ -429,7 +431,7 @@ check_loop_closed_ssa_stmt (basic_block bb, gimple stmt)
   ssa_op_iter iter;
   tree var;
 
-  if (IS_DEBUG_STMT (stmt))
+  if (is_gimple_debug (stmt))
     return;
 
   FOR_EACH_SSA_TREE_OPERAND (var, stmt, iter, SSA_OP_ALL_USES)

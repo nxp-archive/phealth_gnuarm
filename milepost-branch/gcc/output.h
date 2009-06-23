@@ -1,8 +1,7 @@
 /* Declarations for insn-output.c.  These functions are defined in recog.c,
    final.c, and varasm.c.
-   Copyright (C) 1987, 1991, 1994, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
-   Free Software Foundation, Inc.
+   Copyright (C) 1987, 1991, 1994, 1997, 1998, 1999, 2000, 2001, 2002,
+   2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -22,6 +21,12 @@ along with GCC; see the file COPYING3.  If not see
 
 #ifndef GCC_OUTPUT_H
 #define GCC_OUTPUT_H
+
+#include "multi-target.h"
+
+struct gcc_target;
+
+START_TARGET_SPECIFIC
 
 /* Initialize data in final at the beginning of a compilation.  */
 extern void init_final (const char *);
@@ -98,6 +103,9 @@ extern int label_to_alignment (rtx);
 /* Output a LABEL_REF, or a bare CODE_LABEL, as an assembler symbol.  */
 extern void output_asm_label (rtx);
 
+/* Marks SYMBOL_REFs in x as referenced through use of assemble_external.  */
+extern void mark_symbol_refs_as_used (rtx);
+
 /* Print a memory reference operand for address X
    using machine-dependent assembler syntax.  */
 extern void output_address (rtx);
@@ -106,6 +114,7 @@ extern void output_address (rtx);
    Addition and subtraction are the only arithmetic
    that may appear in these expressions.  */
 extern void output_addr_const (FILE *, rtx);
+END_TARGET_SPECIFIC
 
 /* Output a string of assembler code, substituting numbers, strings
    and fixed syntactic prefixes.  */
@@ -119,6 +128,7 @@ typedef HOST_WIDE_INT __gcc_host_wide_int__;
 #define ATTRIBUTE_ASM_FPRINTF(m, n) ATTRIBUTE_NONNULL(m)
 #endif
 
+START_TARGET_SPECIFIC
 extern void asm_fprintf (FILE *file, const char *p, ...)
      ATTRIBUTE_ASM_FPRINTF(2, 3);
 
@@ -145,9 +155,6 @@ extern void leaf_renumber_regs_insn (rtx);
 /* Locate the proper template for the given insn-code.  */
 extern const char *get_insn_template (int, rtx);
 
-/* Functions in flow.c */
-extern int regno_clobbered_at_setjmp (int);
-
 /* Functions in varasm.c.  */
 
 /* Declare DECL to be a weak symbol.  */
@@ -157,6 +164,9 @@ extern void merge_weak (tree, tree);
 
 /* Emit any pending weak declarations.  */
 extern void weak_finish (void);
+
+/* Emit any pending emutls declarations and initializations.  */
+extern void emutls_finish (void);
 
 /* Decode an `asm' spec for a declaration as a register name.
    Return the register number, or -1 if nothing specified,
@@ -200,9 +210,9 @@ extern void assemble_variable (tree, int, int, int);
    DONT_OUTPUT_DATA is from assemble_variable.  */
 extern void align_variable (tree decl, bool dont_output_data);
 
-/* Output something to declare an external symbol to the assembler.
-   (Most assemblers don't need this, so we normally output nothing.)
-   Do nothing if DECL is not external.  */
+/* Queue for outputting something to declare an external symbol to the
+   assembler.  (Most assemblers don't need this, so we normally output
+   nothing.)  Do nothing if DECL is not external.  */
 extern void assemble_external (tree);
 
 /* Assemble code to leave SIZE bytes of zeros.  */
@@ -265,6 +275,9 @@ extern bool assemble_integer (rtx, unsigned, unsigned, int);
 extern void assemble_real (REAL_VALUE_TYPE, enum machine_mode, unsigned);
 #endif
 
+/* Write the address of the entity given by SYMBOL to SEC.  */
+extern void assemble_addr_to_section (rtx, section *);
+
 /* Return the size of the constant pool.  */
 extern int get_pool_size (void);
 
@@ -281,7 +294,7 @@ extern void output_object_blocks (void);
    and has been exposed to let other functions like categorize_ctor_elements
    evaluate the property while walking a constructor for other purposes.  */
 
-extern bool constructor_static_from_elts_p (tree);
+extern bool constructor_static_from_elts_p (const_tree);
 
 /* Return nonzero if VALUE is a valid constant-valued expression
    for use in initializing a static variable; one that can be an
@@ -319,11 +332,13 @@ extern rtx final_sequence;
 extern int sdb_begin_function_line;
 #endif
 
+END_TARGET_SPECIFIC
 /* File in which assembler code is being written.  */
 
 #ifdef BUFSIZ
 extern FILE *asm_out_file;
 #endif
+START_TARGET_SPECIFIC
 
 /* The first global object in the file.  */
 extern const char *first_global_object_name;
@@ -340,7 +355,7 @@ extern int current_function_is_leaf;
 
 /* Nonzero if function being compiled doesn't modify the stack pointer
    (ignoring the prologue and epilogue).  This is only valid after
-   life_analysis has run.  */
+   pass_stack_ptr_mod has run.  */
 
 extern int current_function_sp_is_unchanging;
 
@@ -376,7 +391,7 @@ extern bool first_function_block_is_cold;
 
 /* Decide whether DECL needs to be in a writable section.
    RELOC is the same as for SELECT_SECTION.  */
-extern bool decl_readonly_section (tree, int);
+extern bool decl_readonly_section (const_tree, int);
 
 /* This can be used to compute RELOC for the function above, when
    given a constant expression.  */
@@ -385,11 +400,18 @@ extern int compute_reloc_for_constant (tree);
 /* User label prefix in effect for this compilation.  */
 extern const char *user_label_prefix;
 
+/* Output any directives needed for a change of target architecture,
+   and/or switch output files.  */
+extern void default_target_new_arch (FILE *,
+				     struct gcc_target *, struct gcc_target *);
+
 /* Default target function prologue and epilogue assembler output.  */
 extern void default_function_pro_epilogue (FILE *, HOST_WIDE_INT);
 
 /* Default target hook that outputs nothing to a stream.  */
 extern void no_asm_to_stream (FILE *);
+
+END_TARGET_SPECIFIC
 
 /* Flags controlling properties of a section.  */
 #define SECTION_ENTSIZE	 0x000ff	/* entity size in section */
@@ -458,7 +480,10 @@ enum section_category
 
   SECCAT_BSS,
   SECCAT_SBSS,
-  SECCAT_TBSS
+  SECCAT_TBSS,
+
+  SECCAT_EMUTLS_VAR,
+  SECCAT_EMUTLS_TMPL
 };
 
 /* Information that is provided by all instances of the section type.  */
@@ -483,8 +508,13 @@ struct named_section GTY(()) {
    section.  The argument provides callback-specific data.  */
 typedef void (*unnamed_section_callback) (const void *);
 
-/* Information about a SECTION_UNNAMED section.  */
-struct unnamed_section GTY(()) {
+/* Information about a SECTION_UNNAMED section.
+   WARNING: this struct is unsuitable for garbage collection, because
+   the DATA member can point to malloced memory, which will change between
+   a pch-generating and a pch-using compilation, and the callback member
+   points to a function, which can change between a pch-generating and a
+   pch-using compilation when address space randomization is in effect.  */
+struct unnamed_section GTY((skip)) {
   struct section_common common;
 
   /* The callback used to switch to the section, and the data that
@@ -522,8 +552,8 @@ union section GTY ((desc ("SECTION_STYLE (&(%h))")))
 {
   struct section_common GTY ((skip)) common;
   struct named_section GTY ((tag ("SECTION_NAMED"))) named;
-  struct unnamed_section GTY ((tag ("SECTION_UNNAMED"))) unnamed;
-  struct noswitch_section GTY ((tag ("SECTION_NOSWITCH"))) noswitch;
+  struct unnamed_section GTY ((tag ("SECTION_UNNAMED"),skip)) unnamed;
+  struct noswitch_section GTY ((tag ("SECTION_NOSWITCH"),skip)) noswitch;
 };
 
 /* Return the style of section SECT.  */
@@ -531,23 +561,26 @@ union section GTY ((desc ("SECTION_STYLE (&(%h))")))
 
 struct object_block;
 
+START_TARGET_SPECIFIC
+
 /* Special well-known sections.  */
-extern GTY(()) section *text_section;
-extern GTY(()) section *data_section;
-extern GTY(()) section *readonly_data_section;
-extern GTY(()) section *sdata_section;
-extern GTY(()) section *ctors_section;
-extern GTY(()) section *dtors_section;
-extern GTY(()) section *bss_section;
-extern GTY(()) section *sbss_section;
+/* Don't GTY the unnamed / noswitch sections, see PR31634.  */
+extern /* unnamed */ section *text_section;
+extern /* unnamed */ section *data_section;
+extern /* unnamed */ section *readonly_data_section;
+extern /* unnamed */ section *sdata_section;
+extern /* unnamed */ section *ctors_section;
+extern /* unnamed */ section *dtors_section;
+extern /* unnamed */ section *bss_section;
+extern /* unnamed */ section *sbss_section;
 extern GTY(()) section *exception_section;
 extern GTY(()) section *eh_frame_section;
-extern GTY(()) section *tls_comm_section;
-extern GTY(()) section *comm_section;
-extern GTY(()) section *lcomm_section;
-extern GTY(()) section *bss_noswitch_section;
+extern /* noswitch */ section *tls_comm_section;
+extern /* noswitch */ section *comm_section;
+extern /* noswitch */ section *lcomm_section;
+extern /* noswitch */ section *bss_noswitch_section;
 
-extern GTY(()) section *in_section;
+extern /* unknown */ section *in_section;
 extern GTY(()) bool in_cold_section_p;
 
 extern section *get_unnamed_section (unsigned int, void (*) (const void *),
@@ -564,6 +597,10 @@ extern section *function_section (tree);
 extern section *unlikely_text_section (void);
 extern section *current_function_section (void);
 
+/* Return the numbered .ctors.N (if CONSTRUCTOR_P) or .dtors.N (if
+   not) section for PRIORITY.  */
+extern section *get_cdtor_priority_section (int, bool);
+
 extern bool unlikely_text_section_p (section *);
 extern void switch_to_section (section *);
 extern void output_section_asm_op (const void *);
@@ -573,7 +610,7 @@ extern unsigned int default_section_type_flags (tree, const char *, int);
 extern bool have_global_bss_p (void);
 extern void default_no_named_section (const char *, unsigned int, tree);
 extern void default_elf_asm_named_section (const char *, unsigned int, tree);
-extern enum section_category categorize_decl_for_section (tree, int);
+extern enum section_category categorize_decl_for_section (const_tree, int);
 extern void default_coff_asm_named_section (const char *, unsigned int, tree);
 extern void default_pe_asm_named_section (const char *, unsigned int, tree);
 
@@ -594,12 +631,15 @@ extern section *default_select_rtx_section (enum machine_mode, rtx,
 extern section *default_elf_select_rtx_section (enum machine_mode, rtx,
 						unsigned HOST_WIDE_INT);
 extern void default_encode_section_info (tree, rtx, int);
+extern void pickle_in_section (void);
+extern void unpickle_in_section (void);
 extern const char *default_strip_name_encoding (const char *);
 extern void default_asm_output_anchor (rtx);
-extern bool default_use_anchors_for_symbol_p (rtx);
-extern bool default_binds_local_p (tree);
-extern bool default_binds_local_p_1 (tree, int);
+extern bool default_use_anchors_for_symbol_p (const_rtx);
+extern bool default_binds_local_p (const_tree);
+extern bool default_binds_local_p_1 (const_tree, int);
 extern void default_globalize_label (FILE *, const char *);
+extern void default_globalize_decl_name (FILE *, tree);
 extern void default_emit_unwind_label (FILE *, tree, int, int);
 extern void default_emit_except_table_label (FILE *);
 extern void default_internal_label (FILE *, const char *, unsigned long);
@@ -607,7 +647,11 @@ extern void default_file_start (void);
 extern void file_end_indicate_exec_stack (void);
 extern bool default_valid_pointer_mode (enum machine_mode);
 
-extern int default_address_cost (rtx);
+extern void default_elf_asm_output_external (FILE *file, tree,
+					     const char *);
+extern int maybe_assemble_visibility (tree);
+
+extern int default_address_cost (rtx, bool);
 
 /* dbxout helper functions */
 #if defined DBX_DEBUGGING_INFO || defined XCOFF_DEBUGGING_INFO
@@ -627,6 +671,8 @@ extern void dbxout_stab_value_internal_label (const char *, int *);
 extern void dbxout_stab_value_internal_label_diff (const char *, int *,
 						   const char *);
 
-#endif
+#endif /* defined DBX_DEBUGGING_INFO || defined XCOFF_DEBUGGING_INFO */
+
+END_TARGET_SPECIFIC
 
 #endif /* ! GCC_OUTPUT_H */

@@ -52,12 +52,6 @@
 #endif
 
 
-/* Define if compiler probe is enabled. */
-#ifndef USED_FOR_TARGET
-#undef ENABLE_COMPILER_PROBE
-#endif
-
-
 /* Define to 1 to specify that we are using the BID decimal floating point
    format instead of DPD */
 #ifndef USED_FOR_TARGET
@@ -113,10 +107,22 @@
 #endif
 
 
+/* Define if gcc should always pass --build-id to linker. */
+#ifndef USED_FOR_TARGET
+#undef ENABLE_LD_BUILDID
+#endif
+
+
 /* Define to 1 if translation of program messages to the user's native
    language is requested. */
 #ifndef USED_FOR_TARGET
 #undef ENABLE_NLS
+#endif
+
+
+/* Define to enable plugin support. */
+#ifndef USED_FOR_TARGET
+#undef ENABLE_PLUGIN
 #endif
 
 
@@ -178,13 +184,6 @@
 /* Define to enable detailed memory allocation stats gathering. */
 #ifndef USED_FOR_TARGET
 #undef GATHER_STATISTICS
-#endif
-
-
-/* Define to the type of elements in the array set by `getgroups'. Usually
-   this is either `int' or `gid_t'. */
-#ifndef USED_FOR_TARGET
-#undef GETGROUPS_T
 #endif
 
 
@@ -283,6 +282,18 @@
 /* Define if your assembler supports the ffreep mnemonic. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_IX86_FFREEP
+#endif
+
+
+/* Define if your assembler uses fildq and fistq mnemonics. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_IX86_FILDQ
+#endif
+
+
+/* Define if your assembler uses filds and fists mnemonics. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_IX86_FILDS
 #endif
 
 
@@ -387,6 +398,12 @@
 /* Define if your assembler supports thread-local storage. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_TLS
+#endif
+
+
+/* Define if your assembler supports arg info for __tls_get_addr. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_TLS_MARKERS
 #endif
 
 
@@ -833,6 +850,13 @@
 #endif
 
 
+/* Define if your assembler supports specifying the alignment of objects
+   allocated using the GAS .comm command. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_GAS_ALIGNED_COMM
+#endif
+
+
 /* Define if your assembler supports .balign and .p2align. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_GAS_BALIGN_AND_P2ALIGN
@@ -851,9 +875,9 @@
 #endif
 
 
-/* Define if your assembler uses the new HImode fild and fist notation. */
+/* Define if your assembler supports the .loc discriminator sub-directive. */
 #ifndef USED_FOR_TARGET
-#undef HAVE_GAS_FILDS_FISTS
+#undef HAVE_GAS_DISCRIMINATOR
 #endif
 
 
@@ -1032,6 +1056,12 @@
 #endif
 
 
+/* Define if your linker supports --build-id. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_LD_BUILDID
+#endif
+
+
 /* Define if your linker supports --demangle option. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_LD_DEMANGLE
@@ -1076,12 +1106,6 @@
 /* Define if your linker supports --sysroot. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_LD_SYSROOT
-#endif
-
-
-/* Define if Libtool dynamic linker is in use. */
-#ifndef USED_FOR_TARGET
-#undef HAVE_LIBTOOLDYNL
 #endif
 
 
@@ -1160,6 +1184,12 @@
 /* Define to 1 if you have the `nl_langinfo' function. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_NL_LANGINFO
+#endif
+
+
+/* Define if we have a open_memstream for memory FILE* */
+#ifndef USED_FOR_TARGET
+#undef HAVE_OPEN_MEMSTREAM
 #endif
 
 
@@ -1374,6 +1404,12 @@
 #endif
 
 
+/* Define if mpc is in use. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_mpc
+#endif
+
+
 /* Define as const if the declaration of iconv() needs const. */
 #ifndef USED_FOR_TARGET
 #undef ICONV_CONST
@@ -1583,12 +1619,6 @@
 #endif
 
 
-/* Define to `int' if <sys/types.h> doesn't define. */
-#ifndef USED_FOR_TARGET
-#undef gid_t
-#endif
-
-
 /* Define to `__inline__' or `__inline' if that's what the C compiler
    calls it, or to nothing if 'inline' is not supported under any name.  */
 #ifndef __cplusplus
@@ -1610,12 +1640,6 @@
 /* Define to `int' if <sys/types.h> does not define. */
 #ifndef USED_FOR_TARGET
 #undef ssize_t
-#endif
-
-
-/* Define to `int' if <sys/types.h> doesn't define. */
-#ifndef USED_FOR_TARGET
-#undef uid_t
 #endif
 
 

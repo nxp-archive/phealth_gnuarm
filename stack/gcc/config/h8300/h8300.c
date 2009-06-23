@@ -1,6 +1,7 @@
 /* Subroutines for insn-output.c for Renesas H8/300.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Free Software Foundation, Inc.
    Contributed by Steve Chamberlain (sac@cygnus.com),
    Jim Wilson (wilson@cygnus.com), and Doug Evans (dje@cygnus.com).
 
@@ -1152,7 +1153,7 @@ h8300_shift_costs (rtx x)
 /* Worker function for TARGET_RTX_COSTS.  */
 
 static bool
-h8300_rtx_costs (rtx x, int code, int outer_code, int *total)
+h8300_rtx_costs (rtx x, int code, int outer_code, int *total, bool speed)
 {
   if (TARGET_H8300SX && outer_code == MEM)
     {
@@ -1178,7 +1179,7 @@ h8300_rtx_costs (rtx x, int code, int outer_code, int *total)
 	  {
 	    /* Constant operands need the same number of processor
 	       states as register operands.  Although we could try to
-	       use a size-based cost for optimize_size, the lack of
+	       use a size-based cost for !speed, the lack of
 	       of a mode makes the results very unpredictable.  */
 	    *total = 0;
 	    return true;
@@ -1243,11 +1244,11 @@ h8300_rtx_costs (rtx x, int code, int outer_code, int *total)
 	  {
 	  case QImode:
 	  case HImode:
-	    *total = COSTS_N_INSNS (optimize_size ? 4 : 10);
+	    *total = COSTS_N_INSNS (!speed ? 4 : 10);
 	    return false;
 
 	  case SImode:
-	    *total = COSTS_N_INSNS (optimize_size ? 4 : 18);
+	    *total = COSTS_N_INSNS (!speed ? 4 : 18);
 	    return false;
 
 	  default:
@@ -3659,7 +3660,7 @@ expand_a_shift (enum machine_mode mode, int code, rtx operands[])
       break;
     }
 
-  emit_move_insn (operands[0], operands[1]);
+  emit_move_insn (copy_rtx (operands[0]), operands[1]);
 
   /* Need a loop to get all the bits we want  - we generate the
      code at emit time, but need to allocate a scratch reg now.  */
@@ -3667,9 +3668,9 @@ expand_a_shift (enum machine_mode mode, int code, rtx operands[])
   emit_insn (gen_rtx_PARALLEL
 	     (VOIDmode,
 	      gen_rtvec (2,
-			 gen_rtx_SET (VOIDmode, operands[0],
+			 gen_rtx_SET (VOIDmode, copy_rtx (operands[0]),
 				      gen_rtx_fmt_ee (code, mode,
-						      operands[0], operands[2])),
+						      copy_rtx (operands[0]), operands[2])),
 			 gen_rtx_CLOBBER (VOIDmode,
 					  gen_rtx_SCRATCH (QImode)))));
   return true;

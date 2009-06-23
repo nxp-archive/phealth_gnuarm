@@ -1,11 +1,11 @@
 /* Process source files and output type information.
-   Copyright (C) 2006 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -14,9 +14,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "bconfig.h"
 #include "system.h"
@@ -142,6 +141,8 @@ parse_error (const char *msg, ...)
   vfprintf (stderr, msg, ap);
   va_end (ap);
 
+  fputc ('\n', stderr);
+
   hit_error = true;
 }
 
@@ -198,9 +199,9 @@ string_seq (void)
 
       l1 = strlen (s1);
       l2 = strlen (s2);
-      buf = XRESIZEVEC (char, s1, l1 + l2 + 1);
+      buf = XRESIZEVEC (char, CONST_CAST(char *, s1), l1 + l2 + 1);
       memcpy (buf + l1, s2, l2 + 1);
-      XDELETE (s2);
+      XDELETE (CONST_CAST (char *, s2));
       s1 = buf;
     }
   return s1;
@@ -222,8 +223,8 @@ typedef_name (void)
       c2 = require (ID);
       require (')');
       r = concat ("VEC_", c1, "_", c2, (char *)0);
-      free ((void *)c1);
-      free ((void *)c2);
+      free (CONST_CAST (char *, c1));
+      free (CONST_CAST (char *, c2));
       return r;
     }
   else
@@ -678,7 +679,6 @@ static type_p
 type (options_p *optsp, bool nested)
 {
   const char *s;
-  bool is_union;
   *optsp = 0;
   switch (token ())
     {
@@ -695,14 +695,16 @@ type (options_p *optsp, bool nested)
     case UNION:
       {
 	options_p opts = 0;
-
-	is_union = (token() == UNION);
+    /* GTY annotations follow attribute syntax 
+       GTY_BEFORE_ID is for union/struct declarations
+       GTY_AFTER_ID is for variable declarations.  */
+    enum {
+        NO_GTY,
+        GTY_BEFORE_ID,
+        GTY_AFTER_ID
+    } is_gty = NO_GTY;
+    bool is_union = (token () == UNION);
 	advance ();
-
-	if (token () == ID)
-	  s = advance ();
-	else
-	  s = xasprintf ("anonymous:%s:%d", lexer_line.file, lexer_line.line);
 
 	/* Top-level structures that are not explicitly tagged GTY(())
 	   are treated as mere forward declarations.  This is because
@@ -711,18 +713,40 @@ type (options_p *optsp, bool nested)
 	   that we can't handle.  */
 	if (nested || token () == GTY_TOKEN)
 	  {
-	    opts = gtymarker_opt ();
-	    if (token () == '{')
-	      {
-		pair_p fields;
-		advance ();
-		fields = struct_field_seq ();
-		require ('}');
-		return new_structure (s, is_union, &lexer_line, fields, opts);
-	      }
+        is_gty = GTY_BEFORE_ID;
+        opts = gtymarker_opt ();
 	  }
-	else if (token () == '{')
-	  consume_balanced ('{', '}');
+
+	if (token () == ID)
+	  s = advance ();
+	else
+	  s = xasprintf ("anonymous:%s:%d", lexer_line.file, lexer_line.line);
+
+        /* Unfortunately above GTY_TOKEN check does not capture the
+           typedef struct_type GTY case.  */
+	if (token () == GTY_TOKEN)
+	  {
+        is_gty = GTY_AFTER_ID;
+        opts = gtymarker_opt ();
+	  }
+        
+    if (is_gty) 
+      {
+        if (token () == '{')
+          {
+            pair_p fields;
+
+            if (is_gty == GTY_AFTER_ID) 
+                parse_error ("GTY must be specified before identifier");
+              
+            advance ();
+            fields = struct_field_seq ();
+            require ('}');
+            return new_structure (s, is_union, &lexer_line, fields, opts);
+          }
+      } 
+    else if (token () == '{')
+      consume_balanced ('{', '}');
 	if (opts)
 	  *optsp = opts;
 	return find_structure (s, is_union);

@@ -1,7 +1,7 @@
 /* Definitions of target machine for GNU compiler,
    for Motorola M*CORE Processor.
-   Copyright (C) 1993, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
-   Free Software Foundation, Inc.
+   Copyright (C) 1993, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007,
+   2008  Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -50,8 +50,6 @@
     }									  \
   while (0)
 
-/* If -m4align is ever re-enabled then add this line to the definition of CPP_SPEC
-   %{!m4align:-D__MCORE_ALIGN_8__} %{m4align:-D__MCORE__ALIGN_4__}.  */
 #undef  CPP_SPEC
 #define CPP_SPEC "%{m210:%{mlittle-endian:%ethe m210 does not have little endian support}}"
 
@@ -67,7 +65,6 @@
 
 #define TARGET_DEFAULT	\
   (MASK_HARDLIT		\
-   | MASK_8ALIGN	\
    | MASK_DIV		\
    | MASK_RELAX_IMM	\
    | MASK_M340		\
@@ -306,11 +303,6 @@ extern int mcore_stack_increment;
 #define MODES_TIEABLE_P(MODE1, MODE2) \
   ((MODE1) == (MODE2) || GET_MODE_CLASS (MODE1) == GET_MODE_CLASS (MODE2))
 
-/* Value should be nonzero if functions must have frame pointers.
-   Zero means the frame pointer need not be set up (and parms may be accessed
-   via the stack pointer) in functions that seem suitable.  */
-#define FRAME_POINTER_REQUIRED	0
-
 /* Definitions for register eliminations.
 
    We have two registers that can be eliminated on the MCore.  First, the
@@ -378,6 +370,12 @@ enum reg_class
 };
 
 #define N_REG_CLASSES  (int) LIM_REG_CLASSES
+
+#define IRA_COVER_CLASSES		\
+{					\
+  GENERAL_REGS, C_REGS, LIM_REG_CLASSES	\
+}
+
 
 /* Give names of register classes as strings for dump file.  */
 #define REG_CLASS_NAMES  \
@@ -538,7 +536,7 @@ extern const enum reg_class reg_class_from_letter[];
 
 /* If defined, the maximum amount of space required for outgoing arguments
    will be computed and placed into the variable
-   `current_function_outgoing_args_size'.  No space will be pushed
+   `crtl->outgoing_args_size'.  No space will be pushed
    onto the stack for each call; instead, the function prologue should
    increase the stack frame size by this amount.  */
 #define ACCUMULATE_OUTGOING_ARGS 1
@@ -783,10 +781,6 @@ extern const enum reg_class reg_class_from_letter[];
 	GO_IF_LEGITIMATE_INDEX (MODE, REGNO (xop1), xop0, LABEL); \
     }								  \
 }								   
-								   
-/* Go to LABEL if ADDR (a legitimate address expression)
-   has an effect that depends on the machine mode it is used for.  */
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
 
 /* Specify the machine mode that this machine uses
    for the index in the tablejump instruction.  */

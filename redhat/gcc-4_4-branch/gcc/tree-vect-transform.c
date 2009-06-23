@@ -1,5 +1,6 @@
 /* Transformation Utilities for Loop Vectorization.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Dorit Naishlos <dorit@il.ibm.com>
 
 This file is part of GCC.
@@ -1098,7 +1099,10 @@ vect_create_data_ref_ptr (gimple stmt, struct loop *at_loop,
   if (!MTAG_P (tag))
     new_type_alias (vect_ptr, tag, DR_REF (dr));
   else
-    set_symbol_mem_tag (vect_ptr, tag);
+    {
+      set_symbol_mem_tag (vect_ptr, tag);
+      mark_sym_for_renaming (tag);
+    }
 
   /** Note: If the dataref is in an inner-loop nested in LOOP, and we are
       vectorizing LOOP (i.e. outer-loop vectorization), we need to create two
@@ -3448,6 +3452,10 @@ vectorizable_call (gimple stmt, gimple_stmt_iterator *gsi, gimple *vec_stmt)
     }
 
   VEC_free (tree, heap, vargs);
+
+  /* Update the exception handling table with the vector stmt if necessary.  */
+  if (maybe_clean_or_replace_eh_stmt (stmt, *vec_stmt))
+    gimple_purge_dead_eh_edges (gimple_bb (stmt));
 
   /* The call in STMT might prevent it from being removed in dce.
      We however cannot remove it here, due to the way the ssa name
@@ -8102,8 +8110,8 @@ vect_loop_versioning (loop_vec_info loop_vinfo)
 				    min_profitable_iters);
 
   cond_expr =
-    build2 (GT_EXPR, boolean_type_node, scalar_loop_iters, 
-	    build_int_cst (TREE_TYPE (scalar_loop_iters), th));
+    fold_build2 (GT_EXPR, boolean_type_node, scalar_loop_iters, 
+		 build_int_cst (TREE_TYPE (scalar_loop_iters), th));
 
   cond_expr = force_gimple_operand (cond_expr, &cond_expr_stmt_list,
 				    false, NULL_TREE);
@@ -8451,20 +8459,11 @@ vect_transform_loop (loop_vec_info loop_vinfo)
 		  if (vect_print_dump_info (REPORT_DETAILS))
 		    fprintf (vect_dump, "=== scheduling SLP instances ===");
 
-		  is_store = vect_schedule_slp (loop_vinfo);
-
-		  /* IS_STORE is true if STMT is a store. Stores cannot be of
-		     hybrid SLP type. They are removed in
-		     vect_schedule_slp_instance and their vinfo is destroyed. */
-		  if (is_store)
-		    {
-		      gsi_next (&si);
-		      continue;
-		    }
+		  vect_schedule_slp (loop_vinfo);
 		}
 
 	      /* Hybrid SLP stmts must be vectorized in addition to SLP.  */
-	      if (PURE_SLP_STMT (stmt_info))
+	      if (!vinfo_for_stmt (stmt) || PURE_SLP_STMT (stmt_info))
 		{
 		  gsi_next (&si);
 		  continue;

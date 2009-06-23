@@ -1,3 +1,377 @@
+2009-06-19  Ian Lance Taylor  <iant@google.com>
+
+	Revert this patch:
+	2008-10-05  Tom Tromey  <tromey@redhat.com>
+	* dominance.c (iterate_fix_dominators): Cast argument to
+	BITMAP_FREE.
+
+	Revert these patches:
+	2008-10-06  Tom Tromey  <tromey@redhat.com>
+	* errors.h (progname): Wrap in 'extern "C"'.
+	2008-06-19  Ian Lance Taylor  <iant@google.com>
+	* toplev.h (progname): Declare as extern "C" when compiling with
+	C++.
+
+2009-06-17  Ian Lance Taylor  <iant@google.com>
+
+	Revert this patch:
+	2009-02-03  Ian Lance Taylor  <iant@google.com>
+	* gcov.c (read_count_file): Avoid goto.
+
+2009-06-16  Ian Lance Taylor  <iant@google.com>
+
+	* toplev.h: Remove extranous #endif.
+
+2009-06-16  Ian Lance Taylor  <iant@google.com>
+
+	* system.h (HAVE_DESIGNATED_INITIALIZERS): Remove duplicate
+	setting for C++.
+	* cp/parser.c (cp_parser_type_specifier): Change flags parameter
+	back to cp_parser_flags.
+
+	Revert the following patches:
+	2009-03-04  Ian Lance Taylor  <iant@google.com>
+	* ipa-struct-reorg.c (create_general_new_stmt): Initialize rhs.
+	2009-02-04  Ian Lance Taylor  <iant@google.com>
+	* ira-build.c (setup_min_max_conflict_allocno_ids): Use
+	LIM_REG_CLASSES instead of -1.
+
+2009-06-09  Ian Lance Taylor  <iant@google.com>
+
+	* jcf-parse.c (handle_constant): Change kind to int.
+
+2009-05-31  Ian Lance Taylor  <iant@google.com>
+
+	Revert last patch.
+	2009-05-26  Ian Lance Taylor  <iant@google.com>
+	* dfp.c: If __cplusplus, use extern "C" around inclusion of
+	libdecnumber header files.
+	* Makefile.in (INCLUDES): Remove $(DECNUMINC).
+	(dfp.o): Add separate compilation command using DECNUMINC.
+
+2009-05-26  Ian Lance Taylor  <iant@google.com>
+
+	* dfp.c: If __cplusplus, use extern "C" around inclusion of
+	libdecnumber header files.
+	* Makefile.in (INCLUDES): Remove $(DECNUMINC).
+	(dfp.o): Add separate compilation command using DECNUMINC.
+
+2009-05-25  J"orn Rennecke  <joern.rennecke@arc.com>
+
+	* config/sh/t-sh (sh-c.o): Use $(CXX) for building.
+
+	* config/arc/arc.c: #include "df.h".
+	(arc_address_cost): Use INTVAL to refer to the value of a CONST_INT.
+
+	* targhooks.c (default_builtin_vectorized_function): Make signature
+	agree with prototype in targhooks.h.
+	(default_builtin_vectorized_conversion): Likewise.
+	(default_builtin_reciprocal): Likewise.
+
+	* expr.c (move_by_pieces, store_by_pieces): Append _d to struct tag.
+	Changed all users.
+
+	* config/sh/sh.c (sh_attribute_table): Use extern in forward
+	declaration.
+
+	* config/arc/arc.c (arc_attribute_table): Use extern in forward
+	declaration.
+	(output_shift): Replace initialization of n with assignment.
+
+	* config/sh/sh.h (OVERRIDE_OPTIONS): Use enum processor_type values
+	to assign to sh_cpu.
+
+	* config/sh/sh.md (attribute cpu): Add comment about connection to
+	enum processor_type in sh.h.
+
+	* reorg.c (insn_sets_resource_p): include_delayed_effects is now bool.
+	Changed all callers.
+
+	* config/sh/predicates.md (trapping_target_operand): Rename and to
+	and_expr.
+
+	* targhooks.h (default_builtin_vectorized_function): Make prototype
+	agree with target.h:struct vectorize:builtin_vectorized_function.
+	(default_builtin_vectorized_conversion): Likewise with respect to
+	builtin_conversion.
+	(default_builtin_reciprocal): Likewise wrt.
+	struct gcc_target:builtin_reciprocal
+	* config/m32r/m32r.h (INITIALIZE_TRAMPOLINE): Use LCT_NORMAL.
+	* config/m32r/m32r.c (df.h): #include.
+	(m32r_attribute_table): Mark forward declaration with extern.
+	(pop): Use alloc_reg_note.
+	(block_move_call): Use LCT_NORMAL.
+
+	* haifa-sched.c (insn_cost): No longer HAIFA_INLINE.
+
+2009-05-20  Ian Lance Taylor  <iant@google.com>
+
+	Revert the following patches:
+	2009-02-06  Ian Lance Taylor  <iant@google.com>
+	* timevar.c (timevar_pop_1): Ignore TV_NONE.
+	2009-01-31  Ian Lance Taylor  <iant@google.com>
+	* targhooks.h (default_branch_target_register_class): Declare.
+	2008-09-17  Tom Tromey  <tromey@redhat.com>
+	* timevar.c (timevar_print): Ignore TV_NONE.
+	(timevar_push_1): Likewise.
+	2008-09-10  Ian Lance Taylor  <iant@google.com>
+	* df.h (enum df_ref_flags): Define DF_REF_NONE.
+	* df-problems.c (df_rd_bb_local_compute): Change 0 to enum
+	constant.
+	(df_chain_create_bb): Likewise.
+	(df_chain_add_problem): Change flags to unsigned int.
+	* gimple.h (gimplify_expr: Update declaration.
+	* gimplify.c (gimplify_compound_lval): Change fallback to int.
+	(gimplify_cond_expr, gimplify_expr): Likewise.
+	* ira-costs.c (record_reg_classes): Add cast to enum type.
+	* predict.c (combine_predictions_for_insn): Add cast to enum
+	type.
+	(combine_predictions_for_bb): Likewise.
+	* postreload.c (reload_cse_simplify_operands): Add cast to enum
+	type.
+	* reload.c (find_reloads): Add cast to enum type.
+	* rtl.h (alloc_reg_note): Declare.
+	* cp/parser.c (cp_parser_omp_var_list_no_open): Change integer
+	constant to enum constant.
+	* cp/pt.c (process_template_parm): Change integer constant to enum
+	constant.
+	* fortran/module.c (import_iso_c_binding_module): Use new
+	iso_c_binding_symbol local.  Add cast to enum type.
+	* objcp/objcp-lang.c (objcp_tsubst_copy_and_build): Change
+	complain to int.
+	2008-07-03  Tom Tromey  <tromey@redhat.com>
+	* stringpool.c (alloc_node): Update.
+
+	* gimple.c (gimple_range_check_failed): Remove.
+	* tree-ssa-alias.c: Add trailing blank line.
+	* tree-ssa-dse.c: Remove trailing blank line.
+
+2009-05-16  Ian Lance Taylor  <iant@google.com>
+
+	* attribs.c (register_attribute): Change slot to void **.
+
+2009-05-14  Ian Lance Taylor  <iant@google.com>
+
+	* tree.c (tree_range_check_failed): Change c to int.
+	(omp_clause_range_check_failed): Likewise.
+	* fortran/trans-types.c (gfc_init_kinds): Change mode to int.
+	Remove uses of mode_loop.
+
+2009-05-11  Ian Lance Taylor  <iant@google.com>
+
+	* cgraphunit.c (enum cgraph_order_kinds): Remove.
+	* except.c (gen_eh_region_cleanup): Change eh_region to
+	eh_region_d.
+	(copy_eh_region): Likewise.
+	* tree-eh.c (struct leh_state): Change eh_region to eh_region_d.
+	(struct goto_queue_node): Remove duplicate definition.
+
+2009-05-10  Ian Lance Taylor  <iant@google.com>
+
+	Revert the following patches:
+	2009-02-04  Ian Lance Taylor  <iant@google.com>
+	* cse.c (insert): Put empty loop ';' on new line.
+	* emit-rtl.c (push_to_sequence): Likewise.
+	* haifa-sched.c (max_issue): Put empty loop ';' on new line.
+	* matrix-reorg.c (add_allocation_site): Likewise.
+	* postreload-gcse.c (eliminate_partially_redundant_load):
+	Likewise.
+	* sched-rgn.c (rgn_add_block): Likewise.
+	(rgn_fix_recovery_cfg): Likewise.
+	* tree-loop-distribution.c (rdg_flag_similar_memory_accesses):
+	Likewise.
+	2009-02-03  Ian Lance Taylor  <iant@google.com>
+	* tree.c (attribute_list_contained): Put empty loop ';' on new
+	line.
+	2009-01-31  Ian Lance Taylor  <iant@google.com>
+	* reload.c (alternative_allows_const_pool_ref): Put empty loop ';'
+	on new line.
+	2008-07-04  Tom Tromey  <tromey@redhat.com>
+	* java/mangle.c (emit_compression_string): Insert newline.
+
+2009-04-28  Ian Lance Taylor  <iant@google.com>
+
+	* c-decl.c (grokdeclarator): Change size_varies to bool.  Change
+	1/0 to true/false accordingly.
+	* cgraph.h (struct inline_summary): Fix position of GTY marker.
+	* dwarf2.h (enum dwarf_location_atom): Add
+	INTERNAL_DW_OP_tls_addr.
+	(enum dwarf_type): Remove duplicate DW_ATE_lo_user and
+	DW_ATE_hi_user values accidentally created by mainline merge.
+	* dwarf2out.c (INTERNAL_DW_OP_tls_addr): Don't define.
+	* except.c: Change struct eh_region to struct eh_region_d
+	throughout.
+	* plugin.c (plugins_active_p): Change event to int.
+	(dump_active_plugins): Likewise.
+	* sdbout.c (sdb_debug_hooks) [!SDB_DEBUGGING_INFO version]:
+	Initialize set_name field.
+	* targhooks.c (default_branch_target_register_class): Remove extra
+	version created by mainline merge.
+	* timevar.def (TV_NONE): Remove.
+	* toplev.c (toplev_main): Use CONST_CAST.
+	* tree-eh.c (redirect_eh_edge): Use struct eh_region_d.
+	(make_eh_edge_and_update_phi): Likewise.
+	* tree-ssa-dse.c: Remove extraneous character accidentally
+	inserted during mainline merge.
+	* cp/cp-tre.h (enum base_access_enum): Rename from enum
+	base_access.
+	* java/jcf-parse.c (handle_constant): Change kind to int.  Remove
+	cast.  Pass enum constant to handle_long_constant.
+	* Makefile.in (toplev.o): Use $(CXX) and $(ALL_CXXFLAGS).
+
+2009-04-25  Ian Lance Taylor  <iant@google.com>
+
+	* cp/cp-tree.h (enum cp_lvalue_kind_enum): Rename from
+	cp_lvalue_kind.
+	(cp_lvalue_kind): Typedef to int, not enum type.
+	(enum tsubst_flags): Rename from enum tsubst_flags_t.
+	(tsubst_flags_t): Typedef to int, not enum type.
+	(enum base_access_enum): Rename from enum base_access.
+	(base_access): Typedef to int, not enum type.
+	* cp/parser.c (enum cp_parser_flags_enum): Rename from
+	cp_parser_flags.
+	(cp_parser_flags): Typedef to int, not enum type.
+	* cp/call.c:  Revert the 2008-09-10 changes to change
+	tsubst_flags_t, base_access, and cp_lvalue_kind to int.
+	* cp/class.c: Likewise.
+	* cp/cp-lang.c: Likewise.
+	* cp/cp-objcp-common.h: Likewise.
+	* cp/cvt.c: Likewise.
+	* cp/decl.c: Likewise.
+	* cp/init.c: Likewise.
+	* cp/pt.c: Likewise.
+	* cp/rtti.c: Likewise.
+	* cp/search.c: Likewise.
+	* cp/semantics.c: Likewise.
+	* cp/tree.c: Likewise.
+	* cp/typeck.c: Likewise.
+	* cp/typeck2.c: Likewise.
+	* cp/parser.c: Likewise.
+
+2009-03-25  Jerry Quinn  <jlquinn@cerberus.qb5.org>
+
+	* config/i386/i386.c (ix86_function_specific_save): Don't check
+	range of enum values.
+
+2009-03-12  Tobias Schlüter  <tobi@gcc.gnu.org>
+
+	* config/i386/x-darwin: Use ALL_CXXFLAGS.
+
+2009-03-11  Tobias Schlüter  <tobi@gcc.gnu.org>
+
+	* config/t-darwin: Use ALL_CXXFLAGS instead of ALL_CFLAGS.
+	* config/x-darwin: Same.
+
+2009-03-10  Tobias Schlüter  <tobi@gcc.gnu.org>
+
+	* config/t-darwin: Use CXX as compiler.
+	* config/x-darwin: Likewise.
+	* config/i386/x-darwin: Same.
+
+2009-03-06  Ian Lance Taylor  <iant@google.com>
+
+	* toplev.h (floor_log2, exact_log2): Don't define as extern for
+	C++.
+
+2009-03-04  Ian Lance Taylor  <iant@google.com>
+
+	* config/i386/i386.md (isinf<mode>2): Change slot to enum type.
+
+	* cp-tree.h (finish_call_expr): Correct declaration.
+
+	* rtl.h (SUBREG_PROMOTED_UNSIGNED_P): Add cast.
+	* ipa-struct-reorg.c (create_general_new_stmt): Initialize rhs.
+	* ira-build.c (copy_info_to_removed_store_destinations):
+	Initialize parent_a.
+	* varasm.c (const_rtx_hash_1): Don't declare 'shift' as const.
+	* config/i386/i386.c (ix86_expand_builtin): Change fcode to enum
+	type.
+
+	* tree-nomudflap.c (gt_ggc_r_gt_tree_mudflap_h): Declare as extern
+	if C++.
+
+	* vec.c (vec_gc_o_reserve_1): Don't initialize alloc to itself.
+
+	* gcc.c (process_command, main): Use CONST_CAST.
+	* collect2.c (main, scan_prog_file): Likewise.
+
+	* bitmap.c (bitmap_clear): Don't declare as inline.
+	* tree-ssa-sccvn.c (vn_nary_op_compute_hash): Likewise.
+
+	* cp/cvt.c (convert_to_void): Only warn about ?: operator with
+	no effect if neither side has an effect.
+
+	* objc/Make-lang.in (cc1obj-dummy$(exeext)): Link with $(CXX).
+	(cc1obj$(exeext)): Likewise.
+	* objc/objc-act.c (objc_rewrite_function_call): Change params to
+	tree.
+	(objc_gimplify_expr): Change return type to int.
+	* objc/objc-act.h (objc_gimplify_expr): Update declaration.
+
+	* java/jcf-io.c (find_class): Use CONST_CAST.
+
+	* fortran/Make-lang.in (gfortranspec.o): Compile with $(CXX).
+	(fortran/cpp.o): Likewise.
+	(gfortran$(exeext)): Link with $(CXX).
+	(f951$(exeext)): Likewise.
+	* fortran/gfortran.h (enum omp_sched_kind): Move out of struct
+	gfc_omp_clauses.
+	(enum omp_sharing): Likewise.
+	(enum gfc_symbol_type): Move out of struct gfc_gsymbol.
+	(enum gfc_array_ref_dimen_type): Move out of strutc
+	gfc_array_ref.
+	* fortran/cpp.c (struct gfc_cpp_option_data): Give name to
+	anonymous struct.
+	* fortran/decl.c (build_struct): Initialize first_len.
+	(match_attr_spec): Change variable 'd' to int.
+	(add_global_entry): Change variable 'type' to gfc_symbol_type.
+	* fortran/dump-parse-tree.c (show_namespace): Change variable 'op'
+	to int.
+	* fortran/interface.c (gfc_check_interfaces): Change loop to use
+	int type rather than enum type.
+	* fortran/module.c (enum rsym_state, enum wsym_state): Move out of
+	struct pointer_info.
+	(mio_array_ref, mio_symbol): Add casts to enum type.
+	(read_module): Change variable 'i' to int.
+	(write_module): Likewise.
+	(import_iso_c_binding_module): Add cast to enum type.
+	* fortran/parse.c (enum state_order): Move out of st_state
+	struct.
+	* fortran/resolve.c (resolve_global_procedure): Change variable
+	'type' to gfc_symbol_type.
+	(check_host_association): Initialize tail.
+	* fortran/symbol.c (gfc_get_namespace): Change variable 'in' to
+	int.
+	(gfc_free_namespace): Change variable 'i' to int.
+	* fortran/trans-intrinsic.c (DEFINE_MATH_BUILTIN): Add casts to
+	enum type.
+	* fortran/trans-io.c (st_parameter_field): Add casts to enum
+	type.
+	(gfc_build_st_parameter): Change variable 'type' to int.
+	(gfc_build_io_library_fndecls): Change variable 'ptype' to int.
+	* fortran/trans-types.c (gfc_init_kinds): Change loops to use int
+	type rather than enum type.
+
+2009-03-03  Thomas Neumann <tneumann@users.sourceforge.net>
+
+	* cp/parser.c (cp_lexer_get_preprocessor_token): Add missing cast
+	to enum.
+
+2009-03-03  Thomas Neumann <tneumann@users.sourceforge.net>
+
+	* tree-into-ssa.c (get_ssa_name_ann): Use NEED_PHI_STATE_UNKNOWN
+	instead of 0.
+
+2009-03-03  Thomas Neumann <tneumann@users.sourceforge.net>
+
+	* langhooks.c (add_builtin_function_common): Avoid assigning -1 to
+	an enum for C++ compatibility.
+
+2009-02-17  Thomas Neumann <tneumann@users.sourceforge.net>
+
+        * ira.c (setup_prohibited_mode_move_regs): Add missing casts to
+        enum machine_mode.
+
 2009-02-10  Ian Lance Taylor  <iant@google.com>
 
 	* df.h (struct df_mw_hardreg): Change flags field to int.

@@ -1,3 +1,24 @@
+2009-06-11  Alexandre Oliva  <aoliva@redhat.com>
+
+	* config/bootstrap-debug.mk: Add comments.
+	* config/bootstrap-debug-big.mk: New.
+	* config/bootstrap-debug-lean.mk: New.
+	* config/bootstrap-debug-ckovw.mk: Add comments.
+	* config/bootstrap-debug-lib.mk: Drop CFLAGS for stages.  Use -g0
+	for TFLAGS in stage1.  Drop -fvar-tracking-assignments-toggle.
+	* contrib/compare-debug: Look for .gkd files and compare them.
+	* Makefile.tpl (BUILD_CONFIG): Default to bootstrap-debug.
+	* Makefile.in: Rebuilt.
+
+2009-06-11  Alexandre Oliva  <aoliva@redhat.com>
+
+	* contrib/compare-debug: Use * rather than \? in portable regexp.
+
+2009-03-01  Alexandre Oliva  <aoliva@redhat.com>
+
+	* libdecnumber/dpd/decimal128.c (decimal128ToNumber): Use memcpy
+	to copy across aliasing-incompatible types.
+
 2008-12-05  Alexandre Oliva  <aoliva@redhat.com>
 
 	PR target/37033

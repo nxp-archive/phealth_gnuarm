@@ -1,5 +1,6 @@
 /* -----------------------------------------------------------------------
    ffi_common.h - Copyright (c) 1996  Red Hat, Inc.
+   Copyright (C) 2007 Free Software Foundation, Inc
 
    Common internal definitions and macros. Only necessary for building
    libffi.
@@ -17,8 +18,13 @@ extern "C" {
 /* Do not move this. Some versions of AIX are very picky about where
    this is positioned. */
 #ifdef __GNUC__
+/* mingw64 defines this already in malloc.h. */
+#ifndef alloca
 # define alloca __builtin_alloca
+#endif
+# define MAYBE_UNUSED __attribute__((__unused__))
 #else
+# define MAYBE_UNUSED
 # if HAVE_ALLOCA_H
 #  include <alloca.h>
 # else
@@ -26,7 +32,11 @@ extern "C" {
  #pragma alloca
 #  else
 #   ifndef alloca /* predefined by HP cc +Olibcalls */
+#    ifdef _MSC_VER
+#     define alloca _alloca
+#    else
 char *alloca ();
+#    endif
 #   endif
 #  endif
 # endif
@@ -74,6 +84,16 @@ typedef struct
 } extended_cif;
 
 /* Terse sized type definitions.  */
+#ifdef _MSC_VER
+typedef unsigned char UINT8;
+typedef signed char   SINT8;
+typedef unsigned short UINT16;
+typedef signed short   SINT16;
+typedef unsigned int UINT32;
+typedef signed int   SINT32;
+typedef unsigned __int64 UINT64;
+typedef signed __int64   SINT64;
+#else
 typedef unsigned int UINT8  __attribute__((__mode__(__QI__)));
 typedef signed int   SINT8  __attribute__((__mode__(__QI__)));
 typedef unsigned int UINT16 __attribute__((__mode__(__HI__)));
@@ -82,6 +102,7 @@ typedef unsigned int UINT32 __attribute__((__mode__(__SI__)));
 typedef signed int   SINT32 __attribute__((__mode__(__SI__)));
 typedef unsigned int UINT64 __attribute__((__mode__(__DI__)));
 typedef signed int   SINT64 __attribute__((__mode__(__DI__)));
+#endif
 
 typedef float FLOAT32;
 

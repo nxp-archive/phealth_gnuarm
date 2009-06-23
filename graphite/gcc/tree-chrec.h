@@ -1,5 +1,6 @@
 /* Chains of recurrences.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
 This file is part of GCC.
@@ -85,6 +86,7 @@ extern bool evolution_function_is_univariate_p (const_tree);
 extern unsigned nb_vars_in_chrec (tree);
 extern bool evolution_function_is_invariant_p (tree, int);
 extern bool scev_is_linear_expression (tree);
+extern bool evolution_function_right_is_integer_cst (const_tree);
 
 /* Determines whether CHREC is equal to zero.  */
 

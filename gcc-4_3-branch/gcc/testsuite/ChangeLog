@@ -1,7 +1,382 @@
+2009-06-22  Matthias Klose  <doko@ubuntu.com>
+
+	PR objc/28050
+	* pr28050.m: New testcase.
+
+2009-06-19  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline:
+	2009-02-03  Andrew Pinski  <andrew_pinski@playstation.sony.com>
+
+	PR C++/36607
+	* g++.dg/expr/cast10.C: New test.
+
+	2009-05-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/40204
+	* gcc.c-torture/compile/pr40204.c: New test.
+
+	2009-02-03  Jakub Jelinek  <jakub@redhat.com>
+ 
+	PR target/35318
+	* gcc.c-torture/compile/pr35318.c: New test.
+
+2009-06-19  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline:
+	2009-02-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/39240
+	* gcc.c-torture/execute/pr39240.c: New test.
+
+2009-06-19  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline:
+	2009-01-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/39013
+	* gcc.target/i386/pr39013-1.c: New test.
+	* gcc.target/i386/pr39013-2.c: New test.
+
+	2009-04-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/39855
+	* gcc.dg/torture/pr39855.c: New test.
+
+2009-06-18  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2009-06-18  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/40470
+	* gcc.dg/torture/pr40470-1.c: New.
+	* gcc.dg/torture/pr40470-2.c: Likewise.
+	* gcc.dg/torture/pr40470-3.c: Likewise.
+	* gcc.dg/torture/pr40470-4.c: Likewise.
+
+2009-06-17  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline
+	2009-03-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/39455
+	* gcc.dg/pr39455.c: New test.
+
+	2009-05-19  Zdenek Dvorak  <ook@ucw.cz>
+
+	PR tree-optimization/40087
+	* gcc.dg/tree-ssa/pr40087.c: New test.
+
+2009-06-17  Richard Guenther  <rguenther@suse.de>
+
+	PR middle-end/40404
+	* gcc.c-torture/execute/pr40404.c: New testcase.
+
+2009-06-17  Richard Guenther  <rguenther@suse.de>
+
+	PR middle-end/40389
+	* g++.dg/torture/pr40389.C: New testcase.
+
+2009-06-17  Richard Guenther  <rguenther@suse.de>
+
+	PR middle-end/40460
+	* g++.dg/torture/pr40460.C: New testcase.
+
+2009-06-08  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/40373
+	* g++.dg/template/dtor7.C: New test.
+
+2009-06-07  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2009-06-07  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR middle-end/32950
+	* g++.dg/torture/pr32950.C: New.
+
+2009-06-04  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline
+	2009-03-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/39371
+	* g++.dg/opt/switch2.C: Add -w to dg-options.
+	* g++.dg/warn/Wswitch-1.C: Adjust expected warnings.
+	* g++.dg/warn/switch1.C: New test.
+	* g++.dg/other/switch3.C: New test.
+	* g++.dg/torture/pr40335.C: New testcase.
+
+2009-05-26  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline
+	2008-12-12  Zdenek Dvorak  <ook@ucw.cz>
+
+	PR tree-optimization/32044
+	* gcc.dg/pr34027-1.c: Change outcome.
+	* gcc.dg/tree-ssa/pr32044.c: New test.
+
+2009-05-18  Dodji Seketeli  <dodji@redhat.com>
+
+	PR debug/40109
+	* g++.dg/debug/dwarf2/nested-1.C: New test.
+
+2009-05-18  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR testsuite/39907
+	* gcc.target/x86_64/abi/asm-support.s (snapshot_ret): Preserve
+	stack alignment.
+
+2009-05-10  Paul Thomas  <pault@gcc.gnu.org>
+
+	Backport from mainline:
+	PR fortran/39879
+	* gfortran.dg/alloc_comp_assign_10.f90: New test.
+
+2009-05-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/40057
+	* gcc.c-torture/execute/pr40057.c: New test.
+
+2009-05-06  Janis Johnson  <janis187@us.ibm.com>
+
+	* gcc.dg/dfp/pr39986.c: New test.
+
+2009-04-28  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	Backport from mainline:
+	PR testsuite/39769
+	* gcc.dg/vmx/3a-04.c (test): Don't rely on floating point equality
+	for testing the results of estimate instructions.
+	* gcc.dg/vmx/3a-04m.c (test): Ditto.
+	* gcc.dg/vmx/3a-05.c (test): Ditto.
+
+2009-04-27  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline
+	2009-04-18  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc.target/i386/pr39496.c: Compile with -mtune=i686.
+	* g++.dg/other/pr39496.C: Likewise.
+
+2009-04-23  Dodji Seketeli  <dodji@redhat.com>
+
+	PR c++/38228
+	* g++.dg/expr/bound-mem-fun.C: New test.
+
+2009-04-22  Dodji Seketeli  <dodji@redhat.com>
+
+	PR c++/39639
+	* g++.dg/cpp0x/pr39639.C: New test.
+
+2009-04-22  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline:
+	PR target/39496
+	* gcc.target/i386/pr39496.c: New test.
+	* g++.dg/other/pr39496.C: New test.
+
+2009-04-14  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2009-04-12  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/39740
+	* gcc.target/alpha/pr39740.c: New test.
+
+2009-04-13  Jason Merrill  <jason@redhat.com>
+
+	PR c++/39480
+	* g++.dg/init/copy7.C: New.
+
+2009-04-10  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2009-04-10  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR c++/28301
+	* g++.dg/debug/pr22514.C: Updated.
+	* g++.dg/parse/enum2.C: Likewise.
+	* g++.dg/parse/enum3.C: Likewise.
+
+	* g++.dg/template/pr28301.C: New.
+
+2009-04-08  Dodji Seketeli  <dodji@redhat.com>
+
+	PR c++/39637
+	* g++.dg/cpp0x/variadic-crash2.C: New test.
+
+2009-04-06  Jason Merrill  <jason@redhat.com>
+
+	PR c++/35146
+	* g++.dg/template/fnspec1.C: New.
+
+2009-04-04  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
+
+	PR libfortran/39528
+	* gfortran.dg/read_repeat.f90: New test.
+
+2009-04-04  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/39519
+	* gfortran.dg/alloc_comp_assign_9.f90: New test.
+
+2009-04-02  David Ayers  <ayers@fsfe.org>
+
+	PR objc/18456
+	* objc.dg/bad-receiver-type-2.m: New test contributed by
+	Alexander Mamberg.
+
+2009-04-02  David Ayers  <ayers@fsfe.org>
+
+	PR objc/27377
+	* objc.dg/conditional-1.m: New tests.
+	
+2009-04-01  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc.c-torture/compile/20090401-1.c: New test.
+
+2009-03-26  Ben Elliston  <bje@au.ibm.com>
+
+	Backport from mainline:
+	2009-02-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/39175
+	* gcc.dg/visibility-20.c: New test.
+	* g++.dg/ext/visibility/visibility-11.C: New test.
+
+2009-03-23  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2009-03-17  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/39482
+	* gcc.target/i386/pr39482.c: New test.
+
+2009-03-18  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2009-03-18  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR c++/39425
+	* g++.dg/template/pr39425.C: New.
+
+	* g++.dg/template/spec33.C: Updated.
+
+2009-03-13  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2009-03-13  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR testsuite/39451
+	* gcc.dg/asm-b.c: Use "Q" constraint on %b1/%h1 and "R"
+	constraint on (%2).
+
+2009-03-11  Ulrich Weigand  <Ulrich.Weigand@de.ibm.com>
+
+	* g++.old-deja/g++.jason/thunk2.C: Skip on SPU.
+
+2009-03-07  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/39295
+	* gfortran.dg/interface_25.f90: New test.
+	* gfortran.dg/interface_26.f90: New test.
+
+2009-03-07  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/39292
+	* gfortran.dg/initialization_22.f90: New test.
+
+2009-02-26  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2009-02-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR inline-asm/39058
+	* gcc.target/i386/pr39058.c: New test.
+
+2009-02-25  Janis Johnson  <janis187@us.ibm.com>
+
+	Backport from mainline:
+	2008-10-29  Joseph Myers  <joseph@codesourcery.com>
+
+	PR middle-end/36578
+	* gcc.dg/dfp/convert-bfp-13.c, gcc.dg/dfp/convert-bfp-14.c,
+	gcc.dg/dfp/convert-dfp-fold-2.c, gcc.target/i386/pr36578-1.c,
+	gcc.target/i386/pr36578-2.c: New tests.
+
+2009-02-25  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2008-02-25  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR rtl-optimization/39241
+	* gcc.dg/torture/pr39241.c: New.
+
+2009-02-21  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	* gcc.c-torture/execute/pr39228.x: New.
+
+2009-02-20  Steve Ellcey  <sje@cup.hp.com>
+
+	PR target/38056
+	* gcc.target/ia64/sibcall-opt-1.c: New test.
+	* gcc.target/ia64/sibcall-opt-2.c: New test.
+
+2009-02-20  Jason Merrill  <jason@redhat.com>
+
+	PR c++/39225
+	* g++.dg/parse/dtor15.C: New test.
+
+2009-02-19  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/39228
+	* gcc.c-torture/execute/pr39228.c: New test.
+
+2009-02-19  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/38852
+	PR fortran/39006
+	Backport from mainline:
+	* gfortran.dg/bound_6.f90: New test.
+
+2009-02-17  Jason Merrill  <jason@redhat.com>
+
+	PR c++/38950
+	* g++.dg/template/array20.C: New test.
+
+2009-02-17  Joseph Myers  <joseph@codesourcery.com>
+
+	PR c/35446
+	* gcc.dg/noncompile/init-5.c: New test.
+	* gcc.dg/init-bad-4.c: Adjust expected errors.
+
+2009-02-15  Uros Bizjak  <ubizjak@gmail.com>
+
+	* gcc.dg/struct/w_prof_single_str_global.c: Mask return value.
+
+	Backport from mainline:
+	2009-01-12  Mark Mitchell  <mark@codesourcery.com>
+
+	* gcc.dg/struct/wo_prof_single_str_global.c: Mask return value.
+	* gcc.dg/struct/wo_prof_single_str_local.c: Mask return value.
+	* gcc.dg/struct/wo_prof_single_str_pointer.c: Mask return value.
+
+2009-02-13  Jason Merrill  <jason@redhat.com>
+
+	PR c++/39070
+	* g++.dg/cpp0x/decltype16.C: New.
+
+2009-02-13  Joseph Myers  <joseph@codesourcery.com>
+
+	PR c/35444
+	* gcc.dg/noncompile/pr35444-1.c, gcc.dg/noncompile/pr35444-2.c:
+	New tests.
+
 2009-02-10  Steve Ellcey  <sje@cup.hp.com>
 
 	PR c/39084
-	gcc.dg/pr39084.c: New test.
+	* gcc.dg/pr39084.c: New test.
 
 2009-02-09  Janis Johnson  <janis187@us.ibm.com>
 

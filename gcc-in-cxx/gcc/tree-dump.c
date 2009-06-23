@@ -1,5 +1,5 @@
 /* Tree-dumping functionality for intermediate representation.
-   Copyright (C) 1999, 2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 1999, 2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Written by Mark Mitchell <mark@codesourcery.com>
 
@@ -510,10 +510,6 @@ dequeue_and_dump (dump_info_p di)
     case CONST_DECL:
       dump_child ("cnst", DECL_INITIAL (t));
       break;
-      
-    case SYMBOL_MEMORY_TAG:
-    case NAME_MEMORY_TAG:
-      break;
 
     case VAR_DECL:
     case PARM_DECL:
@@ -807,6 +803,7 @@ struct dump_option_value_info
 static const struct dump_option_value_info dump_options[] =
 {
   {"address", TDF_ADDRESS},
+  {"asmname", TDF_ASMNAME},
   {"slim", TDF_SLIM},
   {"raw", TDF_RAW},
   {"graph", TDF_GRAPH},
@@ -1120,5 +1117,3 @@ enable_rtl_dump_file (void)
 {
   return dump_enable_all (TDF_RTL | TDF_DETAILS | TDF_BLOCKS) > 0;
 }
-
-

@@ -1,6 +1,6 @@
 /* Search an insn for pseudo regs that must be in hard regs and are not.
    Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -2135,11 +2135,15 @@ hard_reg_set_here_p (unsigned int beg_regno, unsigned int end_regno, rtx x)
 int
 strict_memory_address_p (enum machine_mode mode ATTRIBUTE_UNUSED, rtx addr)
 {
+#ifdef GO_IF_LEGITIMATE_ADDRESS
   GO_IF_LEGITIMATE_ADDRESS (mode, addr, win);
   return 0;
 
  win:
   return 1;
+#else
+  return targetm.legitimate_address_p (mode, addr, 1);
+#endif
 }
 
 /* Like rtx_equal_p except that it allows a REG and a SUBREG to match
@@ -2566,7 +2570,7 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
   enum reload_usage { RELOAD_READ, RELOAD_READ_WRITE, RELOAD_WRITE } modified[MAX_RECOG_OPERANDS];
   int no_input_reloads = 0, no_output_reloads = 0;
   int n_alternatives;
-  int this_alternative[MAX_RECOG_OPERANDS];
+  enum reg_class this_alternative[MAX_RECOG_OPERANDS];
   char this_alternative_match_win[MAX_RECOG_OPERANDS];
   char this_alternative_win[MAX_RECOG_OPERANDS];
   char this_alternative_offmemok[MAX_RECOG_OPERANDS];
@@ -3060,7 +3064,7 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 		force_reload = 1;
 	    }
 
-	  this_alternative[i] = (int) NO_REGS;
+	  this_alternative[i] = NO_REGS;
 	  this_alternative_win[i] = 0;
 	  this_alternative_match_win[i] = 0;
 	  this_alternative_offmemok[i] = 0;
@@ -3147,7 +3151,7 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 		       this combination, because we can't reload it.  */
 		    if (this_alternative_offmemok[m]
 			&& MEM_P (recog_data.operand[m])
-			&& this_alternative[m] == (int) NO_REGS
+			&& this_alternative[m] == NO_REGS
 			&& ! this_alternative_win[m])
 		      bad = 1;
 
@@ -3163,7 +3167,7 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 		    if (this_alternative_win[m])
 		      losers++;
 		    this_alternative_win[m] = 0;
-		    if (this_alternative[m] == (int) NO_REGS)
+		    if (this_alternative[m] == NO_REGS)
 		      bad = 1;
 		    /* But count the pair only once in the total badness of
 		       this alternative, if the pair can be a dummy reload.
@@ -3187,8 +3191,7 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 					   recog_data.operand_loc[loc1],
 					   recog_data.operand_loc[loc2],
 					   operand_mode[i], operand_mode[m],
-					   (enum reg_class) this_alternative[m],
-					   -1,
+					   this_alternative[m], -1,
 					   this_alternative_earlyclobber[m]);
 
 		    if (value != 0)
@@ -3213,8 +3216,8 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 	      case 'p':
 		/* All necessary reloads for an address_operand
 		   were handled in find_reloads_address.  */
-		this_alternative[i]
-		  = (int) base_reg_class (VOIDmode, ADDRESS, SCRATCH);
+		this_alternative[i] = base_reg_class (VOIDmode, ADDRESS,
+						      SCRATCH);
 		win = 1;
 		badop = 0;
 		break;
@@ -3373,7 +3376,7 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 
 	      case 'r':
 		this_alternative[i]
-		  = (int) reg_class_subunion[this_alternative[i]][(int) GENERAL_REGS];
+		  = reg_class_subunion[this_alternative[i]][(int) GENERAL_REGS];
 		goto reg;
 
 	      default:
@@ -3419,8 +3422,9 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 
 			/* If we didn't already win, we can reload
 			   the address into a base register.  */
-			this_alternative[i]
-			  = (int) base_reg_class (VOIDmode, ADDRESS, SCRATCH);
+			this_alternative[i] = base_reg_class (VOIDmode,
+							      ADDRESS,
+							      SCRATCH);
 			badop = 0;
 			break;
 		      }
@@ -3432,16 +3436,15 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 		  }
 
 		this_alternative[i]
-		  = (int) (reg_class_subunion
-			   [this_alternative[i]]
-			   [(int) REG_CLASS_FROM_CONSTRAINT (c, p)]);
+		  = (reg_class_subunion
+		     [this_alternative[i]]
+		     [(int) REG_CLASS_FROM_CONSTRAINT (c, p)]);
 	      reg:
 		if (GET_MODE (operand) == BLKmode)
 		  break;
 		winreg = 1;
 		if (REG_P (operand)
-		    && reg_fits_class_p (operand,
-					 (enum reg_class) this_alternative[i],
+		    && reg_fits_class_p (operand, this_alternative[i],
 					 offset, GET_MODE (recog_data.operand[i])))
 		  win = 1;
 		break;
@@ -3452,7 +3455,7 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 
 	  /* If this operand could be handled with a reg,
 	     and some reg is allowed, then this operand can be handled.  */
-	  if (winreg && this_alternative[i] != (int) NO_REGS)
+	  if (winreg && this_alternative[i] != NO_REGS)
 	    badop = 0;
 
 	  /* Record which operands fit this alternative.  */
@@ -3471,7 +3474,7 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 		bad = 1;
 	      /* Alternative loses if it has no regs for a reg operand.  */
 	      if (REG_P (operand)
-		  && this_alternative[i] == (int) NO_REGS
+		  && this_alternative[i] == NO_REGS
 		  && this_alternative_matches[i] < 0)
 		bad = 1;
 
@@ -3484,14 +3487,13 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 		 precisely the same as in the code below that calls
 		 force_const_mem.  */
 	      if (CONST_POOL_OK_P (operand)
-		  && ((PREFERRED_RELOAD_CLASS (operand,
-					       (enum reg_class) this_alternative[i])
+		  && ((PREFERRED_RELOAD_CLASS (operand, this_alternative[i])
 		       == NO_REGS)
 		      || no_input_reloads)
 		  && operand_mode[i] != VOIDmode)
 		{
 		  const_to_mem = 1;
-		  if (this_alternative[i] != (int) NO_REGS)
+		  if (this_alternative[i] != NO_REGS)
 		    losers++;
 		}
 
@@ -3511,19 +3513,17 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 		 LIMIT_RELOAD_CLASS, but we don't check that
 		 here.  */
 
-	      if (! CONSTANT_P (operand)
-		  && (enum reg_class) this_alternative[i] != NO_REGS)
+	      if (! CONSTANT_P (operand) && this_alternative[i] != NO_REGS)
 		{
-		  if (PREFERRED_RELOAD_CLASS
-			(operand, (enum reg_class) this_alternative[i])
+		  if (PREFERRED_RELOAD_CLASS (operand, this_alternative[i])
 		      == NO_REGS)
 		    reject = 600;
 
 #ifdef PREFERRED_OUTPUT_RELOAD_CLASS
 		  if (operand_type[i] == RELOAD_FOR_OUTPUT
-		      && PREFERRED_OUTPUT_RELOAD_CLASS
-			   (operand, (enum reg_class) this_alternative[i])
-		         == NO_REGS)
+		      && (PREFERRED_OUTPUT_RELOAD_CLASS (operand,
+							this_alternative[i])
+			  == NO_REGS))
 		    reject = 600;
 #endif
 		}
@@ -3571,12 +3571,12 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 	     because we might otherwise exhaust the class.  */
 
 	  if (! win && ! did_match
-	      && this_alternative[i] != (int) NO_REGS
+	      && this_alternative[i] != NO_REGS
 	      && GET_MODE_SIZE (operand_mode[i]) <= UNITS_PER_WORD
 	      && reg_class_size [(int) preferred_class[i]] > 0
 	      && ! SMALL_REGISTER_CLASS_P (preferred_class[i]))
 	    {
-	      if (! reg_class_subset_p ((enum reg_class) this_alternative[i],
+	      if (! reg_class_subset_p (this_alternative[i],
 					preferred_class[i]))
 		{
 		  /* Since we don't have a way of forming the intersection,
@@ -3584,8 +3584,8 @@ find_reloads (rtx insn, int replace, int ind_levels, int live_known,
 		     is a subset of the class we have; that's the most
 		     common case anyway.  */
 		  if (reg_class_subset_p (preferred_class[i],
-					  (enum reg_class) this_alternative[i]))
-		    this_alternative[i] = (int) preferred_class[i];
+					  this_alternative[i]))
+		    this_alternative[i] = preferred_class[i];
 		  else
 		    reject += (2 + 2 * pref_or_nothing[i]);
 		}
@@ -4567,8 +4567,7 @@ alternative_allows_const_pool_ref (rtx mem, const char *constraint, int altnum)
   /* Skip alternatives before the one requested.  */
   while (altnum > 0)
     {
-      while (*constraint++ != ',')
-	;
+      while (*constraint++ != ',');
       altnum--;
     }
   /* Scan the requested alternative for TARGET_MEM_CONSTRAINT or 'o'.

@@ -1,3 +1,175 @@
+2009-06-09  Jan Hubicka  <jh@suse.cz>
+
+	* gcc.dg/ipa/ipa.exp: Re-enable
+
+2009-06-02  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/ipa/ipa.exp: Disable temporarily.
+
+2009-05-21  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/lto/lto.exp: Call check_effective_target_lto.
+	* g++.dg/lto/lto.exp: Call check_effective_target_lto.
+
+2009-05-19  Diego Novillo  <dnovillo@google.com>
+
+	* lib/target-supports.exp (check_effective_target_lto): New.
+	* lib/c-torture.exp: Call it to set LTO_TORTURE_OPTIONS.
+	* lib/gcc-dg.exp: Likewise.
+	* lib/torture-options.exp (set-torture-options): Add 3rd
+	argument.  Append it to 'torture_with_loops' and
+	'torture_without_loops'.
+	* gcc.c-torture/execute/execute.exp: Add LTO_TORTURE_OPTIONS 
+	when calling set-torture-options.
+	* gcc.c-torture/execute/builtins/builtins.exp: Likewise.
+	* gcc.c-torture/execute/ieee/ieee.exp: Likewise.
+	* gcc.c-torture/unsorted/unsorted.exp: Likewise.
+	* gcc.target/i386/math-torture/math-torture.exp: Likewise.
+	* gcc.target/x86_64/abi/abi-x86_64.exp: Likewise.
+	* gcc.target/x86_64/abi/avx/abi-avx.exp: Likewise.
+	* gcc.misc-tests/i386-prefetch.exp: Likewise.
+	* gcc.misc-tests/dectest.exp: Likewise.
+
+2009-05-15  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/lto/20090206-1_0.c: Add -fPIC.
+
+2009-04-01  Rafael Avila de Espindola  <espindola@google.com>
+
+	* g++.dg/lto/20080909-1_0.C:  Don't use -flto-single.
+	* g++.dg/lto/20080917_0.C:  Don't use -flto-single.
+	* g++.dg/lto/20080924_0.C:  Don't use -flto-single.
+	* g++.dg/lto/20080926_0.C:  Don't use -flto-single.
+	* g++.dg/lto/20081008_0.C:  Don't use -flto-single.
+	* g++.dg/lto/20081120-1_0.C:  Don't use -flto-single.
+	* g++.dg/lto/20081120-2_0.C:  Don't use -flto-single.
+	* gcc.dg/lto/20080917_0.c:  Don't use -flto-single.
+	* gcc.dg/lto/20080924_0.c:  Don't use -flto-single.
+	* gcc.dg/lto/20081109_0.c:  Don't use -flto-single.
+	* gcc.dg/lto/20081120-1_0.c:  Don't use -flto-single.
+	* gcc.dg/lto/20081126_0.c:  Don't use -flto-single.
+	* gcc.dg/lto/20081204-2_0.c:  Don't use -flto-single.
+	* lib/lto.exp (lto_init): Don't use -flto-single.
+
+2009-03-26  Simon Baldwin  <simonb@google.com>
+
+	* g++.dg/lto/20090315_0.C:
+	* g++.dg/lto/20090315_1.C:
+
+2009-03-15  Diego Novillo  <dnovillo@google.com>
+
+	* g++.dg/lto/20090313_0.C: Add -fPIC.
+
+2009-03-14  Diego Novillo  <dnovillo@google.com>
+
+	* g++.dg/lto/20090311-1.h: New.
+	* g++.dg/lto/20090311-1_0.C: New.
+	* g++.dg/lto/20090311-1_1.C: New.
+	* g++.dg/lto/20090312.h: New.
+	* g++.dg/lto/20090312_0.C: New.
+	* g++.dg/lto/20090312_1.C: New.
+
+2009-03-14  Simon Baldwin  <simonb@google.com>
+
+	* g++.dg/lto/20090313_0.C: New.
+	* g++.dg/lto/20090313_1.C: New.
+
+2009-03-13  Rafael Avila de Espindola  <espindola@google.com>
+
+	* gcc.dg/lto/20090313_0.c: New.
+
+2009-03-12  Simon Baldwin  <simonb@google.com>
+
+	* gcc.dg/lto/20090312_0.c: New.
+	* gcc.dg/lto/20090312_1.c: New.
+
+2009-03-11  Rafael Avila de Espindola  <espindola@google.com>
+
+	* g++.dg/lto/20090311_0.C: New.
+	* g++.dg/lto/20090311_1.C: New.
+
+2009-03-10  Diego Novillo  <dnovillo@google.com>
+
+	Revert:
+
+	2009-03-09  Simon Baldwin  <simonb@google.com>
+
+		* g++.dg/lto/20090302_0.C: New.
+		* g++.dg/lto/20090302_1.C: New.
+
+2009-03-10  Rafael Avila de Espindola  <espindola@google.com>
+
+	* g++.dg/lto/20090309_0.C: New.
+	* g++.dg/lto/20090309_1.C: New
+
+2009-03-09  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.c-torture/execute/builtins/strlen-3.c: Fix ODR issue
+	for inside_main.
+	* gcc.dg/lto/20081204-1_0.c: Fix ODR issue for i.
+
+2009-03-09  Simon Baldwin  <simonb@google.com>
+
+	* g++.dg/lto/20090302_0.C: New.
+	* g++.dg/lto/20090302_1.C: New.
+
+2009-03-04  Rafael Avila de Espindola  <espindola@google.com>
+
+	* g++.dg/lto/20090303_0.C: New.
+
+2009-02-24  Rafael Avila de Espindola  <espindola@google.com>
+
+	* gcc.dg/lto/20090218-2_0.c: New.
+	* gcc.dg/lto/20090218-2_1.c: New.
+
+2009-02-23  Rafael Avila de Espindola  <espindola@google.com>
+
+	* gcc/testsuite/gcc.dg/lto/20090218-1_0.c: New.
+	* gcc/testsuite/gcc.dg/lto/20090218-1_1.c: New.
+
+2009-02-22  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/lto/20090219_0.c: Add -fPIC.
+	* g++.dg/lto/20090221_0.C: New.
+
+2009-02-20  Simon Baldwin  <simonb@google.com>
+
+	* gcc.dg/lto/20090219_0.c: New.
+
+2009-02-19  Diego Novillo  <dnovillo@google.com>
+
+	Revert
+
+	2009-02-19  Rafael Avila de Espindola  <espindola@google.com>
+
+		* gcc.dg/lto/20090218-1_0.c: New.
+		* gcc.dg/lto/20090218-1_1.c: New.
+		* gcc.dg/lto/20090218-2_0.c: New.
+		* gcc.dg/lto/20090218-2_1.c: New.
+
+2009-02-19  Rafael Avila de Espindola  <espindola@google.com>
+
+	* gcc.dg/lto/20090218-1_0.c: New.
+	* gcc.dg/lto/20090218-1_1.c: New.
+	* gcc.dg/lto/20090218-2_0.c: New.
+	* gcc.dg/lto/20090218-2_1.c: New.
+
+2009-02-18  Diego Novillo  <dnovillo@google.com>
+
+	* g++.dg/opt/thunk3-1.C: Rename from thunk3.C
+
+2009-02-18  Rafael Avila de Espindola  <espindola@google.com>
+
+	* gcc.dg/lto/20090218_0.c: New.
+	* gcc.dg/lto/20090218_1.c: New.
+	* gcc.dg/lto/20090218_2.c: New.
+	* gcc.dg/lto/20090218_3.c: New.
+
+2009-02-13  Diego Novillo  <dnovillo@google.com>
+
+	* gcc.dg/lto/20090213_0.c: New.
+	* gcc.dg/lto/20090213_1.c: New.
+
 2009-02-10  Diego Novillo  <dnovillo@google.com>
 
 	* gcc.dg/lto/20090210_0.c: New.

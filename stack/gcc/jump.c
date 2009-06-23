@@ -1,6 +1,6 @@
 /* Optimize jump instructions, for GNU compiler.
    Copyright (C) 1987, 1988, 1989, 1991, 1992, 1993, 1994, 1995, 1996, 1997
-   1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
+   1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -351,7 +351,7 @@ reversed_comparison_code_parts (enum rtx_code code, const_rtx arg0,
 	return UNKNOWN;
 
       /* These CONST_CAST's are okay because prev_nonnote_insn just
-	 returns it's argument and we assign it to a const_rtx
+	 returns its argument and we assign it to a const_rtx
 	 variable.  */
       for (prev = prev_nonnote_insn (CONST_CAST_RTX(insn));
 	   prev != 0 && !LABEL_P (prev);
@@ -1563,11 +1563,6 @@ rtx_renumbered_equal_p (const_rtx x, const_rtx y)
 					   GET_MODE (x));
 	      byte_x = 0;
 	    }
-	  else if (!subreg_offset_representable_p (reg_x,
-						   GET_MODE (SUBREG_REG (x)),
-						   byte_x,
-						   GET_MODE (x)))
-	    return 0;
 	}
       else
 	{
@@ -1594,11 +1589,6 @@ rtx_renumbered_equal_p (const_rtx x, const_rtx y)
 					   GET_MODE (y));
 	      byte_y = 0;
 	    }
-	  else if (!subreg_offset_representable_p (reg_y,
-						   GET_MODE (SUBREG_REG (y)),
-						   byte_y,
-						   GET_MODE (y)))
-	    return 0;
 	}
       else
 	{

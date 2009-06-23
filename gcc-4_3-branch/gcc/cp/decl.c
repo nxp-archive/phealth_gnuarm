@@ -2807,7 +2807,8 @@ finish_case_label (tree low_value, tree high_value)
   if (!check_switch_goto (switch_stack->level))
     return error_mark_node;
 
-  r = c_add_case_label (switch_stack->cases, cond, TREE_TYPE (cond),
+  r = c_add_case_label (switch_stack->cases, cond,
+			SWITCH_STMT_TYPE (switch_stack->switch_stmt),
 			low_value, high_value);
 
   /* After labels, make any new cleanups in the function go into their
@@ -7512,7 +7513,9 @@ grokdeclarator (const cp_declarator *declarator,
 		    }
 
 		  type = TREE_OPERAND (decl, 0);
-		  name = IDENTIFIER_POINTER (constructor_name (type));
+		  if (TYPE_P (type))
+		    type = constructor_name (type);
+		  name = IDENTIFIER_POINTER (type);
 		  dname = decl;
 		}
 		break;
@@ -8009,8 +8012,9 @@ grokdeclarator (const cp_declarator *declarator,
       switch (TREE_CODE (unqualified_id))
 	{
 	case BIT_NOT_EXPR:
-	  unqualified_id
-	    = constructor_name (TREE_OPERAND (unqualified_id, 0));
+	  unqualified_id = TREE_OPERAND (unqualified_id, 0);
+	  if (TYPE_P (unqualified_id))
+	    unqualified_id = constructor_name (unqualified_id);
 	  break;
 
 	case IDENTIFIER_NODE:
@@ -8856,21 +8860,20 @@ grokdeclarator (const cp_declarator *declarator,
 	    /* Check that the name used for a destructor makes sense.  */
 	    if (sfk == sfk_destructor)
 	      {
+		tree uqname = id_declarator->u.id.unqualified_name;
+
 		if (!ctype)
 		  {
 		    gcc_assert (friendp);
 		    error ("expected qualified name in friend declaration "
-			   "for destructor %qD",
-			   id_declarator->u.id.unqualified_name);
+			   "for destructor %qD", uqname);
 		    return error_mark_node;
 		  }
 
-		if (!same_type_p (TREE_OPERAND
-				  (id_declarator->u.id.unqualified_name, 0),
-				  ctype))
+		if (!check_dtor_name (ctype, TREE_OPERAND (uqname, 0)))
 		  {
 		    error ("declaration of %qD as member of %qT",
-			   id_declarator->u.id.unqualified_name, ctype);
+			   uqname, ctype);
 		    return error_mark_node;
 		  }
 	      }

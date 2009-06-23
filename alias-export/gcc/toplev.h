@@ -1,12 +1,12 @@
 /* toplev.h - Various declarations for functions found in toplev.c
-   Copyright (C) 1998, 1999, 2000, 2001, 2003, 2004, 2005, 2006, 2007
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2003, 2004, 2005, 2006, 2007, 2008,
+   2009 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,25 +15,26 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_TOPLEV_H
 #define GCC_TOPLEV_H
+#include "input.h"
+#include "bversion.h"
 
 /* If non-NULL, return one past-the-end of the matching SUBPART of
    the WHOLE string.  */
 #define skip_leading_substring(whole,  part) \
    (strncmp (whole, part, strlen (part)) ? NULL : whole + strlen (part))
 
-extern int toplev_main (unsigned int, const char **);
+extern int toplev_main (int, char **);
 extern int read_integral_parameter (const char *, const char *, const int);
 extern void strip_off_ending (char *, int);
 extern const char *trim_filename (const char *);
-extern void _fatal_insn_not_found (rtx, const char *, int, const char *)
+extern void _fatal_insn_not_found (const_rtx, const char *, int, const char *)
      ATTRIBUTE_NORETURN;
-extern void _fatal_insn (const char *, rtx, const char *, int, const char *)
+extern void _fatal_insn (const char *, const_rtx, const char *, int, const char *)
      ATTRIBUTE_NORETURN;
 
 #define fatal_insn(msgid, insn) \
@@ -49,22 +50,27 @@ extern void _fatal_insn (const char *, rtx, const char *, int, const char *)
 /* None of these functions are suitable for ATTRIBUTE_PRINTF, because
    each language front end can extend them with its own set of format
    specifiers.  We must use custom format checks.  */
-#if GCC_VERSION >= 4001
+#if (ENABLE_CHECKING && GCC_VERSION >= 4001) || GCC_VERSION == BUILDING_GCC_VERSION
 #define ATTRIBUTE_GCC_DIAG(m, n) __attribute__ ((__format__ (GCC_DIAG_STYLE, m, n))) ATTRIBUTE_NONNULL(m)
 #else
 #define ATTRIBUTE_GCC_DIAG(m, n) ATTRIBUTE_NONNULL(m)
 #endif
 extern void internal_error (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2)
      ATTRIBUTE_NORETURN;
-extern void warning0 (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2);
 /* Pass one of the OPT_W* from options.h as the first parameter.  */
-extern void warning (int, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
+extern bool warning (int, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
+extern bool warning_at (location_t, int, const char *, ...)
+    ATTRIBUTE_GCC_DIAG(3,4);
 extern void error (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2);
+extern void error_at (location_t, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
 extern void fatal_error (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2)
      ATTRIBUTE_NORETURN;
-extern void pedwarn (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2);
+/* Pass one of the OPT_W* from options.h as the second parameter.  */
+extern bool pedwarn (location_t, int, const char *, ...) 
+     ATTRIBUTE_GCC_DIAG(3,4);
+extern bool permerror (location_t, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
 extern void sorry (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2);
-extern void inform (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2);
+extern void inform (location_t, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
 extern void verbatim (const char *, ...) ATTRIBUTE_GCC_DIAG(1,2);
 
 extern void rest_of_decl_compilation (tree, int, int);
@@ -72,13 +78,14 @@ extern void rest_of_type_compilation (tree, int);
 extern void tree_rest_of_compilation (tree);
 extern void init_optimization_passes (void);
 extern void finish_optimization_passes (void);
-extern bool enable_rtl_dump_file (int);
+extern bool enable_rtl_dump_file (void);
 
 extern void announce_function (tree);
 
-extern void error_for_asm (rtx, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
-extern void warning_for_asm (rtx, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
-extern void warn_deprecated_use (tree);
+extern void error_for_asm (const_rtx, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
+extern void warning_for_asm (const_rtx, const char *, ...) ATTRIBUTE_GCC_DIAG(2,3);
+extern void warn_deprecated_use (tree, tree);
+extern bool parse_optimize_options (tree, bool);
 
 #ifdef BUFSIZ
 extern void output_quoted_string	(FILE *, const char *);
@@ -102,6 +109,8 @@ extern void write_global_declarations (void);
 
 extern void dump_memory_report (bool);
 
+extern void target_reinit (void);
+
 /* A unique local time stamp, might be zero if none is available.  */
 extern unsigned local_tick;
 
@@ -109,10 +118,9 @@ extern const char *progname;
 extern const char *dump_base_name;
 extern const char *aux_base_name;
 extern const char *aux_info_file_name;
+extern const char *profile_data_prefix;
 extern const char *asm_file_name;
 extern bool exit_after_options;
-
-extern int target_flags_explicit;
 
 /* True if the user has tagged the function with the 'section'
    attribute.  */
@@ -125,6 +133,7 @@ extern int flag_if_conversion;
 extern int flag_if_conversion2;
 extern int flag_keep_static_consts;
 extern int flag_peel_loops;
+extern int flag_rerun_cse_after_global_opts;
 extern int flag_rerun_cse_after_loop;
 extern int flag_thread_jumps;
 extern int flag_tracer;
@@ -133,6 +142,10 @@ extern int flag_unroll_all_loops;
 extern int flag_unswitch_loops;
 extern int flag_cprop_registers;
 extern int time_report;
+extern int flag_ira_coalesce;
+extern int flag_ira_move_spills;
+extern int flag_ira_share_save_slots;
+extern int flag_ira_share_spill_slots;
 
 /* Things to do with target switches.  */
 extern void print_version (FILE *, const char *);
@@ -147,11 +160,14 @@ extern struct ht *ident_hash;
 
 extern void set_fast_math_flags         (int);
 
+extern void set_unsafe_math_optimizations_flags (int);
+
 /* Handle -d switch.  */
 extern void decode_d_option		(const char *);
 
 /* Return true iff flags are set as if -ffast-math.  */
 extern bool fast_math_flags_set_p	(void);
+extern bool fast_math_flags_struct_set_p (struct cl_optimization *);
 
 /* Return log2, or -1 if not exact.  */
 extern int exact_log2                  (unsigned HOST_WIDE_INT);

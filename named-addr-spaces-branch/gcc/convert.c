@@ -1,6 +1,6 @@
 /* Utility routines for data type conversion for GCC.
    Copyright (C) 1987, 1988, 1991, 1992, 1993, 1994, 1995, 1997, 1998,
-   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -62,31 +62,28 @@ convert_to_pointer (tree type, tree expr)
       /* If the pointers point to different address spaces, see if we can do the
 	 convert, and if we can do the convert, whether the conversion is a NOP
 	 or not.  */
-      tcode = NOP_EXPR;
       from_as = TYPE_ADDR_SPACE (TREE_TYPE (TREE_TYPE (expr)));
-      if (to_as != from_as)
+      if (to_as == from_as)
+	tcode = NOP_EXPR;
+      else if (targetm.addr_space.can_convert_p (TREE_TYPE (expr), type))
+	tcode = CONVERT_EXPR;
+      else
 	{
-	  if (! targetm.addr_space.can_convert_p (from_as, to_as))
-	    {
-	      if (!from_as)
-		error ("cannot convert generic address space pointers to "
-		       "%s address space pointers",
-		       targetm.addr_space.name (to_as));
-	      else if (!to_as)
-		error ("cannot convert %s address space pointers to "
-		       "generic address space pointers",
-		       targetm.addr_space.name (from_as));
-	      else
-		error ("cannot convert %s address space pointers to "
-		       "%s address space pointers",
-		       targetm.addr_space.name (from_as),
-		       targetm.addr_space.name (to_as));
+	  if (!from_as)
+	    error ("cannot convert generic address space pointers to %s "
+		   "address space pointers",
+		   targetm.addr_space.name (to_as));
+	  else if (!to_as)
+	    error ("cannot convert %s address space pointers to generic "
+		   "address space pointers",
+		   targetm.addr_space.name (from_as));
+	  else
+	    error ("cannot convert %s address space pointers to %s address "
+		   "space pointers",
+		   targetm.addr_space.name (from_as),
+		   targetm.addr_space.name (to_as));
 
-	      return convert_to_pointer (type, integer_zero_node);
-	    }
-
-	  if (! targetm.addr_space.nop_convert_p (from_as, to_as))
-	    tcode = CONVERT_EXPR;
+	  return convert_to_pointer (type, integer_zero_node);
 	}
       return fold_build1 (tcode, type, expr);
 
@@ -178,40 +175,45 @@ convert_to_real (tree type, tree expr)
       switch (fcode)
         {
 #define CASE_MATHFN(FN) case BUILT_IN_##FN: case BUILT_IN_##FN##L:
-	  CASE_MATHFN (ACOS)
-	  CASE_MATHFN (ACOSH)
-	  CASE_MATHFN (ASIN)
-	  CASE_MATHFN (ASINH)
-	  CASE_MATHFN (ATAN)
-	  CASE_MATHFN (ATANH)
-	  CASE_MATHFN (CBRT)
-	  CASE_MATHFN (COS)
 	  CASE_MATHFN (COSH)
-	  CASE_MATHFN (ERF)
-	  CASE_MATHFN (ERFC)
 	  CASE_MATHFN (EXP)
 	  CASE_MATHFN (EXP10)
 	  CASE_MATHFN (EXP2)
-	  CASE_MATHFN (EXPM1)
-	  CASE_MATHFN (FABS)
+ 	  CASE_MATHFN (EXPM1)
 	  CASE_MATHFN (GAMMA)
 	  CASE_MATHFN (J0)
 	  CASE_MATHFN (J1)
 	  CASE_MATHFN (LGAMMA)
-	  CASE_MATHFN (LOG)
-	  CASE_MATHFN (LOG10)
-	  CASE_MATHFN (LOG1P)
-	  CASE_MATHFN (LOG2)
-	  CASE_MATHFN (LOGB)
 	  CASE_MATHFN (POW10)
-	  CASE_MATHFN (SIN)
 	  CASE_MATHFN (SINH)
-	  CASE_MATHFN (SQRT)
-	  CASE_MATHFN (TAN)
-	  CASE_MATHFN (TANH)
 	  CASE_MATHFN (TGAMMA)
 	  CASE_MATHFN (Y0)
 	  CASE_MATHFN (Y1)
+	    /* The above functions may set errno differently with float
+	       input or output so this transformation is not safe with
+	       -fmath-errno.  */
+	    if (flag_errno_math)
+	      break;
+	  CASE_MATHFN (ACOS)
+	  CASE_MATHFN (ACOSH)
+	  CASE_MATHFN (ASIN)
+ 	  CASE_MATHFN (ASINH)
+ 	  CASE_MATHFN (ATAN)
+	  CASE_MATHFN (ATANH)
+ 	  CASE_MATHFN (CBRT)
+ 	  CASE_MATHFN (COS)
+ 	  CASE_MATHFN (ERF)
+ 	  CASE_MATHFN (ERFC)
+ 	  CASE_MATHFN (FABS)
+	  CASE_MATHFN (LOG)
+	  CASE_MATHFN (LOG10)
+	  CASE_MATHFN (LOG2)
+ 	  CASE_MATHFN (LOG1P)
+ 	  CASE_MATHFN (LOGB)
+ 	  CASE_MATHFN (SIN)
+	  CASE_MATHFN (SQRT)
+ 	  CASE_MATHFN (TAN)
+ 	  CASE_MATHFN (TANH)
 #undef CASE_MATHFN
 	    {
 	      tree arg0 = strip_float_extensions (CALL_EXPR_ARG (expr, 0));
@@ -360,7 +362,8 @@ convert_to_real (tree type, tree expr)
 		      && (flag_unsafe_math_optimizations
 			  || (TYPE_PRECISION (newtype) == TYPE_PRECISION (type)
 			      && real_can_shorten_arithmetic (TYPE_MODE (itype),
-							      TYPE_MODE (type)))))
+							      TYPE_MODE (type))
+			      && !excess_precision_type (newtype))))
 		    {
 		      expr = build2 (TREE_CODE (expr), newtype,
 				     fold (convert_to_real (newtype, arg0)),
@@ -547,6 +550,7 @@ convert_to_integer (tree type, tree expr)
     case INTEGER_TYPE:
     case ENUMERAL_TYPE:
     case BOOLEAN_TYPE:
+    case OFFSET_TYPE:
       /* If this is a logical operation, which just returns 0 or 1, we can
 	 change the type of the expression.  */
 

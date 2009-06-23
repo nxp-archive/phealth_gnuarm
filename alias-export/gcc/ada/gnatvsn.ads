@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2006 Free Software Foundation, Inc.          --
+--          Copyright (C) 1992-2009 Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -36,14 +34,14 @@
 
 package Gnatvsn is
 
+   Gnat_Static_Version_String : constant String := "GNU Ada";
+   --  Static string identifying this version, that can be used as an argument
+   --  to e.g. pragma Ident.
+
    function Gnat_Version_String return String;
    --  Version output when GNAT (compiler), or its related tools, including
    --  GNATBIND, GNATCHOP, GNATFIND, GNATLINK, GNATMAKE, GNATXREF, are run
    --  (with appropriate verbose option switch set).
-
-   Gnat_Static_Version_String : constant String := "GNU Ada";
-   --  Static string identifying this version, that can be used as an argument
-   --  to e.g. pragma Ident.
 
    type Gnat_Build_Type is (FSF, GPL);
    --  See Build_Type below for the meaning of these values.
@@ -64,6 +62,14 @@ package Gnatvsn is
    --       gives appropriate bug submission instructions that do not reference
    --       customer number etc.
 
+   function Gnat_Free_Software return String;
+   --  Text to be displayed by the different GNAT tools when switch --version
+   --  is used. This text depends on the GNAT build type.
+
+   function Copyright_Holder return String;
+   --  Return the name of the Copyright holder to be displayed by the different
+   --  GNAT tools when switch --version is used.
+
    Ver_Len_Max : constant := 64;
    --  Longest possible length for Gnat_Version_String in this or any
    --  other version of GNAT. This is used by the binder to establish
@@ -71,7 +77,7 @@ package Gnatvsn is
    --  value should never be decreased in the future, but it would be
    --  OK to increase it if absolutely necessary.
 
-   Library_Version : constant String := "4.3";
+   Library_Version : constant String := "4.5";
    --  Library version. This value must be updated whenever any change to the
    --  compiler affects the library formats in such a way as to obsolete
    --  previously compiled library modules.
@@ -82,14 +88,7 @@ package Gnatvsn is
    Verbose_Library_Version : constant String := "GNAT Lib v" & Library_Version;
    --  Version string stored in e.g. ALI files.
 
-   ASIS_Version_Number : constant := 6;
-   --  ASIS Version. This is used to check for consistency between the compiler
-   --  used to generate trees, and an ASIS application that is reading the
-   --  trees. It must be updated (incremented) whenever a change is made to
-   --  the tree format that would result in a compiler being incompatible with
-   --  an older version of ASIS, or vice versa.
-
-   Current_Year : constant String := "2006";
+   Current_Year : constant String := "2009";
    --  Used in printing copyright messages
 
 end Gnatvsn;

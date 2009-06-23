@@ -355,9 +355,13 @@ composite_type (tree t1, tree t2)
 	tree d2 = TYPE_DOMAIN (t2);
 	bool d1_variable, d2_variable;
 	bool d1_zero, d2_zero;
+	bool t1_complete, t2_complete;
 
 	/* We should not have any type quals on arrays at all.  */
 	gcc_assert (!TYPE_QUALS (t1) && !TYPE_QUALS (t2));
+
+	t1_complete = COMPLETE_TYPE_P (t1);
+	t2_complete = COMPLETE_TYPE_P (t2);
 
 	d1_zero = d1 == 0 || !TYPE_MAX_VALUE (d1);
 	d2_zero = d2 == 0 || !TYPE_MAX_VALUE (d2);
@@ -398,6 +402,15 @@ composite_type (tree t1, tree t2)
 						 || !d1_variable))
 					    ? t1
 					    : t2));
+	/* Ensure a composite type involving a zero-length array type
+	   is a zero-length type not an incomplete type.  */
+	if (d1_zero && d2_zero
+	    && (t1_complete || t2_complete)
+	    && !COMPLETE_TYPE_P (t1))
+	  {
+	    TYPE_SIZE (t1) = bitsize_zero_node;
+	    TYPE_SIZE_UNIT (t1) = size_zero_node;
+	  }
 	t1 = c_build_qualified_type (t1, quals);
 	return build_type_attribute_variant (t1, attributes);
       }
@@ -2423,6 +2436,16 @@ build_function_call (tree function, tree params)
   /* fntype now gets the type of function pointed to.  */
   fntype = TREE_TYPE (fntype);
 
+  /* Convert the parameters to the types declared in the
+     function prototype, or apply default promotions.  */
+
+  nargs = list_length (params);
+  argarray = (tree *) alloca (nargs * sizeof (tree));
+  nargs = convert_arguments (nargs, argarray, TYPE_ARG_TYPES (fntype), 
+			     params, function, fundecl);
+  if (nargs < 0)
+    return error_mark_node;
+
   /* Check that the function is called through a compatible prototype.
      If it is not, replace the call by a trap, wrapped up in a compound
      expression if necessary.  This has the nice side-effect to prevent
@@ -2436,6 +2459,7 @@ build_function_call (tree function, tree params)
       tree return_type = TREE_TYPE (fntype);
       tree trap = build_function_call (built_in_decls[BUILT_IN_TRAP],
 				       NULL_TREE);
+      int i;
 
       /* This situation leads to run-time undefined behavior.  We can't,
 	 therefore, simply error unless we can prove that all possible
@@ -2444,6 +2468,10 @@ build_function_call (tree function, tree params)
 	/* We can, however, treat "undefined" any way we please.
 	   Call abort to encourage the user to fix the program.  */
 	inform (input_location, "if this code is reached, the program will abort");
+      /* Before the abort, allow the function arguments to exit or
+	 call longjmp.  */
+      for (i = 0; i < nargs; i++)
+	trap = build2 (COMPOUND_EXPR, void_type_node, argarray[i], trap);
 
       if (VOID_TYPE_P (return_type))
 	return trap;
@@ -2461,16 +2489,6 @@ build_function_call (tree function, tree params)
 	  return build2 (COMPOUND_EXPR, return_type, trap, rhs);
 	}
     }
-
-  /* Convert the parameters to the types declared in the
-     function prototype, or apply default promotions.  */
-
-  nargs = list_length (params);
-  argarray = (tree *) alloca (nargs * sizeof (tree));
-  nargs = convert_arguments (nargs, argarray, TYPE_ARG_TYPES (fntype), 
-			     params, function, fundecl);
-  if (nargs < 0)
-    return error_mark_node;
 
   /* Check that arguments to builtin functions match the expectations.  */
   if (fundecl
@@ -3559,6 +3577,7 @@ build_conditional_expr (tree ifexp, bool ifexp_bcp, tree op1, tree op2)
   tree orig_op1 = op1, orig_op2 = op2;
   bool int_const, op1_int_operands, op2_int_operands, int_operands;
   tree ret;
+  bool objc_ok;
 
   /* Promote both alternatives.  */
 
@@ -3584,6 +3603,8 @@ build_conditional_expr (tree ifexp, bool ifexp_bcp, tree op1, tree op2)
       error ("non-lvalue array in conditional expression");
       return error_mark_node;
     }
+
+  objc_ok = objc_compare_types (type1, type2, -3, NULL_TREE);
 
   if ((TREE_CODE (op1) == EXCESS_PRECISION_EXPR
        || TREE_CODE (op2) == EXCESS_PRECISION_EXPR)
@@ -3721,8 +3742,9 @@ build_conditional_expr (tree ifexp, bool ifexp_bcp, tree op1, tree op2)
 	}
       else
 	{
-	  pedwarn (input_location, 0, 
-		   "pointer type mismatch in conditional expression");
+	  if (!objc_ok)
+	    pedwarn (input_location, 0, 
+		     "pointer type mismatch in conditional expression");
 	  result_type = build_pointer_type (void_type_node);
 	}
     }
@@ -7641,8 +7663,10 @@ c_finish_return (tree retval)
 	{
 	  switch (TREE_CODE (inner))
 	    {
-	    CASE_CONVERT:   case NON_LVALUE_EXPR:
+	    CASE_CONVERT:
+	    case NON_LVALUE_EXPR:
 	    case PLUS_EXPR:
+	    case POINTER_PLUS_EXPR:
 	      inner = TREE_OPERAND (inner, 0);
 	      continue;
 
@@ -8570,12 +8594,12 @@ build_binary_op (location_t location, enum tree_code code,
       /* Handle the pointer + int case.  */
       if (code0 == POINTER_TYPE && code1 == INTEGER_TYPE)
 	{
-	  ret = pointer_int_sum (PLUS_EXPR, op0, op1);
+	  ret = pointer_int_sum (location, PLUS_EXPR, op0, op1);
 	  goto return_build_binary_op;
 	}
       else if (code1 == POINTER_TYPE && code0 == INTEGER_TYPE)
 	{
-	  ret = pointer_int_sum (PLUS_EXPR, op1, op0);
+	  ret = pointer_int_sum (location, PLUS_EXPR, op1, op0);
 	  goto return_build_binary_op;
 	}
       else
@@ -8594,7 +8618,7 @@ build_binary_op (location_t location, enum tree_code code,
       /* Handle pointer minus int.  Just like pointer plus int.  */
       else if (code0 == POINTER_TYPE && code1 == INTEGER_TYPE)
 	{
-	  ret = pointer_int_sum (MINUS_EXPR, op0, op1);
+	  ret = pointer_int_sum (location, MINUS_EXPR, op0, op1);
 	  goto return_build_binary_op;
 	}
       else

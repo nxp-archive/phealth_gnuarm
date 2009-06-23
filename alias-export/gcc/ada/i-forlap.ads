@@ -2,29 +2,27 @@
 --                                                                          --
 --                         GNAT RUN-TIME COMPONENTS                         --
 --                                                                          --
---                        INTERFACES.FORTRAN.LAPACK                         --
+--             I N T E R F A C E S . F O R T R A N . L A P A C K            --
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---            Copyright (C) 2006, Free Software Foundation, Inc.            --
+--          Copyright (C) 2006-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -293,7 +291,7 @@ package Interfaces.Fortran.LAPACK is
       N      : Natural;
       A      : in out Real_Matrix;
       Ld_A   : Positive;
-      Tau    : in Real_Vector;
+      Tau    : Real_Vector;
       Work   : out Real_Vector;
       L_Work : Integer;
       Info   : access Integer);
@@ -303,7 +301,7 @@ package Interfaces.Fortran.LAPACK is
       N      : Natural;
       A      : in out Double_Precision_Matrix;
       Ld_A   : Positive;
-      Tau    : in Double_Precision_Vector;
+      Tau    : Double_Precision_Vector;
       Work   : out Double_Precision_Vector;
       L_Work : Integer;
       Info   : access Integer);
@@ -311,12 +309,12 @@ package Interfaces.Fortran.LAPACK is
    procedure sstebz
      (Rng      : access constant Character;
       Order    : access constant Character;
-      N        : in Natural;
-      Vl, Vu   : in Real := 0.0;
-      Il, Iu   : in Integer := 1;
-      Abs_Tol  : in Real := 0.0;
-      D        : in Real_Vector;
-      E        : in Real_Vector;
+      N        : Natural;
+      Vl, Vu   : Real := 0.0;
+      Il, Iu   : Integer := 1;
+      Abs_Tol  : Real := 0.0;
+      D        : Real_Vector;
+      E        : Real_Vector;
       M        : out Natural;
       N_Split  : out Natural;
       W        : out Real_Vector;
@@ -329,12 +327,12 @@ package Interfaces.Fortran.LAPACK is
    procedure dstebz
      (Rng      : access constant Character;
       Order    : access constant Character;
-      N        : in Natural;
-      Vl, Vu   : in Double_Precision := 0.0;
-      Il, Iu   : in Integer := 1;
-      Abs_Tol  : in Double_Precision := 0.0;
-      D        : in Double_Precision_Vector;
-      E        : in Double_Precision_Vector;
+      N        : Natural;
+      Vl, Vu   : Double_Precision := 0.0;
+      Il, Iu   : Integer := 1;
+      Abs_Tol  : Double_Precision := 0.0;
+      D        : Double_Precision_Vector;
+      E        : Double_Precision_Vector;
       M        : out Natural;
       N_Split  : out Natural;
       W        : out Double_Precision_Vector;

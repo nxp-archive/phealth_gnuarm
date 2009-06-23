@@ -349,15 +349,6 @@ extern int errno;
 #define WCOREFLG 0200
 #endif
 
-
-/* the compiler probe */
-#if defined(ENABLE_COMPILER_PROBE) && ENABLE_COMPILER_PROBE
-/* <unistd.h> and <fcntl.h> and <string.h> have already been included
-   and the following includes have been checked by autoconf */
-#include <sys/select.h>
-#include <signal.h>
-#endif
-
 /* The HAVE_DECL_* macros are three-state, undefined, 0 or 1.  If they
    are defined to 0 then we must provide the relevant declaration
    here.  These checks will be in the undefined state while configure
@@ -461,7 +452,8 @@ extern int vsnprintf(char *, size_t, const char *, va_list);
 /* 1 if we have C99 designated initializers.  */
 #if !defined(HAVE_DESIGNATED_INITIALIZERS)
 #define HAVE_DESIGNATED_INITIALIZERS \
-  ((GCC_VERSION >= 2007) || (__STDC_VERSION__ >= 199901L))
+  (((GCC_VERSION >= 2007) || (__STDC_VERSION__ >= 199901L)) \
+   && !defined(__cplusplus))
 #endif
 
 #if HAVE_SYS_STAT_H
@@ -690,7 +682,7 @@ extern void fancy_abort (const char *, int, const char *) ATTRIBUTE_NORETURN;
 	MUST_PASS_IN_STACK FUNCTION_ARG_PASS_BY_REFERENCE               \
         VECTOR_MODE_SUPPORTED_P TARGET_SUPPORTS_HIDDEN 			\
 	FUNCTION_ARG_PARTIAL_NREGS ASM_OUTPUT_DWARF_DTPREL		\
-	ALLOCATE_INITIAL_VALUE
+	ALLOCATE_INITIAL_VALUE LEGITIMIZE_ADDRESS
 
 /* Other obsolete target macros, or macros that used to be in target
    headers and were not used, and may be obsolete or may never have
@@ -795,12 +787,16 @@ extern void fancy_abort (const char *, int, const char *) ATTRIBUTE_NORETURN;
    change after the fact).  Beyond these uses, most other cases of
    using this macro should be viewed with extreme caution.  */
 
+#ifdef __cplusplus
+#define CONST_CAST2(TOTYPE,FROMTYPE,X) (const_cast<TOTYPE> (X))
+#else
 #if defined(__GNUC__) && GCC_VERSION > 4000
 /* GCC 4.0.x has a bug where it may ICE on this expression,
    so does GCC 3.4.x (PR17436).  */
 #define CONST_CAST2(TOTYPE,FROMTYPE,X) ((__extension__(union {FROMTYPE _q; TOTYPE _nq;})(X))._nq)
 #else
 #define CONST_CAST2(TOTYPE,FROMTYPE,X) ((TOTYPE)(FROMTYPE)(X))
+#endif
 #endif
 #define CONST_CAST(TYPE,X) CONST_CAST2(TYPE, const TYPE, (X))
 #define CONST_CAST_TREE(X) CONST_CAST(union tree_node *, (X))

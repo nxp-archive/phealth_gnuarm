@@ -1,6 +1,6 @@
 /* Subroutines for manipulating rtx's in semantically interesting ways.
    Copyright (C) 1987, 1991, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -248,7 +248,7 @@ expr_size (tree exp)
     {
       size = lang_hooks.expr_size (exp);
       gcc_assert (size);
-      size = SUBSTITUTE_PLACEHOLDER_IN_EXPR (size, exp);
+      gcc_assert (size == SUBSTITUTE_PLACEHOLDER_IN_EXPR (size, exp));
     }
 
   return expand_expr (size, NULL_RTX, TYPE_MODE (sizetype), EXPAND_NORMAL);
@@ -451,18 +451,12 @@ memory_address_addr_space (enum machine_mode mode, rtx x, addr_space_t as)
 	 below can handle all possible cases, but machine-dependent
 	 transformations can make better code.  */
       if (!as)
-	{
-	  LEGITIMIZE_ADDRESS (x, oldx, mode, done);
-	}
+        x = targetm.legitimize_address (x, oldx, mode);
       else
-	{
-	  rtx y = targetm.addr_space.legitimize_address (x, oldx, mode, as);
-	  if (y)
-	    {
-	      x = y;
-	      goto done;
-	    }
-	}
+	x = targetm.addr_space.legitimize_address (x, oldx, mode, as);
+
+      if (oldx != x && memory_address_addr_space_p (mode, x, as))
+	goto done;
 
       /* PLUS and MULT can appear in special ways
 	 as the result of attempts to make an address usable for indexing.

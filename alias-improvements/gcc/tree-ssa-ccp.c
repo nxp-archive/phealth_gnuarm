@@ -1,5 +1,5 @@
 /* Conditional constant propagation pass for the GNU compiler.
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Adapted from original RTL SSA-CCP by Daniel Berlin <dberlin@dberlin.org>
    Adapted to GIMPLE trees by Diego Novillo <dnovillo@redhat.com>
@@ -208,6 +208,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "langhooks.h"
 #include "target.h"
 #include "toplev.h"
+#include "dbgcnt.h"
 
 
 /* Possible lattice values.  */
@@ -286,10 +287,11 @@ get_symbol_constant_value (tree sym)
 	 have zero as the initializer if they may not be
 	 overridden at link or run time.  */
       if (!val
+	  && !DECL_EXTERNAL (sym)
 	  && targetm.binds_local_p (sym)
           && (INTEGRAL_TYPE_P (TREE_TYPE (sym))
 	       || SCALAR_FLOAT_TYPE_P (TREE_TYPE (sym))))
-        return fold_convert (TREE_TYPE (sym), integer_zero_node);
+	return fold_convert (TREE_TYPE (sym), integer_zero_node);
     }
 
   return NULL_TREE;
@@ -666,6 +668,24 @@ ccp_initialize (void)
     }
 }
 
+/* Debug count support. Reset the values of ssa names
+   VARYING when the total number ssa names analyzed is
+   beyond the debug count specified.  */
+
+static void
+do_dbg_cnt (void)
+{
+  unsigned i;
+  for (i = 0; i < num_ssa_names; i++)
+    {
+      if (!dbg_cnt (ccp))
+        {
+          const_val[i].lattice_val = VARYING;
+          const_val[i].value = NULL_TREE;
+        }
+    }
+}
+
 
 /* Do final substitution of propagated values, cleanup the flowgraph and
    free allocated storage.  
@@ -675,8 +695,11 @@ ccp_initialize (void)
 static bool
 ccp_finalize (void)
 {
+  bool something_changed;
+
+  do_dbg_cnt ();
   /* Perform substitutions based on the known constant values.  */
-  bool something_changed = substitute_and_fold (const_val, false);
+  something_changed = substitute_and_fold (const_val, false);
 
   free (const_val);
   const_val = NULL;
@@ -1936,8 +1959,7 @@ maybe_fold_offset_to_address (tree addr, tree offset, tree orig_type)
 	   || (TREE_CODE (orig) == COMPONENT_REF
 	       && TREE_CODE (TREE_TYPE (TREE_OPERAND (orig, 1))) == ARRAY_TYPE))
 	  && (TREE_CODE (t) == ARRAY_REF
-	      || (TREE_CODE (t) == COMPONENT_REF
-		  && TREE_CODE (TREE_TYPE (TREE_OPERAND (t, 1))) == ARRAY_TYPE))
+	      || TREE_CODE (t) == COMPONENT_REF)
 	  && !operand_equal_p (TREE_CODE (orig) == ARRAY_REF
 			       ? TREE_OPERAND (orig, 0) : orig,
 			       TREE_CODE (t) == ARRAY_REF
@@ -3151,10 +3173,16 @@ gimplify_and_update_call_from_tree (gimple_stmt_iterator *si_p, tree expr)
   }
 
   if (lhs == NULL_TREE)
-    new_stmt = gimple_build_nop ();
+    {
+      new_stmt = gimple_build_nop ();
+      unlink_stmt_vdef (stmt);
+      release_defs (stmt);
+    }
   else
     {
       new_stmt = gimple_build_assign (lhs, tmp);
+      gimple_set_vuse (new_stmt, gimple_vuse (stmt));
+      gimple_set_vdef (new_stmt, gimple_vdef (stmt));
       move_ssa_defining_stmt_for_defs (new_stmt, stmt);
     }
 
@@ -3242,10 +3270,7 @@ execute_fold_all_builtins (void)
 	  push_stmt_changes (gsi_stmt_ptr (&i));
 
           if (!update_call_from_tree (&i, result))
-            {
-              gimplify_and_update_call_from_tree (&i, result);
-              todoflags |= TODO_rebuild_alias;
-            }
+	    gimplify_and_update_call_from_tree (&i, result);
 
 	  stmt = gsi_stmt (i);
 	  pop_stmt_changes (gsi_stmt_ptr (&i));

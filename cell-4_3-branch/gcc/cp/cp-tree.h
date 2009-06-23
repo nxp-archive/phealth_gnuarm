@@ -4465,6 +4465,7 @@ extern bool dependent_template_p		(tree);
 extern bool dependent_template_id_p		(tree, tree);
 extern bool type_dependent_expression_p		(tree);
 extern bool any_type_dependent_arguments_p      (const_tree);
+extern bool type_dependent_expression_p_push	(tree);
 extern bool value_dependent_expression_p	(tree);
 extern bool any_value_dependent_elements_p      (const_tree);
 extern tree resolve_typename_type		(tree, bool);
@@ -4475,6 +4476,7 @@ extern bool reregister_specialization		(tree, tree, tree);
 extern tree fold_non_dependent_expr		(tree);
 extern bool explicit_class_specialization_p     (tree);
 extern struct tinst_level *outermost_tinst_level(void);
+extern bool parameter_of_template_p		(tree, tree);
 
 /* in repo.c */
 extern void init_repo				(void);
@@ -4698,7 +4700,7 @@ extern tree canonical_type_variant		(tree);
 extern tree copy_binfo				(tree, tree, tree,
 						 tree *, int);
 extern int member_p				(const_tree);
-extern cp_lvalue_kind real_lvalue_p		(const_tree);
+extern cp_lvalue_kind real_lvalue_p		(tree);
 extern bool builtin_valid_in_constant_expr_p    (const_tree);
 extern tree build_min				(enum tree_code, tree, ...);
 extern tree build_min_nt			(enum tree_code, ...);
@@ -4828,8 +4830,8 @@ extern tree lookup_anon_field			(tree, tree);
 extern bool invalid_nonstatic_memfn_p		(const_tree);
 extern tree convert_member_func_to_ptr		(tree, tree);
 extern tree convert_ptrmem			(tree, tree, bool, bool);
-extern int lvalue_or_else			(const_tree, enum lvalue_use);
-extern int lvalue_p				(const_tree);
+extern int lvalue_or_else			(tree, enum lvalue_use);
+extern int lvalue_p				(tree);
 
 /* in typeck2.c */
 extern void require_complete_eh_spec_types	(tree, tree);

@@ -1,13 +1,13 @@
 /* Process the ObjC-specific declarations and variables for 
    the Objective-C++ compiler.
-   Copyright (C) 2005 Free Software Foundation, Inc.
+   Copyright (C) 2005, 2007, 2009 Free Software Foundation, Inc.
    Contributed by Ziemowit Laski  <zlaski@apple.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -16,9 +16,9 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
+
 
 #ifndef GCC_OBJCP_DECL_H
 #define GCC_OBJCP_DECL_H
@@ -37,9 +37,9 @@ extern tree objcp_end_compound_stmt (tree, int);
    invoke the original C++ functions if needed).  */
 #ifdef OBJCP_REMAP_FUNCTIONS
 
-#define start_struct(code, name) \
+#define start_struct(code, name, in_struct, struct_types, loc) \
 	objcp_start_struct (code, name)
-#define finish_struct(t, fieldlist, attributes) \
+#define finish_struct(t, fieldlist, attributes, in_struct, struct_types) \
 	objcp_finish_struct (t, fieldlist, attributes)
 #define finish_function() \
 	objcp_finish_function ()

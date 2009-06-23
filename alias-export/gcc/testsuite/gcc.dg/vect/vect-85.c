@@ -5,6 +5,7 @@
 
 #define N 16
 
+__attribute__ ((noinline))
 int main1 (int *a)
 {
   int i, j, k;
@@ -34,7 +35,7 @@ int main1 (int *a)
 
 int main (void)
 { 
-  int a[N] __attribute__ ((__aligned__(16)));
+  int a[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
 
   check_vect ();
 

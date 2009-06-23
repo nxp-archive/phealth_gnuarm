@@ -1,23 +1,22 @@
 /* Language-dependent hooks for LTO.
-   Copyright 2006 Free Software Foundation, Inc.
+   Copyright 2009 Free Software Foundation, Inc.
    Contributed by CodeSourcery, Inc.
 
 This file is part of GCC.
 
-GCC is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
-any later version.
+GCC is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3, or (at your option) any later
+version.
 
-GCC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -36,7 +35,6 @@ Boston, MA 02110-1301, USA.  */
 #include "gimple.h"
 #include "toplev.h"
 #include "lto/common.h"
-#include "lto-tree-in.h"
 
 static tree handle_noreturn_attribute (tree *, tree, tree, int, bool *);
 static tree handle_const_attribute (tree *, tree, tree, int, bool *);
@@ -450,7 +448,7 @@ def_fn_type (builtin_type def, builtin_type ret, bool var, int n, ...)
   va_start (list, n);
   for (i = 0; i < n; ++i)
     {
-      builtin_type a = va_arg (list, builtin_type);
+      builtin_type a = (builtin_type) va_arg (list, int);
       t = builtin_types[a];
       if (t == error_mark_node)
 	goto egress;
@@ -686,6 +684,10 @@ lto_handle_option (size_t scode, const char *arg, int value ATTRIBUTE_UNUSED)
       result = 1;
       break;
 
+    case OPT_Wabi:
+      warn_psabi = value;
+      break;
+
     default:
       break;
     }
@@ -715,10 +717,24 @@ lto_post_options (const char **pfilename ATTRIBUTE_UNUSED)
     error ("-fwpa and -fltrans are mutually exclusive.");
 
   if (flag_ltrans)
-    flag_generate_lto = 0;
+    {
+      flag_generate_lto = 0;
+
+      /* During LTRANS, we are not looking at the whole program, only
+	 a subset of the whole callgraph.  FIXME lto, this may not be
+	 true if the partitioning assigned all the nodes in the call
+	 graph to the same file.  */
+      flag_whole_program = 0;
+    }
 
   if (flag_wpa)
     flag_generate_lto = 1;
+
+  /* Excess precision other than "fast" requires front-end
+     support.  */
+  flag_excess_precision_cmdline = EXCESS_PRECISION_FAST;
+
+  lto_read_all_file_options ();
 
   /* Initialize the compiler back end.  */
   return false;
@@ -781,12 +797,37 @@ lto_type_for_mode (enum machine_mode mode, int unsigned_p)
 {
   tree t;
 
-  /* This hook is called by the middle-end.  For example,
-     assign_stack_local_1 uses this hook to determine whether
-     additional alignment is required for stack variables for which no
-     explicit alignment is provided.  */
-  if (SCALAR_INT_MODE_P (mode))
-    return lto_type_for_size (GET_MODE_BITSIZE (mode), unsigned_p);
+  if (mode == TYPE_MODE (integer_type_node))
+    return unsigned_p ? unsigned_type_node : integer_type_node;
+
+  if (mode == TYPE_MODE (signed_char_type_node))
+    return unsigned_p ? unsigned_char_type_node : signed_char_type_node;
+
+  if (mode == TYPE_MODE (short_integer_type_node))
+    return unsigned_p ? short_unsigned_type_node : short_integer_type_node;
+
+  if (mode == TYPE_MODE (long_integer_type_node))
+    return unsigned_p ? long_unsigned_type_node : long_integer_type_node;
+
+  if (mode == TYPE_MODE (long_long_integer_type_node))
+    return unsigned_p ? long_long_unsigned_type_node : long_long_integer_type_node;
+
+  if (mode == QImode)
+    return unsigned_p ? unsigned_intQI_type_node : intQI_type_node;
+
+  if (mode == HImode)
+    return unsigned_p ? unsigned_intHI_type_node : intHI_type_node;
+
+  if (mode == SImode)
+    return unsigned_p ? unsigned_intSI_type_node : intSI_type_node;
+
+  if (mode == DImode)
+    return unsigned_p ? unsigned_intDI_type_node : intDI_type_node;
+
+#if HOST_BITS_PER_WIDE_INT >= 64
+  if (mode == TYPE_MODE (intTI_type_node))
+    return unsigned_p ? unsigned_intTI_type_node : intTI_type_node;
+#endif
 
   if (mode == TYPE_MODE (float_type_node))
     return float_type_node;
@@ -836,6 +877,102 @@ lto_type_for_mode (enum machine_mode mode, int unsigned_p)
       tree inner_type = lto_type_for_mode (inner_mode, unsigned_p);
       if (inner_type != NULL_TREE)
 	return build_vector_type_for_mode (inner_type, mode);
+    }
+
+  if (mode == TYPE_MODE (dfloat32_type_node))
+    return dfloat32_type_node;
+  if (mode == TYPE_MODE (dfloat64_type_node))
+    return dfloat64_type_node;
+  if (mode == TYPE_MODE (dfloat128_type_node))
+    return dfloat128_type_node;
+
+  if (ALL_SCALAR_FIXED_POINT_MODE_P (mode))
+    {
+      if (mode == TYPE_MODE (short_fract_type_node))
+	return unsigned_p ? sat_short_fract_type_node : short_fract_type_node;
+      if (mode == TYPE_MODE (fract_type_node))
+	return unsigned_p ? sat_fract_type_node : fract_type_node;
+      if (mode == TYPE_MODE (long_fract_type_node))
+	return unsigned_p ? sat_long_fract_type_node : long_fract_type_node;
+      if (mode == TYPE_MODE (long_long_fract_type_node))
+	return unsigned_p ? sat_long_long_fract_type_node
+			 : long_long_fract_type_node;
+
+      if (mode == TYPE_MODE (unsigned_short_fract_type_node))
+	return unsigned_p ? sat_unsigned_short_fract_type_node
+			 : unsigned_short_fract_type_node;
+      if (mode == TYPE_MODE (unsigned_fract_type_node))
+	return unsigned_p ? sat_unsigned_fract_type_node
+			 : unsigned_fract_type_node;
+      if (mode == TYPE_MODE (unsigned_long_fract_type_node))
+	return unsigned_p ? sat_unsigned_long_fract_type_node
+			 : unsigned_long_fract_type_node;
+      if (mode == TYPE_MODE (unsigned_long_long_fract_type_node))
+	return unsigned_p ? sat_unsigned_long_long_fract_type_node
+			 : unsigned_long_long_fract_type_node;
+
+      if (mode == TYPE_MODE (short_accum_type_node))
+	return unsigned_p ? sat_short_accum_type_node : short_accum_type_node;
+      if (mode == TYPE_MODE (accum_type_node))
+	return unsigned_p ? sat_accum_type_node : accum_type_node;
+      if (mode == TYPE_MODE (long_accum_type_node))
+	return unsigned_p ? sat_long_accum_type_node : long_accum_type_node;
+      if (mode == TYPE_MODE (long_long_accum_type_node))
+	return unsigned_p ? sat_long_long_accum_type_node
+			 : long_long_accum_type_node;
+
+      if (mode == TYPE_MODE (unsigned_short_accum_type_node))
+	return unsigned_p ? sat_unsigned_short_accum_type_node
+			 : unsigned_short_accum_type_node;
+      if (mode == TYPE_MODE (unsigned_accum_type_node))
+	return unsigned_p ? sat_unsigned_accum_type_node
+			 : unsigned_accum_type_node;
+      if (mode == TYPE_MODE (unsigned_long_accum_type_node))
+	return unsigned_p ? sat_unsigned_long_accum_type_node
+			 : unsigned_long_accum_type_node;
+      if (mode == TYPE_MODE (unsigned_long_long_accum_type_node))
+	return unsigned_p ? sat_unsigned_long_long_accum_type_node
+			 : unsigned_long_long_accum_type_node;
+
+      if (mode == QQmode)
+	return unsigned_p ? sat_qq_type_node : qq_type_node;
+      if (mode == HQmode)
+	return unsigned_p ? sat_hq_type_node : hq_type_node;
+      if (mode == SQmode)
+	return unsigned_p ? sat_sq_type_node : sq_type_node;
+      if (mode == DQmode)
+	return unsigned_p ? sat_dq_type_node : dq_type_node;
+      if (mode == TQmode)
+	return unsigned_p ? sat_tq_type_node : tq_type_node;
+
+      if (mode == UQQmode)
+	return unsigned_p ? sat_uqq_type_node : uqq_type_node;
+      if (mode == UHQmode)
+	return unsigned_p ? sat_uhq_type_node : uhq_type_node;
+      if (mode == USQmode)
+	return unsigned_p ? sat_usq_type_node : usq_type_node;
+      if (mode == UDQmode)
+	return unsigned_p ? sat_udq_type_node : udq_type_node;
+      if (mode == UTQmode)
+	return unsigned_p ? sat_utq_type_node : utq_type_node;
+
+      if (mode == HAmode)
+	return unsigned_p ? sat_ha_type_node : ha_type_node;
+      if (mode == SAmode)
+	return unsigned_p ? sat_sa_type_node : sa_type_node;
+      if (mode == DAmode)
+	return unsigned_p ? sat_da_type_node : da_type_node;
+      if (mode == TAmode)
+	return unsigned_p ? sat_ta_type_node : ta_type_node;
+
+      if (mode == UHAmode)
+	return unsigned_p ? sat_uha_type_node : uha_type_node;
+      if (mode == USAmode)
+	return unsigned_p ? sat_usa_type_node : usa_type_node;
+      if (mode == UDAmode)
+	return unsigned_p ? sat_uda_type_node : uda_type_node;
+      if (mode == UTAmode)
+	return unsigned_p ? sat_uta_type_node : uta_type_node;
     }
 
   for (t = registered_builtin_types; t; t = TREE_CHAIN (t))
@@ -911,7 +1048,7 @@ lto_register_builtin_type (tree type, const char *name)
 {
   tree decl;
 
-  decl = build_decl (TYPE_DECL, get_identifier (name), type);
+  decl = build_decl (UNKNOWN_LOCATION, TYPE_DECL, get_identifier (name), type);
   DECL_ARTIFICIAL (decl) = 1;
   if (!TYPE_NAME (type))
     TYPE_NAME (type) = decl;
@@ -1021,6 +1158,8 @@ static void lto_init_ts (void)
 #define LANG_HOOKS_HANDLE_OPTION lto_handle_option
 #undef LANG_HOOKS_POST_OPTIONS
 #define LANG_HOOKS_POST_OPTIONS lto_post_options
+#undef LANG_HOOKS_GET_ALIAS_SET
+#define LANG_HOOKS_GET_ALIAS_SET gimple_get_alias_set
 #undef LANG_HOOKS_MARK_ADDRESSABLE
 #define LANG_HOOKS_MARK_ADDRESSABLE lto_mark_addressable
 #undef LANG_HOOKS_TYPE_FOR_MODE

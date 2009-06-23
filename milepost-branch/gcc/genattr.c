@@ -1,5 +1,5 @@
 /* Generate attribute information (insn-attr.h) from machine description.
-   Copyright (C) 1991, 1994, 1996, 1998, 1999, 2000, 2003, 2004, 2007
+   Copyright (C) 1991, 1994, 1996, 1998, 1999, 2000, 2003, 2004, 2007, 2008
    Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu)
 
@@ -81,7 +81,15 @@ extern int insn_default_length (rtx);\n\
 extern int insn_min_length (rtx);\n\
 extern int insn_variable_length_p (rtx);\n\
 extern int insn_current_length (rtx);\n\n\
-#include \"insn-addr.h\"\n");
+extern int insn_default_lock_length (rtx);\n\
+extern int insn_min_lock_length (rtx);\n\
+extern int insn_variable_lock_length_p (rtx);\n\
+extern int insn_current_lock_length (rtx);\n\n\
+END_TARGET_SPECIFIC /* insn-addr.h includes vecprim.h */\n\
+#include \"vec.h\"\n\
+#include \"statistics.h\"\n\
+#include \"insn-addr.h\"\n\
+START_TARGET_SPECIFIC\n");
     }
 }
 
@@ -103,7 +111,10 @@ main (int argc, char **argv)
   puts ("/* Generated automatically by the program `genattr'");
   puts ("   from the machine description file `md'.  */\n");
   puts ("#ifndef GCC_INSN_ATTR_H");
-  puts ("#define GCC_INSN_ATTR_H\n");
+  puts ("#define GCC_INSN_ATTR_H");
+  puts ("");
+  puts ("#include \"multi-target.h\"");
+  puts ("START_TARGET_SPECIFIC\n");
 
   /* For compatibility, define the attribute `alternative', which is just
      a reference to the variable `which_alternative'.  */
@@ -184,6 +195,10 @@ main (int argc, char **argv)
       printf ("   Use the function if bypass_p returns nonzero for\n");
       printf ("   the 1st insn. */\n");
       printf ("extern int insn_latency (rtx, rtx);\n\n");
+      printf ("/* Maximal insn latency time possible of all bypasses for this insn.\n");
+      printf ("   Use the function if bypass_p returns nonzero for\n");
+      printf ("   the 1st insn. */\n");
+      printf ("extern int maximal_insn_latency (rtx);\n\n");
       printf ("\n#if AUTOMATON_ALTS\n");
       printf ("/* The following function returns number of alternative\n");
       printf ("   reservations of given insn.  It may be used for better\n");
@@ -244,6 +259,9 @@ main (int argc, char **argv)
       printf ("   DFA state.  */\n");
       printf ("extern int cpu_unit_reservation_p (state_t, int);\n");
       printf ("#endif\n\n");
+      printf ("/* The following function returns true if insn\n");
+      printf ("   has a dfa reservation.  */\n");
+      printf ("extern bool insn_has_dfa_reservation_p (rtx);\n\n");
       printf ("/* Clean insn code cache.  It should be called if there\n");
       printf ("   is a chance that condition value in a\n");
       printf ("   define_insn_reservation will be changed after\n");
@@ -273,6 +291,8 @@ main (int argc, char **argv)
   printf("#define ATTR_FLAG_very_likely\t0x8\n");
   printf("#define ATTR_FLAG_unlikely\t0x10\n");
   printf("#define ATTR_FLAG_very_unlikely\t0x20\n");
+  printf("\n");
+  printf("END_TARGET_SPECIFIC\n");
 
   puts("\n#endif /* GCC_INSN_ATTR_H */");
 

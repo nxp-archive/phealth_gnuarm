@@ -1,4 +1,5 @@
-# Copyright (C) 1997, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+# Copyright (C) 1997, 2004, 2005, 2006, 2007, 2008
+# Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -112,17 +113,17 @@ dg-init
 global O1_VECTCFLAGS
 set O1_VECTCFLAGS $DEFAULT_VECTCFLAGS
 lappend O1_VECTCFLAGS "-O1"
-lappend O1_VECTCFLAGS "-flto"
 lappend O1_VECTCFLAGS "-fdump-tree-vect-details"
 
 lappend DEFAULT_VECTCFLAGS "-O2"
-lappend DEFAULT_VECTCFLAGS "-flto"
 
 # Tests that should be run without generating dump info
 dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/nodump-*.\[cS\]]]  \
 	"" $DEFAULT_VECTCFLAGS
 
 lappend DEFAULT_VECTCFLAGS "-fdump-tree-vect-details" 
+set VECT_SLP_CFLAGS $DEFAULT_VECTCFLAGS
+lappend VECT_SLP_CFLAGS "-fdump-tree-slp-details"
 
 # Main loop.
 dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/pr*.\[cS\]]]  \
@@ -131,10 +132,14 @@ dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/vect-*.\[cS\]]]  \
 	"" $DEFAULT_VECTCFLAGS
 dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/slp-*.\[cS\]]]  \
         "" $DEFAULT_VECTCFLAGS
+dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/bb-slp*.\[cS\]]]  \
+        "" $VECT_SLP_CFLAGS
+
 
 #### Tests with special options
 global SAVED_DEFAULT_VECTCFLAGS
 set SAVED_DEFAULT_VECTCFLAGS $DEFAULT_VECTCFLAGS
+set SAVED_VECT_SLP_CFLAGS $VECT_SLP_CFLAGS
 
 # --param vect-max-version-for-alias-checks=0 tests
 set DEFAULT_VECTCFLAGS $SAVED_DEFAULT_VECTCFLAGS
@@ -241,7 +246,6 @@ dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/no-tree-pre-*.\[cS\]]]  \
 # With -Os
 set DEFAULT_VECTCFLAGS $SAVED_DEFAULT_VECTCFLAGS
 lappend DEFAULT_VECTCFLAGS "-Os"
-lappend DEFAULT_VECTCFLAGS "-flto"
 dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/Os-vect-*.\[cS\]]]  \
         "" $DEFAULT_VECTCFLAGS
 
@@ -254,7 +258,6 @@ dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/ggc-*.\[cS\]]]  \
 # With -O3
 set DEFAULT_VECTCFLAGS $SAVED_DEFAULT_VECTCFLAGS
 lappend DEFAULT_VECTCFLAGS "-O3"
-lappend DEFAULT_VECTCFLAGS "-flto"
 if  [istarget "spu-*-*"] {
   lappend DEFAULT_VECTCFLAGS "-funroll-loops"
 }
@@ -265,6 +268,11 @@ dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/O3-*.\[cS\]]]  \
 dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/O1-*.\[cS\]]]  \
         "" $O1_VECTCFLAGS
 
+# -fno-tree-reassoc
+set VECT_SLP_CFLAGS $SAVED_VECT_SLP_CFLAGS
+lappend VECT_SLP_CFLAGS "-fno-tree-reassoc"
+dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/no-tree-reassoc-bb-slp-*.\[cS\]]]  \
+        "" $VECT_SLP_CFLAGS
 
 # Clean up.
 set dg-do-what-default ${save-dg-do-what-default}

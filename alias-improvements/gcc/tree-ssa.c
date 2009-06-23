@@ -1,6 +1,6 @@
 /* Miscellaneous SSA utility functions.
-   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2007, 2008 Free Software
-   Foundation, Inc.
+   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -840,8 +840,6 @@ delete_tree_ssa (void)
 	    {
 	      gimple_set_vdef (stmt, NULL_TREE);
 	      gimple_set_vuse (stmt, NULL_TREE);
-	      BITMAP_FREE (stmt->gsmem.membase.stores);
-	      BITMAP_FREE (stmt->gsmem.membase.loads);
 	    }
 
 	  gimple_set_modified (stmt, true);
@@ -1403,6 +1401,11 @@ warn_uninitialized_vars (bool warn_possibly_uninitialized)
 	  walk_gimple_op (gsi_stmt (gsi), warn_uninitialized_var, &wi);
 	}
     }
+
+  /* Post-dominator information can not be reliably updated. Free it
+     after the use.  */
+
+  free_dominance_info (CDI_POST_DOMINATORS);
   return 0;
 }
 

@@ -2008,6 +2008,7 @@ adjust_address_1 (rtx memref, enum machine_mode mode, HOST_WIDE_INT offset,
   rtx memoffset = MEM_OFFSET (memref);
   rtx size = 0;
   unsigned int memalign = MEM_ALIGN (memref);
+  int pbits;
 
   /* If there are no changes, just return the original memory reference.  */
   if (mode == GET_MODE (memref) && !offset
@@ -2018,6 +2019,16 @@ adjust_address_1 (rtx memref, enum machine_mode mode, HOST_WIDE_INT offset,
      This may happen even if offset is nonzero -- consider
      (plus (plus reg reg) const_int) -- so do this always.  */
   addr = copy_rtx (addr);
+
+  /* Convert a possibly large offset to a signed value within the
+     range of the target address space.  */
+  pbits = GET_MODE_BITSIZE (Pmode);
+  if (HOST_BITS_PER_WIDE_INT > pbits)
+    {
+      int shift = HOST_BITS_PER_WIDE_INT - pbits;
+      offset = (((HOST_WIDE_INT) ((unsigned HOST_WIDE_INT) offset << shift))
+		>> shift);
+    }
 
   if (adjust)
     {
@@ -3331,6 +3342,10 @@ try_split (rtx pat, rtx trial, int last)
   int probability;
   rtx insn_last, insn;
   int njumps = 0;
+
+  /* We're not good at redistributing frame information.  */
+  if (RTX_FRAME_RELATED_P (trial))
+    return trial;
 
   if (any_condjump_p (trial)
       && (note = find_reg_note (trial, REG_BR_PROB, 0)))
@@ -5046,6 +5061,9 @@ copy_insn_1 (rtx orig)
   int i, j;
   RTX_CODE code;
   const char *format_ptr;
+
+  if (orig == NULL)
+    return NULL;
 
   code = GET_CODE (orig);
 

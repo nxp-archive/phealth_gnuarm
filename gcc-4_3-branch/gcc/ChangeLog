@@ -1,3 +1,473 @@
+2009-06-22  Steven Bosscher  <steven@gcc.gnu.org>
+	    Matthias Klose  <doko@ubuntu.com>
+
+	PR objc/28050
+	* c-parser.c (c_parser_objc_message_args): Return error_mark_node
+	instead of NULL if a parser error occurs.
+
+2009-06-19  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline:
+	2009-02-03  Andrew Pinski  <andrew_pinski@playstation.sony.com>
+
+	PR C++/36607
+	* convert.c (convert_to_integer): Treat OFFSET_TYPE like INTEGER_TYPE.
+
+	2009-05-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/40204
+	* fold-const.c (fold_binary) <case BIT_AND_EXPR>: Avoid infinite
+	recursion if build_int_cst_type returns the same INTEGER_CST as
+	arg1.
+
+	2009-02-03  Jakub Jelinek  <jakub@redhat.com>
+ 
+	PR target/35318
+	* function.c (match_asm_constraints_1): Skip over
+	initial optional % in the constraint.
+ 
+2009-06-19  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline:
+	2009-02-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/39240
+	* calls.c (expand_call): Clear try_tail_call if caller and callee
+	disagree in promotion of function return value.
+
+2009-06-19  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline:
+	2009-01-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/39013
+	* c-decl.c (pop_scope): Set DECL_EXTERNAL for functions declared
+	inline but never defined.
+
+	2009-04-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/39855
+	* fold-const.c (fold_binary) <case LSHIFT_EXPR>: When optimizing
+	into 0, use omit_one_operand.
+
+2009-06-18  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2009-06-18  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/40470
+	* config/i386/i386.h (CLASS_LIKELY_SPILLED_P): Add SSE_FIRST_REG.
+
+2009-06-18  Tobias Burnus  <burnus@net-b.de>
+	    Mikael Pettersson  <mikpe@it.uu.se>
+
+	PR debug/40061
+	* dwarf2out.c (add_subscript_info): Fix build for
+	MIPS_DEBUGGING_INFO.
+
+2009-06-17  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline
+	2009-03-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/39455
+	* tree-ssa-loop-niter.c (number_of_iterations_lt_to_ne): Fix types
+	mismatches for POINTER_TYPE_P (type).
+	(number_of_iterations_le): Likewise.
+
+	2009-05-19  Zdenek Dvorak  <ook@ucw.cz>
+
+	PR tree-optimization/40087
+	* tree-ssa-loop-niter.c (number_of_iterations_ne_max,
+	number_of_iterations_ne): Rename never_infinite argument.
+	(number_of_iterations_lt_to_ne, number_of_iterations_lt,
+	number_of_iterations_le): Handle pointer-type ivs when
+	exit_must_be_taken is false.
+	(number_of_iterations_cond):  Do not always assume that
+	exit_must_be_taken if the control variable is a pointer.
+
+2009-06-17  Richard Guenther  <rguenther@suse.de>
+
+	PR middle-end/40404
+	* fold-const.c (fold_binary): Verify the type precision of the
+	stripped arguments of the comparison are the same before
+	folding the comparison.
+
+2009-06-17  Richard Guenther  <rguenther@suse.de>
+
+	PR middle-end/40389
+	* tree-ssa-operands.c (get_modify_stmt_operands): Add NRV
+	results to the addresses taken bitmap.
+	* tree-scalar-evolution.c (scev_const_prop): Do not insert
+	incomplete stmts into the instruction stream.
+
+2009-06-17  Richard Guenther  <rguenther@suse.de>
+
+	PR middle-end/40460
+	* tree-chrec.h (build_polynomial_chrec): If we cannot determine
+	if there is no evolution of left in the loop bail out.
+	* tree-chrec.c (chrec_fold_multiply_poly_poly): CSE one
+	chrec_fold_multiply.
+
+2009-06-11  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2008-11-22  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/38222
+	* config/i386/i386.md (SWI248): New mode iterator.
+	(popcount<mode>2): Rename from popcounthi2, popcountsi2 and
+	popcounthi2 insn patterns. Macroize pattern using SWI248 mode
+	iterator.  Generate popcnt mnemonic without mode extensions
+	for Darwin x86 targets.
+	(*popcount<mode>2_cmp): Ditto.
+	(*popcountsi2_cmp_zext): Generate popcnt mnemonic without mode
+	extensions for Darwin x86 targets.
+
+
+2009-05-26  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline
+	2008-12-12  Zdenek Dvorak  <ook@ucw.cz>
+
+	PR tree-optimization/32044
+	* tree-scalar-evolution.h (expression_expensive_p): Declare.
+	* tree-scalar-evolution.c (expression_expensive_p): New function.
+	(scev_const_prop): Avoid introducing expensive expressions.
+	* tree-ssa-loop-ivopts.c (may_eliminate_iv): Ditto.
+
+2009-05-23  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* doc/passes.texi: Standardize spelling of RTL, Tree and Tree SSA.
+	Remove outdated reference to flow.c and fix nits.
+	* doc/gccint.texi: Tweak RTL description.
+	* doc/rtl.texi: Likewise.
+
+2009-05-21  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	PR rtl-optimization/40105
+	Backport from mainline:
+
+	2009-04-29  Eric Botcazou  <ebotcazou@adacore.com>
+		    Steven Bosscher  <steven@gcc.gnu.org>
+
+	* Makefile.in (cfgrtl.o): Add $(INSN_ATTR_H).
+	* cfgrtl.c: Include insn-attr.h.
+	(rest_of_pass_free_cfg): New function.
+	(pass_free_cfg): Use rest_of_pass_free_cfg as execute function.
+
+	2009-04-27  Richard Sandiford  <rdsandiford@googlemail.com>
+		    Eric Botcazou  <ebotcazou@adacore.com>
+
+	* resource.c (find_basic_block): Use BLOCK_FOR_INSN to look up
+	a label's basic block.
+	(mark_target_live_regs): Tidy and rework obsolete comments.
+	Change back DF problem to LIVE.  If a label starts a basic block,
+	assume that all registers that used to be live then still are.
+	(init_resource_info): If a label starts a basic block, set its
+	BLOCK_FOR_INSN accordingly.
+	(free_resource_info): Undo the setting of BLOCK_FOR_INSN.
+
+2009-05-21  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/39942
+	* config/i386/x86-64.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Don't emit second
+	.p2align 3 if MAX_SKIP is smaller than 7.
+	* config/i386/linux.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Likewise.
+
+2009-05-18  Dodji Seketeli  <dodji@redhat.com>
+
+	PR debug/40109
+	* dwarf2out.c (gen_type_die_with_usage): Generate the DIE as a
+	child of the containing namespace's DIE.
+
+2009-05-16  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR target/40153
+	* arm.md (cstoresi_nltu_thumb1): Use a neg of ltu as the pattern name
+	implies.
+
+2009-05-16  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.md (movdi2): Copy non-reg values to DImode registers.
+
+2009-05-16  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR target/39501
+	* arm.md (movsfcc): Disable if not TARGET_HARD_FLOAT.
+	* testsuite/gcc.c-torture/execute/pr39501.c: New file.
+	* testsuite/gcc.c-torture/execute/pr39501.x: New file.
+
+2009-05-14  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2009-05-14  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR middle-end/40147
+	* ipa-utils.h (memory_identifier_string): Moved to ...
+	* tree.h (memory_identifier_string): Here.  Add GTY(()).
+
+2009-05-14  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/37179
+	* config/i386/driver-i386.c (vendor_signatures): New enum.
+	(processor_signatures): Ditto.
+	(host_detect_local_cpu): Use vendor_signatures and
+	processor_signatures enums.  For SIG_AMD vendor, check for
+	SIG_GEODE processor signature to detect geode processor.
+
+2009-05-12  Tobias Burnus  <burnus@net-b.de>
+
+	PR bootstrap/40061
+	* dwarf2.out.c (add_subscript_info): Initialize dimension for
+	MIPS_DEBUGGING_INFO.
+
+2009-05-08  Richard Guenther  <rguenther@suse.de>
+
+	PR tree-optimization/40062
+	* tree-scalar-evolution.c (follow_ssa_edge_in_condition_phi):
+	Avoid exponential behavior.
+
+2009-05-07  Janis Johnson  <janis187@us.ibm.com>
+
+	PR middle-end/39986
+	* dfp.c (encode_decimal32, decode_decimal32, encode_decimal64,
+	decode_decimal64, encode_decimal128, decode_decimal128): Avoid
+	32-bit copy into long.
+
+2009-05-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/40057
+	* dojump.c (prefer_and_bit_test): Use immed_double_const instead of
+	GEN_INT for 1 << bitnum.
+	(do_jump) <case BIT_AND_EXPR>: Use build_int_cst_wide_type instead of
+	build_int_cst_type.
+
+2009-04-29  Kaveh R. Ghazi  <ghazi@caip.rutgers.edu>
+
+	* toplev.c (print_version): Update GMP version string calculation.
+
+2009-04-24  Tobias Burnus  <burnus@net-b.de>
+
+	PR fortran/39791
+	Backport from mainline:
+
+	2008-08-22  Jakub Jelinek  <jakub@redhat.com>
+
+	* dwarf2out.c (add_subscript_info): Stop on Fortran TYPE_STRING_FLAG
+	types.
+	(gen_array_type_die): Emit DW_TAG_string_type for Fortran character
+	types.
+
+2009-04-23  Ulrich Weigand  <Ulrich.Weigand@de.ibm.com>
+
+	* config/spu/spu-builtins.h: Delete file.
+
+	* config/spu/spu.h (enum spu_builtin_type): Move here from
+	spu-builtins.h.
+	(struct spu_builtin_description): Likewise.  Add GTY marker.
+	Do not use enum spu_function_code or enum insn_code.
+	(spu_builtins): Add extern declaration.
+
+	* config/spu/spu.c: Do not include "spu-builtins.h".
+	(enum spu_function_code, enum spu_builtin_type_index,
+	V16QI_type_node, V8HI_type_node, V4SI_type_node, V2DI_type_node,
+	V4SF_type_node, V2DF_type_node, unsigned_V16QI_type_node,
+	unsigned_V8HI_type_node, unsigned_V4SI_type_node,
+	unsigned_V2DI_type_node): Move here from spu-builtins.h.
+	(spu_builtin_types): Make static.  Add GTY marker.
+	(spu_builtins): Add extern declaration with GTY marker.
+	Include "gt-spu.h".
+
+	* config/spu/spu-c.c: Do not include "spu-builtins.h".
+	(spu_resolve_overloaded_builtin): Do not use spu_function_code.
+	Check programmatically whether all parameters are scalar.
+
+	* config/spu/t-spu-elf (spu.o, spu-c.o): Update dependencies.
+
+2009-04-22  Richard Guenther  <rguenther@suse.de>
+
+	Backport from mainline:
+	PR target/39496
+	* config/i386/i386.c (ix86_function_regparm): Don't optimize
+	local functions using regparm calling conventions when not
+	optimizing.
+	(ix86_function_sseregparm): Similarly for sseregparm calling
+	conventions.
+
+2009-04-14  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2009-04-12  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/39740
+	* config/alpha/predicates.md (local_symbolic_operand): Return 1 for
+	offseted label references.
+
+2009-04-07  Alan Modra  <amodra@bigpond.net.au>
+
+	PR target/39634
+	* config.gcc (powerpc-*-linux*): Include soft-fp/t-softfp after
+	rs6000/t-linux64.
+
+2009-04-02  David Ayers  <ayers@fsfe.org>
+
+	PR objc/27377
+	* c-typeck.c (build_conditional_expr): Emit ObjC warnings
+	by calling objc_compare_types and surpress warnings about
+	incompatible C pointers that are compatible ObjC pointers.
+	
+2009-04-01  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR rtl-optimization/39588
+	* combine.c (merge_outer_ops): Do not set the constant when this
+	is not necessary.
+	(simplify_shift_const_1): Do not modify it either in this case.
+
+2009-03-26  Ben Elliston  <bje@au.ibm.com>
+
+	Backport from mainline:
+	2009-02-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/39175
+	* c-common.c (c_determine_visibility): If visibility changed and
+	DECL_RTL has been already set, call make_decl_rtl to update symbol
+	flags.
+
+2009-03-24  Ralf Corsépius <ralf.corsepius@rtems.org>
+
+	* config/m68k/t-rtems: Add m5329 multilib.
+
+2009-03-23  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2009-03-17  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/39482
+	* config/i386/i386.md (*truncdfsf_mixed): Avoid combining registers
+	from different units in a single alternative.
+	(*truncdfsf_i387): Ditto.
+	(*truncxfsf2_mixed): Ditto.
+	(*truncxfdf2_mixed): Ditto.
+
+2009-03-17  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2009-03-17  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/39477
+	* doc/extend.texi: Correct register behavior for regparm on Intel 386.
+
+2009-03-12  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline:
+	2009-03-12  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/39327
+	* config/i386/sse.md (sse3_addsubv4sf3): Correct item bits.
+	(sse3_addsubv2df3): Likewise.
+
+2009-03-09  Denis Chertykov  <denisc@overta.ru>
+
+	* config/avr/avr.md ("andsi3"): Fix wrong cc attribute.
+
+2009-03-02  Richard Sandiford  <rdsandiford@googlemail.com>
+
+	* config/mips/mips.c (mips_mdebug_abi_name): Fix the handling
+	of ABI_64.
+
+2009-03-02  Ulrich Weigand  <Ulrich.Weigand@de.ibm.com>
+
+	* config/spu/spu.c (TARGET_SECTION_TYPE_FLAGS): Define.
+	(spu_section_type_flags): New function.
+
+2009-02-28  Martin Jambor  <mjambor@suse.cz>
+
+	Backport from mainline:
+	2008-12-02  Martin Jambor  <mjambor@suse.cz>
+	
+	PR middle-end/37861
+	* tree-ssa-forwprop.c 
+	(forward_propagate_addr_into_variable_array_index): Check that the
+	offset is not computed from a MULT_EXPR if element size is one.
+
+2009-02-28  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2009-02-26  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/alpha/alpha.h (alpha_expand_mov): Return false if
+	force_const_mem returns NULL_RTX.
+
+2009-02-26  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2009-02-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR inline-asm/39058
+	* recog.h (asm_operand_ok): Add constraints argument.
+	* recog.c (asm_operand_ok): Likewise.  If it is set, for digits
+	recurse on matching constraint.
+	(check_asm_operands): Pass constraints as 3rd argument to
+	asm_operand_ok.  Don't look up matching constraint here.
+	* stmt.c (expand_asm_operands): Pass NULL as 3rd argument
+	to asm_operand_ok.
+
+2009-02-25  Janis Johnson  <janis187@us.ibm.com>
+
+	Backport from mainline:
+	2008-10-29  Joseph Myers  <joseph@codesourcery.com>
+
+	PR middle-end/36578
+	* convert.c (convert_to_real): Do not optimize conversions of
+	binary arithmetic operations between binary and decimal
+	floating-point types.  Consider mode of target type in determining
+	decimal type for arithmetic.  Unless
+	flag_unsafe_math_optimizations, do not optimize binary conversions
+	where this may change rounding behavior.
+	* real.c (real_can_shorten_arithmetic): New.
+	* real.h (real_can_shorten_arithmetic): Declare.
+
+2009-02-21  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2009-02-20  Jaka Mocnik  <jaka@xlab.si>
+
+	* calls.c (emit_library_call_value_1): Use slot_offset instead of
+	offset when calculating bounds for indexing stack_usage_map.  Fixes
+	a buffer overflow with certain target setups.
+
+2009-02-20  Steve Ellcey  <sje@cup.hp.com>
+
+	PR target/38056
+	* config/ia64/ia64.c (ia64_function_ok_for_sibcall): Check
+	TARGET_CONST_GP.
+
+2009-02-19  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/39228
+	* config/i386/i386.md (isinfxf2): Split from isinf<mode>2.
+	(UNSPEC_FXAM_MEM): New unspec.
+	(fxam<mode>2_i387_with_temp): New insn and split pattern.
+	(isinf<mode>2): Use MODEF mode iterator.  Force operand[1] through
+	memory using fxam<mode>2_i387_with_temp to remove excess precision.
+
+2009-02-17  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/soft-fp/double.h: Update from glibc CVS.
+
+2009-02-17  Joseph Myers  <joseph@codesourcery.com>
+
+	PR c/35446
+	* c-parser.c (c_parser_braced_init): Call pop_init_level when
+	skipping until next close brace.
+
+2009-02-13  Joseph Myers  <joseph@codesourcery.com>
+
+	PR c/35444
+	* c-parser.c (c_parser_parms_list_declarator): Discard pending
+	sizes on syntax error after some arguments have been parsed.
+
 2009-02-11  Uros Bizjak  <ubizjak@gmail.com>
 	    Jakub Jelinek  <jakub@redhat.com>
 
@@ -62,7 +532,7 @@
 
 	Backport from mainline
 	2009-02-05  Daniel Berlin  <dberlin@dberlin.org>
-	    Richard Guenther  <rguenther@suse.de>
+		    Richard Guenther  <rguenther@suse.de>
 
 	PR tree-optimization/39100
 	* tree-ssa-structalias.c (do_ds_constraint): Actually do what the

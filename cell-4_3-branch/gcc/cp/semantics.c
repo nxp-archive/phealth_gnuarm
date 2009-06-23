@@ -1972,9 +1972,7 @@ finish_call_expr (tree fn, tree args, bool disallow_virtual, bool koenig_p)
   if (processing_template_decl)
     {
       result = build_call_list (TREE_TYPE (result), orig_fn, orig_args);
-      /* Don't repeat arg-dependent lookup at instantiation time if this call
-         is not type-dependent.  */
-      KOENIG_LOOKUP_P (result) = 0;
+      KOENIG_LOOKUP_P (result) = koenig_p;
     }
   return result;
 }

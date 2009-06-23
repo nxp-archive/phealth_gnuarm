@@ -1,12 +1,13 @@
 /* Control flow graph building code for GNU compiler.
    Copyright (C) 1987, 1988, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,20 +16,9 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
-/* find_basic_blocks divides the current function's rtl into basic
-   blocks and constructs the CFG.  The blocks are recorded in the
-   basic_block_info array; the CFG exists in the edge structures
-   referenced by the blocks.
-
-   find_basic_blocks also finds any unreachable loops and deletes them.
-
-   Available functionality:
-     - CFG construction
-	 find_basic_blocks  */
 
 #include "config.h"
 #include "system.h"
@@ -46,8 +36,6 @@ Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
 #include "toplev.h"
 #include "timevar.h"
 
-static int count_basic_blocks (rtx);
-static void find_basic_blocks_1 (rtx);
 static void make_edges (basic_block, basic_block, int);
 static void make_label_edge (sbitmap, basic_block, rtx, int);
 static void find_bb_boundaries (basic_block);
@@ -57,7 +45,7 @@ static void compute_outgoing_frequencies (basic_block);
    block.  */
 
 bool
-inside_basic_block_p (rtx insn)
+inside_basic_block_p (const_rtx insn)
 {
   switch (GET_CODE (insn))
     {
@@ -89,7 +77,7 @@ inside_basic_block_p (rtx insn)
    the basic block.  */
 
 bool
-control_flow_insn_p (rtx insn)
+control_flow_insn_p (const_rtx insn)
 {
   rtx note;
 
@@ -138,45 +126,6 @@ control_flow_insn_p (rtx insn)
     }
 }
 
-/* Count the basic blocks of the function.  */
-
-static int
-count_basic_blocks (rtx f)
-{
-  int count = NUM_FIXED_BLOCKS;
-  bool saw_insn = false;
-  rtx insn;
-
-  for (insn = f; insn; insn = NEXT_INSN (insn))
-    {
-      /* Code labels and barriers causes current basic block to be
-	 terminated at previous real insn.  */
-      if ((LABEL_P (insn) || BARRIER_P (insn))
-	  && saw_insn)
-	count++, saw_insn = false;
-
-      /* Start basic block if needed.  */
-      if (!saw_insn && inside_basic_block_p (insn))
-	saw_insn = true;
-
-      /* Control flow insn causes current basic block to be terminated.  */
-      if (saw_insn && control_flow_insn_p (insn))
-	count++, saw_insn = false;
-    }
-
-  if (saw_insn)
-    count++;
-
-  /* The rest of the compiler works a bit smoother when we don't have to
-     check for the edge case of do-nothing functions with no basic blocks.  */
-  if (count == NUM_FIXED_BLOCKS)
-    {
-      emit_insn (gen_rtx_USE (VOIDmode, const0_rtx));
-      count = NUM_FIXED_BLOCKS + 1;
-    }
-
-  return count;
-}
 
 /* Create an edge between two basic blocks.  FLAGS are auxiliary information
    about the edge that is accumulated between calls.  */
@@ -257,7 +206,7 @@ make_edges (basic_block min, basic_block max, int update_p)
   /* Heavy use of computed goto in machine-generated code can lead to
      nearly fully-connected CFGs.  In that case we spend a significant
      amount of time searching the edge lists for duplicates.  */
-  if (forced_labels || cfun->max_jumptable_ents > 100)
+  if (forced_labels || cfun->cfg->max_jumptable_ents > 100)
     edge_cache = sbitmap_alloc (last_basic_block);
 
   /* By nature of the way these get numbered, ENTRY_BLOCK_PTR->next_bb block
@@ -418,157 +367,6 @@ make_edges (basic_block min, basic_block max, int update_p)
     sbitmap_vector_free (edge_cache);
 }
 
-/* Find all basic blocks of the function whose first insn is F.
-
-   Collect and return a list of labels whose addresses are taken.  This
-   will be used in make_edges for use with computed gotos.  */
-
-static void
-find_basic_blocks_1 (rtx f)
-{
-  rtx insn, next;
-  rtx bb_note = NULL_RTX;
-  rtx head = NULL_RTX;
-  rtx end = NULL_RTX;
-  basic_block prev = ENTRY_BLOCK_PTR;
-
-  /* We process the instructions in a slightly different way than we did
-     previously.  This is so that we see a NOTE_BASIC_BLOCK after we have
-     closed out the previous block, so that it gets attached at the proper
-     place.  Since this form should be equivalent to the previous,
-     count_basic_blocks continues to use the old form as a check.  */
-
-  for (insn = f; insn; insn = next)
-    {
-      enum rtx_code code = GET_CODE (insn);
-
-      next = NEXT_INSN (insn);
-
-      if ((LABEL_P (insn) || BARRIER_P (insn))
-	  && head)
-	{
-	  prev = create_basic_block_structure (head, end, bb_note, prev);
-	  head = end = NULL_RTX;
-	  bb_note = NULL_RTX;
-	}
-
-      if (inside_basic_block_p (insn))
-	{
-	  if (head == NULL_RTX)
-	    head = insn;
-	  end = insn;
-	}
-
-      if (head && control_flow_insn_p (insn))
-	{
-	  prev = create_basic_block_structure (head, end, bb_note, prev);
-	  head = end = NULL_RTX;
-	  bb_note = NULL_RTX;
-	}
-
-      switch (code)
-	{
-	case NOTE:
-	  /* Look for basic block notes with which to keep the
-	     basic_block_info pointers stable.  Unthread the note now;
-	     we'll put it back at the right place in create_basic_block.
-	     Or not at all if we've already found a note in this block.  */
-	  if (NOTE_INSN_BASIC_BLOCK_P (insn))
-	    {
-	      if (bb_note == NULL_RTX)
-		bb_note = insn;
-	      else
-		next = delete_insn (insn);
-	    }
-	  break;
-
-	case CODE_LABEL:
-	case JUMP_INSN:
-	case CALL_INSN:
-	case INSN:
-	case BARRIER:
-	  break;
-
-	default:
-	  gcc_unreachable ();
-	}
-    }
-
-  if (head != NULL_RTX)
-    create_basic_block_structure (head, end, bb_note, prev);
-  else if (bb_note)
-    delete_insn (bb_note);
-
-  gcc_assert (last_basic_block == n_basic_blocks);
-
-  clear_aux_for_blocks ();
-}
-
-
-/* Find basic blocks of the current function.
-   F is the first insn of the function.  */
-
-void
-find_basic_blocks (rtx f)
-{
-  basic_block bb;
-
-  timevar_push (TV_CFG);
-
-  /* Flush out existing data.  */
-  if (basic_block_info != NULL)
-    {
-      clear_edges ();
-
-      /* Clear bb->aux on all extant basic blocks.  We'll use this as a
-	 tag for reuse during create_basic_block, just in case some pass
-	 copies around basic block notes improperly.  */
-      FOR_EACH_BB (bb)
-	bb->aux = NULL;
-
-      basic_block_info = NULL;
-    }
-
-  n_basic_blocks = count_basic_blocks (f);
-  last_basic_block = NUM_FIXED_BLOCKS;
-  ENTRY_BLOCK_PTR->next_bb = EXIT_BLOCK_PTR;
-  EXIT_BLOCK_PTR->prev_bb = ENTRY_BLOCK_PTR;
-
-
-  /* Size the basic block table.  The actual structures will be allocated
-     by find_basic_blocks_1, since we want to keep the structure pointers
-     stable across calls to find_basic_blocks.  */
-  /* ??? This whole issue would be much simpler if we called find_basic_blocks
-     exactly once, and thereafter we don't have a single long chain of
-     instructions at all until close to the end of compilation when we
-     actually lay them out.  */
-
-  basic_block_info = VEC_alloc (basic_block, gc, n_basic_blocks);
-  VEC_safe_grow_cleared (basic_block, gc, basic_block_info, n_basic_blocks);
-  SET_BASIC_BLOCK (ENTRY_BLOCK, ENTRY_BLOCK_PTR);
-  SET_BASIC_BLOCK (EXIT_BLOCK, EXIT_BLOCK_PTR);
-
-  find_basic_blocks_1 (f);
-
-  profile_status = PROFILE_ABSENT;
-
-  /* Tell make_edges to examine every block for out-going edges.  */
-  FOR_EACH_BB (bb)
-    SET_STATE (bb, BLOCK_NEW);
-
-  /* Discover the edges of our cfg.  */
-  make_edges (ENTRY_BLOCK_PTR->next_bb, EXIT_BLOCK_PTR->prev_bb, 0);
-
-  /* Do very simple cleanup now, for the benefit of code that runs between
-     here and cleanup_cfg, e.g. thread_prologue_and_epilogue_insns.  */
-  tidy_fallthru_edges ();
-
-#ifdef ENABLE_CHECKING
-  verify_flow_info ();
-#endif
-  timevar_pop (TV_CFG);
-}
-
 static void
 mark_tablejump_edge (rtx label)
 {
@@ -630,7 +428,7 @@ find_bb_boundaries (basic_block bb)
 {
   basic_block orig_bb = bb;
   rtx insn = BB_HEAD (bb);
-  rtx end = BB_END (bb);
+  rtx end = BB_END (bb), x;
   rtx table;
   rtx flow_transfer_insn = NULL_RTX;
   edge fallthru = NULL;
@@ -651,7 +449,16 @@ find_bb_boundaries (basic_block bb)
 	{
 	  fallthru = split_block (bb, PREV_INSN (insn));
 	  if (flow_transfer_insn)
-	    BB_END (bb) = flow_transfer_insn;
+	    {
+	      BB_END (bb) = flow_transfer_insn;
+
+	      /* Clean up the bb field for the insns between the blocks.  */
+	      for (x = NEXT_INSN (flow_transfer_insn);
+		   x != BB_HEAD (fallthru->dest);
+		   x = NEXT_INSN (x))
+		if (!BARRIER_P (x))
+		  set_block_for_insn (x, NULL);
+	    }
 
 	  bb = fallthru->dest;
 	  remove_edge (fallthru);
@@ -666,6 +473,14 @@ find_bb_boundaries (basic_block bb)
 	{
 	  fallthru = split_block (bb, PREV_INSN (insn));
 	  BB_END (bb) = flow_transfer_insn;
+
+	  /* Clean up the bb field for the insns between the blocks.  */
+	  for (x = NEXT_INSN (flow_transfer_insn);
+	       x != BB_HEAD (fallthru->dest);
+	       x = NEXT_INSN (x))
+	    if (!BARRIER_P (x))
+	      set_block_for_insn (x, NULL);
+
 	  bb = fallthru->dest;
 	  remove_edge (fallthru);
 	  flow_transfer_insn = NULL_RTX;
@@ -682,7 +497,18 @@ find_bb_boundaries (basic_block bb)
      return and barrier, or possibly other sequence not behaving like
      ordinary jump, we need to take care and move basic block boundary.  */
   if (flow_transfer_insn)
-    BB_END (bb) = flow_transfer_insn;
+    {
+      BB_END (bb) = flow_transfer_insn;
+
+      /* Clean up the bb field for the insns that do not belong to BB.  */
+      x = flow_transfer_insn;
+      while (x != end)
+	{
+	  x = NEXT_INSN (x);
+	  if (!BARRIER_P (x))
+	    set_block_for_insn (x, NULL);
+	}
+    }
 
   /* We've possibly replaced the conditional jump by conditional jump
      followed by cleanup at fallthru edge, so the outgoing edges may

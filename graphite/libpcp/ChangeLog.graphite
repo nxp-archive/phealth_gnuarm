@@ -1,0 +1,137 @@
+2009-06-08  Sebastian Pop  <sebastian.pop@amd.com>
+
+	* Makefile.in (CLOOGLIBS): Undo "Use clooglibs not CLOOGLIBS."
+	(CLOOGINC): Undo "Use clooginc instead of CLOOGINC."
+	* configure: Regenerated.
+	* configure.ac: libPCP needs CLooG to be compiled.
+
+2009-06-08  Sebastian Pop  <sebastian.pop@amd.com>
+
+	* Makefile.in (CLOOGLIBS): Use clooglibs not CLOOGLIBS.
+	(CLOOGINC): Use clooginc instead of CLOOGINC.
+	* configure.ac (CLOOGLIBS): Do not test for it.
+	CLOOGLIBS and CLOOGINC are required.
+	* pcp_cloog_gateway.cc: Do not test for HAVE_cloog.
+	Do not include config.h.
+	* pcp_cloog_gateway.h: Same.
+	* pcp_poly_spi_c.cc: Same.
+
+2009-06-05  Jan Sjodin  <jan.sjodin@amd.com>
+
+	* libpcp/pcp_cloog_gateway.h: Enclosed code in #ifdef HAVE_cloog
+	* libpcp/pcp_cloog_gateway.cc: Same
+
+2009-06-05  Jan Sjodin  <jan.sjodin@amd.com>
+
+	* libpcp/pcp_cloog_gateway.h: New.
+	* libpcp/pcp_cloog_gateway.cc: New.
+	* libpcp/pcp_domain.h: New.
+	* libpcp/pcp_domain.cc: New.
+	* libpcp/pcp_expr_canonicalizer.h: New.
+	* libpcp/pcp_expr_canonicalizer.cc: New.
+	* libpcp/pcp_full_visitor.h: New.
+	* libpcp/pcp_full_visitor.cc: New.
+	* libpcp/pcp_map.h: New.
+	* libpcp/pcp_poly.h: New.
+	* libpcp/pcp_poly.cc: New.
+	* libpcp/pcp_poly_spi.h: New.
+	* libpcp/pcp_poly_spi.cc: New.
+	* libpcp/pcp_poly_spi_c.h: New.
+	* libpcp/pcp_poly_spi_c.cc: New.
+	* libpcp/pcp_scalar_order.h: New.
+	* libpcp/pcp_scalar_order.cc: New.
+	* libpcp/pcp_scattering.h: New.
+	* libpcp/pcp_scattering.cc: New.
+	* libpcp/pcp_stack.h: New.
+	* libpcp/pcp_visitor.h: New.
+	* libpcp/pcp_visitor.cc: New.
+	* libpcp/Makefile.in: Add dependencies on PPL (temporary) and CLooG
+	* libpcp/configure.ac: Same.
+	* libpcp/config.in: Newly generated.
+	* libpcp/configure: Newly generated.
+	* libpcp/pcp.h: Added support for Visitor. 
+	* libpcp/pcp.cc: Same.
+	* libpcp/pcp_dynamic_array.h: Include "pcp_error.h"
+	* libpcp/pcp_parser.cc: (PcpAst::PcpAst): Initialize name. 
+	(PcpAst::toStringInBuffer): Append name binding.
+	(PcpAst::toString): Moved.
+	(PcpAst::parseObjecList): Set hasChildren to true.
+	(PcpAst::parseStmtList): Check that token is not NULL.
+	* libpcp/pcp_tester.h: Rewrite.
+	* libpcp/pcp_tester.cc: Rewrite.
+
+2009-02-27  Jan Sjodin  <jan.sjodin@amd.com>
+
+	* pcp_tester.h: New.
+	* pcp_tester.cc: New.
+	* pcp_error.h (reportErrorNewline): New.
+	* pcp_error.cc: (reportErrorNewling): New.
+	(reportError): Removed emitting newline after message
+	* pcp_parser.h (pcp_parse_scop, pcp_parse_scop_in_file,
+	pcp_parse_scop2, pcp_parser_scop_in_file2): Removed.
+	(parse, parseFile): New.
+	* pcp_parser.cc (pcp_parse_scop, pcp_parse_scop_in_file): Removed.
+	(parse, parseFile): New.
+	* pcp_dynamic_array.h (set): Removed debug printf
+	* Makefile.in: Added rules to create pcp-tester. 
+
+2009-02-23  David Edelsohn  <dje.gcc@gmail.com>
+
+	* configure.ac (AC_CONFIG_SRCDIR): Define.
+	* configure: Regenerate.
+
+2009-02-20  Jan Sjodin  <jan.sjodin@amd.com>
+
+	* configure.ac: Removed dependence on malloc.h.  Added
+	maintainer mode to limit regeneration of generated files.
+	* Makefile.in: Limit regeneration of files by checking maintainer mode.
+	* config.in: Generated.
+	* configure: Generated.
+
+2009-02-13  Jan Sjodin  <jan.sjodin@amd.com>
+
+	* pcp_alloc.h: Changed include malloc.h to stdlib.h
+
+2009-02-13  Jan Sjodin  <jan.sjodin@amd.com>
+
+	* pcp_error.cc: Made all comments into C++ style.  Made all
+	pointer types written in a consistent way.
+	* pcp_error.h: Same
+	* pcp_alloc.h: Same
+	* pcp_parser.cc: Same
+	* pcp_set.h: Same
+	* pcp_parser.h: Same
+	* pcp_string_buffer.cc: Same
+	* pcp_string_buffer.h: Same
+	* pcp_emitter.cc: Same
+	* pcp_emitter.h: Same
+	* pcp.cc: Same
+	* pcp.h: Same
+	* pcp_c.cc: Same
+	* pcp_dynamic_array.h: Same
+	* pcp_c.h: Same
+
+2009-02-12  Jan Sjodin  <jan.sjodin@amd.com>
+
+	* ChangeLog.graphite: New.
+	* configure.ac: New.
+	* configure: Newly generated.
+	* Makefile.in: New.
+	* config.in: Newly generated.
+	* aclocal.m4: Newly generated.
+	* pcp_error.h: New.
+	* pcp_error.cc: New.
+	* pcp_alloc.h: New.
+	* pcp_parser.h: New.
+	* pcp_parser.cc: New.
+	* pcp_set.h: New.
+	* pcp_string_buffer.h: New.
+	* pcp_string_buffer.cc: New.
+	* pcp_emitter.h: New.
+	* pcp_emitter.cc: New.
+	* pcp.h: New.
+	* pcp.cc: New.
+	* pcp_c.h: New.
+	* pcp_c.cc: New.
+	* pcp_dynamic_array.h: New.
+

@@ -1,3 +1,180 @@
+2009-06-19  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c: Remove code guarded by #ifdef LTO_STREAM_DEBUGGING.
+	Remove code guarded by #ifdef GLOBAL_STREAMER_TRACE.
+	Remove code guarded by #ifdef LOCAL_TRACE.
+
+2009-06-18  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c: Update license to GPLv3.
+	* lto-elf.c: Likewise.
+	* common.c: Likewise.
+	* lto-lang.c: Likewise.
+	* lto.h: Remove superfluous include files.  Update all
+	users.
+
+2009-06-17  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c (read_cgraph_and_symbols): Call input_cgraph.
+
+2009-06-02  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c (lto_1_to_1_map): Ignore nodes that have not been
+	read in.
+	(materialize_cgraph): Only materialize nodes that have a
+	representation on file.
+
+2009-06-01  Diego Novillo  <dnovillo@google.com>
+
+	* lto-lang.c (lto_handle_option): Hanlde OPT_Wabi.
+
+2009-05-31  Diego Novillo  <dnovillo@google.com>
+
+	* lto-lang.c (lto_type_for_mode): Handle all the modes
+	handled in c_common_type_for_mode.
+
+2009-05-21  Diego Novillo  <dnovillo@google.com>
+
+	* lto-elf.c: Always include <gelf.h>.
+	* config-lang.in (target_libs): Remove.
+	(build_by_default): Set to no.
+
+2009-05-15  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c (lto_materialize_function): Assert that DECL is
+	not a builtin.
+	(materialize_cgraph): Don't try to materialize builtin
+	functions.
+	* lto-section-out.c (write_symbol_vec): Do not write
+	builtin functions.
+
+2009-05-13  Diego Novillo  <dnovillo@google.com>
+
+	* lto-lang.c (LANG_HOOKS_GET_ALIAS_SET): Define.
+
+2009-05-07  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c (lto_resolution_read): Add type casts for C++ warnings.
+	(LTO_REGISTER_TYPE_AND_FIXUP_SUBTREE): Define.
+	(lto_fixup_type): Call it for TYPE_POINTER_TO,
+	TYPE_REFERENCE_TO, TYPE_CONTEXT and TYPE_CANONICAL.
+	(lto_fixup_tree): Call gimple_register_type when *TP is a
+	type.
+	(lto_main): Call bitmap_obstack_initialize.
+
+2009-04-22  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c (free_section_data): Tidy.
+	(lto_1_to_1_map): Tidy.
+	(lto_add_all_inlinees): Tidy.
+	(prefix_name_with_star): New.
+	(get_filename_for_set): New.
+	(lto_wpa_write_files): Call cgraph_node_set_needs_ltrans_p
+	to determine what cgraph node sets to write.
+	Call get_filename_for_set to compute temporary file
+	names.
+	(lto_execute_ltrans): Do not execute LTRANS on files with
+	names that start with '*'.
+	Move logic to execute LTRANS together so that LTRANS is
+	invoked only if there are any files to compile.
+	(do_whole_program_analysis): Only remove output files
+	that do not start with '*'.
+
+2009-04-06  Diego Novillo  <dnovillo@google.com>
+
+	* lto-lang.c (lto_post_options): Set flag_excess_precision_cmdline.
+	* lto.c (read_cgraph_and_symbols): Set cgraph_function_flags_ready.
+	(lto_add_all_inlinees): Tidy.
+
+2009-03-26  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c: Include gimple.h.
+	(lto_read_in_decl_state): Call gimple_register_type for
+	every type in every stream.
+	(lto_fixup_common): Call gimple_register_type if T has a
+	type.
+	(do_whole_program_analysis): Call print_lto_report.
+	(lto_main): Call print_lto_report after cgraph_optimize.
+	* Make-lang.in (lto.o): Add dependency on GIMPLE_H.
+
+2009-03-24  Diego Novillo  <dnovillo@google.com>
+
+	* Make-lang.in (lto-lang.o): Add dependency on TARGET_H and EXPR_H.
+	(lto.o): Add dependency on GIMPLE_H.
+
+2009-03-10  Simon Baldwin  <simonb@google.com>
+
+	* lto.c (lto_read_all_file_options): Close any open file descriptor
+	contained in file_data before freeing.
+
+2009-02-24  Rafael Avila de Espindola  <espindola@google.com>
+
+	* lto.c (lto_add_inline_clones): Don't add the master clone. Check
+	for a decl in the original bitmap, not a node.
+	(lto_add_all_inlinees): Remove original nodes that are not needed.
+	(lto_scan_statics_in_cgraph_node): Don't care if the node is the master.
+
+2009-02-24  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c (lto_materialize_function): Update
+	lto_stats.num_function_bodies.
+	(get_section_data): Initialize *LEN to 0.
+	(lto_1_to_1_map): Update lto_stats.num_cgraph_partitions.
+	(lto_wpa_write_files): Update lto_stats.num_cgraph_nodes.
+	Update lto_stats.num_output_files.
+	(read_cgraph_and_symbols): Update lto_stats.num_input_files.
+	(materialize_cgraph): Update lto_stats.num_input_cgraph_nodes.
+	(lto_main): Initialize lto_stats.
+	If flag_lto_report is set, call print_lto_report.
+
+2009-02-19  Diego Novillo  <dnovillo@google.com>
+
+	Revert
+
+	2009-02-19  Rafael Avila de Espindola  <espindola@google.com>
+
+		* lto.c (lto_add_inline_clones): Don't add the
+		master clone. Check for a decl in the original
+		bitmap, not a node.
+		(lto_add_all_inlinees): Remove original nodes
+		that are not needed.
+		(lto_scan_statics_in_cgraph_node): Don't care if
+		the node is the master.
+		(lto_promote_cross_file_statics): Use a new
+		context.seen_node_decls for each set
+
+2009-02-19  Rafael Avila de Espindola  <espindola@google.com>
+
+	* lto.c (lto_add_inline_clones): Don't add the master clone. Check
+	for a decl in the original bitmap, not a node.
+	(lto_add_all_inlinees): Remove original nodes that are not needed.
+	(lto_scan_statics_in_cgraph_node): Don't care if the node is the master.
+	(lto_promote_cross_file_statics): Use a new context.seen_node_decls
+	for each set
+
+2009-02-18  Diego Novillo  <dnovillo@google.com>
+
+	* lto.c (lto_wpa_write_files): Use timers TV_WHOPR_WPA
+	and TV_WHOPR_WPA_IO.
+	(lto_execute_ltrans): Use timer TV_WHOPR_WPA_LTRANS_EXEC.
+	(read_cgraph_and_symbols): Use timer TV_IPA_LTO_DECL_IO.
+	(materialize_cgraph): Use timer TV_IPA_LTO_GIMPLE_IO.
+	Use timer TV_WHOPR_WPA or TV_WHOPR_LTRANS or TV_LTO
+	depending on command line flags.
+	(do_whole_program_analysis): Use timer TV_WHOPR_WPA.
+	(lto_main): Remove timer uses.
+
+2009-02-18  Rafael Avila de Espindola  <espindola@google.com>
+
+	* lto.c (lto_materialize_function): Don't set DECL_EXTERN to 0.
+	(lto_wpa_write_files): Update calls to renamed functions.
+
+2009-02-17  Diego Novillo  <dnovillo@google.com>
+
+	PR 39203
+	* lto-lang.c (lto_post_options): Disable -fwhole-program
+	when running LTRANS.
+
 2009-02-10  Diego Novillo  <dnovillo@google.com>
 
 	* lto.c (read_cgraph_and_symbols): Fix comment.

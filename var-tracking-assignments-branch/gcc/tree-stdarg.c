@@ -1,5 +1,5 @@
 /* Pass computing data for optimizing stdarg functions.
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>
 
 This file is part of GCC.
@@ -496,7 +496,7 @@ check_all_va_list_escapes (struct stdarg_info *si)
 	  tree use;
 	  ssa_op_iter iter;
 
-	  if (IS_DEBUG_STMT (stmt))
+	  if (is_gimple_debug (stmt))
 	    continue;
 
 	  FOR_EACH_SSA_TREE_OPERAND (use, stmt, iter, SSA_OP_ALL_USES)
@@ -840,7 +840,7 @@ execute_optimize_stdarg (void)
 		    continue;
 		}
 	    }
-	  else if (IS_DEBUG_STMT (stmt))
+	  else if (is_gimple_debug (stmt))
 	    continue;
 
 	  /* All other uses of va_list are either va_copy (that is not handled
@@ -910,8 +910,8 @@ struct gimple_opt_pass pass_stdarg =
   NULL,					/* sub */
   NULL,					/* next */
   0,					/* static_pass_number */
-  0,					/* tv_id */
-  PROP_cfg | PROP_ssa | PROP_alias,	/* properties_required */
+  TV_NONE,				/* tv_id */
+  PROP_cfg | PROP_ssa,			/* properties_required */
   0,					/* properties_provided */
   0,					/* properties_destroyed */
   0,					/* todo_flags_start */

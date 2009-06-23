@@ -1,5 +1,6 @@
 /* Data references and dependences detectors.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
 This file is part of GCC.
@@ -551,6 +552,7 @@ split_constant_offset_1 (tree type, tree op0, enum tree_code code, tree op1,
 	enum machine_mode pmode;
 	int punsignedp, pvolatilep;
 
+	op0 = TREE_OPERAND (op0, 0);
 	if (!handled_component_p (op0))
 	  return false;
 
@@ -666,9 +668,9 @@ canonicalize_base_object_address (tree addr)
 }
 
 /* Analyzes the behavior of the memory reference DR in the innermost loop that
-   contains it.  */
+   contains it. Returns true if analysis succeed or false otherwise.  */
 
-void
+bool
 dr_analyze_innermost (struct data_reference *dr)
 {
   gimple stmt = DR_STMT (dr);
@@ -692,26 +694,27 @@ dr_analyze_innermost (struct data_reference *dr)
     {
       if (dump_file && (dump_flags & TDF_DETAILS))
 	fprintf (dump_file, "failed: bit offset alignment.\n");
-      return;
+      return false;
     }
 
   base = build_fold_addr_expr (base);
-  if (!simple_iv (loop, stmt, base, &base_iv, false))
+  if (!simple_iv (loop, loop_containing_stmt (stmt), base, &base_iv, false))
     {
       if (dump_file && (dump_flags & TDF_DETAILS))
 	fprintf (dump_file, "failed: evolution of base is not affine.\n");
-      return;
+      return false;
     }
   if (!poffset)
     {
       offset_iv.base = ssize_int (0);
       offset_iv.step = ssize_int (0);
     }
-  else if (!simple_iv (loop, stmt, poffset, &offset_iv, false))
+  else if (!simple_iv (loop, loop_containing_stmt (stmt),
+		       poffset, &offset_iv, false))
     {
       if (dump_file && (dump_flags & TDF_DETAILS))
 	fprintf (dump_file, "failed: evolution of offset is not affine.\n");
-      return;
+      return false;
     }
 
   init = ssize_int (pbitpos / BITS_PER_UNIT);
@@ -734,6 +737,8 @@ dr_analyze_innermost (struct data_reference *dr)
 
   if (dump_file && (dump_flags & TDF_DETAILS))
     fprintf (dump_file, "success.\n");
+
+  return true;
 }
 
 /* Determines the base object and the list of indices of memory reference
@@ -747,6 +752,7 @@ dr_analyze_indices (struct data_reference *dr, struct loop *nest)
   VEC (tree, heap) *access_fns = NULL;
   tree ref = unshare_expr (DR_REF (dr)), aref = ref, op;
   tree base, off, access_fn;
+  basic_block before_loop = block_before_loop (nest);
 
   while (handled_component_p (aref))
     {
@@ -754,7 +760,7 @@ dr_analyze_indices (struct data_reference *dr, struct loop *nest)
 	{
 	  op = TREE_OPERAND (aref, 1);
 	  access_fn = analyze_scalar_evolution (loop, op);
-	  access_fn = instantiate_scev (nest, loop, access_fn);
+	  access_fn = instantiate_scev (before_loop, loop, access_fn);
 	  VEC_safe_push (tree, heap, access_fns, access_fn);
 
 	  TREE_OPERAND (aref, 1) = build_int_cst (TREE_TYPE (op), 0);
@@ -767,7 +773,7 @@ dr_analyze_indices (struct data_reference *dr, struct loop *nest)
     {
       op = TREE_OPERAND (aref, 0);
       access_fn = analyze_scalar_evolution (loop, op);
-      access_fn = instantiate_scev (nest, loop, access_fn);
+      access_fn = instantiate_scev (before_loop, loop, access_fn);
       base = initial_condition (access_fn);
       split_constant_offset (base, &base, &off);
       access_fn = chrec_replace_initial_condition (access_fn,
@@ -1224,7 +1230,7 @@ disjoint_objects_p (tree a, tree b)
 /* Returns false if we can prove that data references A and B do not alias,
    true otherwise.  */
 
-static bool
+bool
 dr_may_alias_p (const struct data_reference *a, const struct data_reference *b)
 {
   const_tree addr_a = DR_BASE_ADDRESS (a);
@@ -1397,6 +1403,7 @@ free_subscripts (VEC (subscript_p, heap) *subscripts)
     {
       free_conflict_function (s->conflicting_iterations_in_a);
       free_conflict_function (s->conflicting_iterations_in_b);
+      free (s);
     }
   VEC_free (subscript_p, heap, subscripts);
 }
@@ -1889,6 +1896,14 @@ initialize_matrix_A (lambda_matrix A, tree chrec, unsigned index, int mult)
       {
 	tree op = initialize_matrix_A (A, TREE_OPERAND (chrec, 0), index, mult);
 	return chrec_convert (chrec_type (chrec), op, NULL);
+      }
+
+    case BIT_NOT_EXPR:
+      {
+	/* Handle ~X as -1 - X.  */
+	tree op = initialize_matrix_A (A, TREE_OPERAND (chrec, 0), index, mult);
+	return chrec_fold_op (MINUS_EXPR, chrec_type (chrec),
+			      build_int_cst (TREE_TYPE (chrec), -1), op);
       }
 
     case INTEGER_CST:
@@ -3303,6 +3318,22 @@ access_functions_are_affine_or_constant_p (const struct data_reference *a,
   return true;
 }
 
+/* Return true if we can create an affine data-ref for OP in STMT.  */
+
+bool
+stmt_simple_memref_p (struct loop *loop, gimple stmt, tree op)
+{
+  data_reference_p dr;
+  bool res = true;
+
+  dr = create_data_ref (loop, op, stmt, true);
+  if (!access_functions_are_affine_or_constant_p (dr, loop))
+    res = false;
+
+  free_data_ref (dr);
+  return res;
+}
+
 /* Initializes an equation for an OMEGA problem using the information
    contained in the ACCESS_FUN.  Returns true when the operation
    succeeded.
@@ -4069,9 +4100,9 @@ get_references_in_stmt (gimple stmt, VEC (data_ref_loc, heap) **references)
 
 /* Stores the data references in STMT to DATAREFS.  If there is an unanalyzable
    reference, returns false, otherwise returns true.  NEST is the outermost
-   loop of the loop nest in that the references should be analyzed.  */
+   loop of the loop nest in which the references should be analyzed.  */
 
-static bool
+bool
 find_data_references_in_stmt (struct loop *nest, gimple stmt,
 			      VEC (data_reference_p, heap) **datarefs)
 {
@@ -4116,7 +4147,7 @@ find_data_references_in_stmt (struct loop *nest, gimple stmt,
    TODO: This function should be made smarter so that it can handle address
    arithmetic as if they were array accesses, etc.  */
 
-static tree 
+tree 
 find_data_references_in_loop (struct loop *loop,
 			      VEC (data_reference_p, heap) **datarefs)
 {
@@ -4644,6 +4675,7 @@ create_rdg_edge_for_ddr (struct graph *rdg, ddr_p ddr)
   e->data = XNEW (struct rdg_edge);
 
   RDGE_LEVEL (e) = level;
+  RDGE_RELATION (e) = ddr;
 
   /* Determines the type of the data dependence.  */
   if (DR_IS_READ (dra) && DR_IS_READ (drb))
@@ -4676,6 +4708,7 @@ create_rdg_edges_for_scalar (struct graph *rdg, tree def, int idef)
       e = add_edge (rdg, idef, use);
       e->data = XNEW (struct rdg_edge);
       RDGE_TYPE (e) = flow_dd;
+      RDGE_RELATION (e) = NULL;
     }
 }
 
@@ -4701,7 +4734,7 @@ create_rdg_edges (struct graph *rdg, VEC (ddr_p, heap) *ddrs)
 
 /* Build the vertices of the reduced dependence graph RDG.  */
 
-static void
+void
 create_rdg_vertices (struct graph *rdg, VEC (gimple, heap) *stmts)
 {
   int i, j;
@@ -4826,6 +4859,21 @@ hash_stmt_vertex_del (void *e)
    scalar dependence.  */
 
 struct graph *
+build_empty_rdg (int n_stmts)
+{
+  int nb_data_refs = 10;
+  struct graph *rdg = new_graph (n_stmts);
+
+  rdg->indices = htab_create (nb_data_refs, hash_stmt_vertex_info,
+			      eq_stmt_vertex_info, hash_stmt_vertex_del);
+  return rdg;
+}
+
+/* Build the Reduced Dependence Graph (RDG) with one vertex per
+   statement of the loop nest, and one edge per data dependence or
+   scalar dependence.  */
+
+struct graph *
 build_rdg (struct loop *loop)
 {
   int nb_data_refs = 10;
@@ -4842,21 +4890,23 @@ build_rdg (struct loop *loop)
                                      &dependence_relations);
 
   if (!known_dependences_p (dependence_relations))
-    goto end_rdg;
+    {
+      free_dependence_relations (dependence_relations);
+      free_data_refs (datarefs);
+      VEC_free (gimple, heap, stmts);
+
+      return rdg;
+    }
 
   stmts_from_loop (loop, &stmts);
-  rdg = new_graph (VEC_length (gimple, stmts));
+  rdg = build_empty_rdg (VEC_length (gimple, stmts));
 
   rdg->indices = htab_create (nb_data_refs, hash_stmt_vertex_info,
 			      eq_stmt_vertex_info, hash_stmt_vertex_del);
   create_rdg_vertices (rdg, stmts);
   create_rdg_edges (rdg, dependence_relations);
 
- end_rdg:
-  free_dependence_relations (dependence_relations);
-  free_data_refs (datarefs);
   VEC_free (gimple, heap, stmts);
-
   return rdg;
 }
 

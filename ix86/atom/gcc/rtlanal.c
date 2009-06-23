@@ -1,7 +1,7 @@
 /* Analyze RTL for GNU compiler.
    Copyright (C) 1987, 1988, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008 Free Software
-   Foundation, Inc.
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -39,18 +39,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "df.h"
 #include "tree.h"
 
-/* Information about a subreg of a hard register.  */
-struct subreg_info
-{
-  /* Offset of first hard register involved in the subreg.  */
-  int offset;
-  /* Number of hard registers involved in the subreg.  */
-  int nregs;
-  /* Whether this subreg can be represented as a hard reg with the new
-     mode.  */
-  bool representable_p;
-};
-
 /* Forward declarations */
 static void set_of_1 (rtx, const_rtx, void *);
 static bool covers_regno_p (const_rtx, unsigned int);
@@ -58,9 +46,6 @@ static bool covers_regno_no_parallel_p (const_rtx, unsigned int);
 static int rtx_referenced_p_1 (rtx *, void *);
 static int computed_jump_p_1 (const_rtx);
 static void parms_set (rtx, const_rtx, void *);
-static void subreg_get_info (unsigned int, enum machine_mode,
-			     unsigned int, enum machine_mode,
-			     struct subreg_info *);
 
 static unsigned HOST_WIDE_INT cached_nonzero_bits (const_rtx, enum machine_mode,
                                                    const_rtx, enum machine_mode,
@@ -728,129 +713,6 @@ reg_mentioned_p (const_rtx reg, const_rtx in)
     }
   return 0;
 }
-
-static int
-reg_mentioned_by_mem_p_1 (const_rtx reg, const_rtx in,
-			  bool *mem_p)
-{
-  const char *fmt;
-  int i;
-  enum rtx_code code;
-
-  if (in == 0)
-    return 0;
-
-  if (reg == in)
-    return 1;
-
-  if (GET_CODE (in) == LABEL_REF)
-    return reg == XEXP (in, 0);
-
-  code = GET_CODE (in);
-
-  switch (code)
-    {
-      /* Compare registers by number.  */
-    case REG:
-      return REG_P (reg) && REGNO (in) == REGNO (reg);
-
-      /* These codes have no constituent expressions
-	 and are unique.  */
-    case SCRATCH:
-    case CC0:
-    case PC:
-      return 0;
-
-    case CONST_INT:
-    case CONST_VECTOR:
-    case CONST_DOUBLE:
-    case CONST_FIXED:
-      /* These are kept unique for a given value.  */
-      return 0;
-
-    default:
-      break;
-    }
-
-  if (GET_CODE (reg) == code && rtx_equal_p (reg, in))
-    return 1;
-
-  fmt = GET_RTX_FORMAT (code);
-
-  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
-    {
-      if (fmt[i] == 'E')
-	{
-	  int j;
-	  for (j = XVECLEN (in, i) - 1; j >= 0; j--)
-	    if (reg_mentioned_by_mem_p_1 (reg, XVECEXP (in, i, j), mem_p))
-              {
-                if (code == MEM)
-                  *mem_p = true;
-
-	        return 1;
-              }
-	}
-      else if (fmt[i] == 'e'
-	       && reg_mentioned_by_mem_p_1 (reg, XEXP (in, i), mem_p))
-	{
-	  if (code == MEM)
-	    *mem_p = true;
-
-	  return 1;
-	}
-    }
-  return 0;
-}
-
-/* Similar to the function reg_mentioned_p, return true only when
-   register REG appears in a MEM container of RTX IN.  */
-
-bool
-reg_mentioned_by_mem_p (const_rtx reg, const_rtx in)
-{
-  bool mem = false;
-
-  reg_mentioned_by_mem_p_1 (reg, in, &mem);
-  return mem;
-}
-
-/* Return true if dest regsiter in set_insn is used in use_insn as 
-   address calculation.
-   For example, returns true if 
-     set_insn: reg_a = reg_b
-     use_insn: reg_c = (reg_a) # reg_a used in addr calculation
-   False if
-     set_insn: reg_a = reg_b
-     use_insn: (reg_c) = reg_a # reg_a is used, by not as addr.  */
-
-bool
-reg_dep_by_addr_p (const_rtx set_insn, const_rtx use_insn)
-{
-  rtx pattern = PATTERN (set_insn);
-  rtx set_dest = NULL;
-
-  switch (GET_CODE (pattern))
-    {
-      case SET:
-        set_dest = SET_DEST (pattern);
-        break;
-      case PARALLEL:
-        {
-          rtx pattern2 = XVECEXP (PATTERN (set_insn), 0,0);
-  	  if (GET_CODE (pattern2) == SET)
-  	    set_dest = SET_DEST (pattern2);
-          break;
-        }
-      default:
-        set_dest = NULL;
-    }
-
-  /* True if destination of set is reg and used as address.  */
-  return set_dest && REG_P (set_dest) 
-         && reg_mentioned_by_mem_p (set_dest, use_insn);
-}
-
 
 /* Return 1 if in between BEG and END, exclusive of BEG and END, there is
    no CODE_LABEL insn.  */
@@ -2003,10 +1865,11 @@ find_regno_fusage (const_rtx insn, enum rtx_code code, unsigned int regno)
 }
 
 
-/* Add register note with kind KIND and datum DATUM to INSN.  */
+/* Allocate a register note with kind KIND and datum DATUM.  LIST is
+   stored as the pointer to the next register note.  */
 
-void
-add_reg_note (rtx insn, enum reg_note kind, rtx datum)
+rtx
+alloc_reg_note (enum reg_note kind, rtx datum, rtx list)
 {
   rtx note;
 
@@ -2019,16 +1882,24 @@ add_reg_note (rtx insn, enum reg_note kind, rtx datum)
       /* These types of register notes use an INSN_LIST rather than an
 	 EXPR_LIST, so that copying is done right and dumps look
 	 better.  */
-      note = alloc_INSN_LIST (datum, REG_NOTES (insn));
+      note = alloc_INSN_LIST (datum, list);
       PUT_REG_NOTE_KIND (note, kind);
       break;
 
     default:
-      note = alloc_EXPR_LIST (kind, datum, REG_NOTES (insn));
+      note = alloc_EXPR_LIST (kind, datum, list);
       break;
     }
 
-  REG_NOTES (insn) = note;
+  return note;
+}
+
+/* Add register note with kind KIND and datum DATUM to INSN.  */
+
+void
+add_reg_note (rtx insn, enum reg_note kind, rtx datum)
+{
+  REG_NOTES (insn) = alloc_reg_note (kind, datum, REG_NOTES (insn));
 }
 
 /* Remove register note NOTE from the REG_NOTES of INSN.  */
@@ -3213,7 +3084,7 @@ subreg_lsb (const_rtx x)
    offset - The byte offset.
    ymode  - The mode of a top level SUBREG (or what may become one).
    info   - Pointer to structure to fill in.  */
-static void
+void
 subreg_get_info (unsigned int xregno, enum machine_mode xmode,
 		 unsigned int offset, enum machine_mode ymode,
 		 struct subreg_info *info)
@@ -4184,7 +4055,8 @@ nonzero_bits1 (const_rtx x, enum machine_mode mode, const_rtx known_x,
 	 low-order bits by left shifts.  */
       if (GET_CODE (XEXP (x, 1)) == CONST_INT
 	  && INTVAL (XEXP (x, 1)) >= 0
-	  && INTVAL (XEXP (x, 1)) < HOST_BITS_PER_WIDE_INT)
+	  && INTVAL (XEXP (x, 1)) < HOST_BITS_PER_WIDE_INT
+	  && INTVAL (XEXP (x, 1)) < GET_MODE_BITSIZE (GET_MODE (x)))
 	{
 	  enum machine_mode inner_mode = GET_MODE (x);
 	  unsigned int width = GET_MODE_BITSIZE (inner_mode);
@@ -4665,7 +4537,8 @@ num_sign_bit_copies1 (const_rtx x, enum machine_mode mode, const_rtx known_x,
       num0 = cached_num_sign_bit_copies (XEXP (x, 0), mode,
 					 known_x, known_mode, known_ret);
       if (GET_CODE (XEXP (x, 1)) == CONST_INT
-	  && INTVAL (XEXP (x, 1)) > 0)
+	  && INTVAL (XEXP (x, 1)) > 0
+	  && INTVAL (XEXP (x, 1)) < GET_MODE_BITSIZE (GET_MODE (x)))
 	num0 = MIN ((int) bitwidth, num0 + INTVAL (XEXP (x, 1)));
 
       return num0;
@@ -4674,7 +4547,8 @@ num_sign_bit_copies1 (const_rtx x, enum machine_mode mode, const_rtx known_x,
       /* Left shifts destroy copies.  */
       if (GET_CODE (XEXP (x, 1)) != CONST_INT
 	  || INTVAL (XEXP (x, 1)) < 0
-	  || INTVAL (XEXP (x, 1)) >= (int) bitwidth)
+	  || INTVAL (XEXP (x, 1)) >= (int) bitwidth
+	  || INTVAL (XEXP (x, 1)) >= GET_MODE_BITSIZE (GET_MODE (x)))
 	return 1;
 
       num0 = cached_num_sign_bit_copies (XEXP (x, 0), mode,
@@ -5160,4 +5034,3 @@ constant_pool_constant_p (rtx x)
   x = avoid_constant_pool_reference (x);
   return GET_CODE (x) == CONST_DOUBLE;
 }
-

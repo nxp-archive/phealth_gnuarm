@@ -1,6 +1,6 @@
 /* Top level of GCC compilers (cc1, cc1plus, etc.)
    Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -84,6 +84,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-mudflap.h"
 #include "tree-pass.h"
 #include "gimple.h"
+#include "tree-ssa-alias.h"
+#include "plugin.h"
 
 #if defined (DWARF2_UNWIND_INFO) || defined (DWARF2_DEBUGGING_INFO)
 #include "dwarf2out.h"
@@ -281,6 +283,11 @@ enum ira_region flag_ira_region = IRA_REGION_MIXED;
 
 unsigned int flag_ira_verbose = 5;
 
+/* Set the default for excess precision.  */
+
+enum excess_precision flag_excess_precision_cmdline = EXCESS_PRECISION_DEFAULT;
+enum excess_precision flag_excess_precision = EXCESS_PRECISION_DEFAULT;
+
 /* Nonzero means change certain warnings into errors.
    Usually these are warnings about failure to conform to some standard.  */
 
@@ -312,15 +319,17 @@ int flag_dump_rtl_in_asm = 0;
    the support provided depends on the backend.  */
 rtx stack_limit_rtx;
 
-/* Nonzero if we should track variables.  When
-   flag_var_tracking == AUTODETECT_VALUE it will be set according
-   to optimize, debug_info_level and debug_hooks in process_options ().  */
+/* Positive if we should track variables, negative if we should run
+   the var-tracking pass only to discard debug annotations, zero if
+   we're not to run it.  When flag_var_tracking == AUTODETECT_VALUE it
+   will be set according to optimize, debug_info_level and debug_hooks
+   in process_options ().  */
 int flag_var_tracking = AUTODETECT_VALUE;
 
-/* Nonzero if we should track variable assignments.  When
-   flag_var_tracking_assignments == AUTODETECT_VALUE it will be set
-   according to flag_var_tracking, optimize, debug_info_level and
-   debug_hooks in process_options ().  */
+/* Positive if we should track variables at assignments, negative if
+   we should run the var-tracking pass only to discard debug
+   annotations.  When flag_var_tracking_assignments ==
+   AUTODETECT_VALUE it will be set according to flag_var_tracking.  */
 int flag_var_tracking_assignments = AUTODETECT_VALUE;
 
 /* Nonzero if we should toggle flag_var_tracking_assignments after
@@ -430,9 +439,11 @@ announce_function (tree decl)
   if (!quiet_flag)
     {
       if (rtl_dump_and_exit)
-	fprintf (stderr, "%s ", IDENTIFIER_POINTER (DECL_NAME (decl)));
+	fprintf (stderr, "%s ",
+		 identifier_to_locale (IDENTIFIER_POINTER (DECL_NAME (decl))));
       else
-	fprintf (stderr, " %s", lang_hooks.decl_printable_name (decl, 2));
+	fprintf (stderr, " %s",
+		 identifier_to_locale (lang_hooks.decl_printable_name (decl, 2)));
       fflush (stderr);
       pp_needs_newline (global_dc->printer) = true;
       diagnostic_set_last_function (global_dc, (diagnostic_info *) NULL);
@@ -533,11 +544,11 @@ read_integral_parameter (const char *p, const char *pname, const int  defval)
   return atoi (p);
 }
 
-/* When compiling with a recent enough GCC, we use the GNU C "extern inline"
-   for floor_log2 and exact_log2; see toplev.h.  That construct, however,
-   conflicts with the ISO C++ One Definition Rule.   */
+#if GCC_VERSION < 3004
 
-#if GCC_VERSION < 3004 || !defined (__cplusplus)
+/* The functions floor_log2 and exact_log2 are defined as inline
+   functions in toplev.h if GCC_VERSION >= 3004.  The definitions here
+   are used for older versions of gcc.  */
 
 /* Given X, an unsigned number, return the largest int Y such that 2**Y <= X.
    If X is 0, return -1.  */
@@ -550,9 +561,6 @@ floor_log2 (unsigned HOST_WIDE_INT x)
   if (x == 0)
     return -1;
 
-#ifdef CLZ_HWI
-  t = HOST_BITS_PER_WIDE_INT - 1 - (int) CLZ_HWI (x);
-#else
   if (HOST_BITS_PER_WIDE_INT > 64)
     if (x >= (unsigned HOST_WIDE_INT) 1 << (t + 64))
       t += 64;
@@ -569,7 +577,6 @@ floor_log2 (unsigned HOST_WIDE_INT x)
     t += 2;
   if (x >= ((unsigned HOST_WIDE_INT) 1) << (t + 1))
     t += 1;
-#endif
 
   return t;
 }
@@ -582,14 +589,10 @@ exact_log2 (unsigned HOST_WIDE_INT x)
 {
   if (x != (x & -x))
     return -1;
-#ifdef CTZ_HWI
-  return x ? CTZ_HWI (x) : -1;
-#else
   return floor_log2 (x);
-#endif
 }
 
-#endif /*  GCC_VERSION < 3004 || !defined (__cplusplus)  */
+#endif /* GCC_VERSION < 3004 */
 
 /* Handler for fatal signals, such as SIGSEGV.  These are transformed
    into ICE messages, which is much more user friendly.  In case the
@@ -909,30 +912,58 @@ emit_debug_global_declarations (tree *vec, int len)
 
 /* Warn about a use of an identifier which was marked deprecated.  */
 void
-warn_deprecated_use (tree node)
+warn_deprecated_use (tree node, tree attr)
 {
+  const char *msg;
+
   if (node == 0 || !warn_deprecated_decl)
     return;
+
+  if (!attr)
+    {
+      if (DECL_P (node))
+	attr = DECL_ATTRIBUTES (node);
+      else if (TYPE_P (node))
+	{
+	  tree decl = TYPE_STUB_DECL (node);
+	  if (decl)
+	    attr = lookup_attribute ("deprecated",
+				     TYPE_ATTRIBUTES (TREE_TYPE (decl)));
+	}
+    }
+
+  if (attr)
+    attr = lookup_attribute ("deprecated", attr);
+
+  if (attr)
+    msg = TREE_STRING_POINTER (TREE_VALUE (TREE_VALUE (attr)));
+  else
+    msg = NULL;
 
   if (DECL_P (node))
     {
       expanded_location xloc = expand_location (DECL_SOURCE_LOCATION (node));
-      warning (OPT_Wdeprecated_declarations,
-	       "%qD is deprecated (declared at %s:%d)",
-	       node, xloc.file, xloc.line);
+      if (msg)
+	warning (OPT_Wdeprecated_declarations,
+		 "%qD is deprecated (declared at %s:%d): %s",
+		 node, xloc.file, xloc.line, msg);
+      else
+	warning (OPT_Wdeprecated_declarations,
+		 "%qD is deprecated (declared at %s:%d)",
+		 node, xloc.file, xloc.line);
     }
   else if (TYPE_P (node))
     {
-      const char *what = NULL;
+      tree what = NULL_TREE;
       tree decl = TYPE_STUB_DECL (node);
 
       if (TYPE_NAME (node))
 	{
 	  if (TREE_CODE (TYPE_NAME (node)) == IDENTIFIER_NODE)
-	    what = IDENTIFIER_POINTER (TYPE_NAME (node));
+	    what = TYPE_NAME (node);
 	  else if (TREE_CODE (TYPE_NAME (node)) == TYPE_DECL
 		   && DECL_NAME (TYPE_NAME (node)))
-	    what = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (node)));
+	    what = DECL_NAME (TYPE_NAME (node));
 	}
 
       if (decl)
@@ -940,20 +971,46 @@ warn_deprecated_use (tree node)
 	  expanded_location xloc
 	    = expand_location (DECL_SOURCE_LOCATION (decl));
 	  if (what)
-	    warning (OPT_Wdeprecated_declarations,
-		     "%qs is deprecated (declared at %s:%d)", what,
-		     xloc.file, xloc.line);
+	    {
+	      if (msg)
+		warning (OPT_Wdeprecated_declarations,
+			 "%qE is deprecated (declared at %s:%d): %s",
+			 what, xloc.file, xloc.line, msg);
+	      else
+		warning (OPT_Wdeprecated_declarations,
+			 "%qE is deprecated (declared at %s:%d)", what,
+			 xloc.file, xloc.line);
+	    }
 	  else
-	    warning (OPT_Wdeprecated_declarations,
-		     "type is deprecated (declared at %s:%d)",
-		     xloc.file, xloc.line);
+	    {
+	      if (msg)
+		warning (OPT_Wdeprecated_declarations,
+			 "type is deprecated (declared at %s:%d): %s",
+			 xloc.file, xloc.line, msg);
+	      else
+		warning (OPT_Wdeprecated_declarations,
+			 "type is deprecated (declared at %s:%d)",
+			 xloc.file, xloc.line);
+	    }
 	}
       else
 	{
 	  if (what)
-	    warning (OPT_Wdeprecated_declarations, "%qs is deprecated", what);
+	    {
+	      if (msg)
+		warning (OPT_Wdeprecated_declarations, "%qE is deprecated: %s",
+			 what, msg);
+	      else
+		warning (OPT_Wdeprecated_declarations, "%qE is deprecated", what);
+	    }
 	  else
-	    warning (OPT_Wdeprecated_declarations, "type is deprecated");
+	    {
+	      if (msg)
+		warning (OPT_Wdeprecated_declarations, "type is deprecated: %s",
+			 msg);
+	      else
+		warning (OPT_Wdeprecated_declarations, "type is deprecated");
+	    }
 	}
     }
 }
@@ -995,11 +1052,6 @@ compile_file (void)
 
   varpool_assemble_pending_decls ();
   finish_aliases_2 ();
-
-  /* This must occur after the loop to output deferred functions.
-     Else the coverage initializer would not be emitted if all the
-     functions in this compilation unit were deferred.  */
-  coverage_finish ();
 
   /* Likewise for mudflap static object registrations.  */
   if (flag_mudflap)
@@ -1122,8 +1174,13 @@ print_version (FILE *file, const char *indent)
     N_("%s%s%s %sversion %s (%s) compiled by CC, ")
 #endif
     ;
+#ifdef HAVE_mpc
   static const char fmt2[] =
-    N_("GMP version %s, MPFR version %s.\n");
+    N_("GMP version %s, MPFR version %s, MPC version %s\n");
+#else
+  static const char fmt2[] =
+    N_("GMP version %s, MPFR version %s\n");
+#endif
   static const char fmt3[] =
     N_("%s%swarning: %s header version %s differs from library version %s.\n");
   static const char fmt4[] =
@@ -1138,10 +1195,14 @@ print_version (FILE *file, const char *indent)
 	   indent, __VERSION__);
 
   /* We need to stringify the GMP macro values.  Ugh, gmp_version has
-     two string formats, "i.j.k" and "i.j" when k is zero.  */
+     two string formats, "i.j.k" and "i.j" when k is zero.  As of
+     gmp-4.3.0, GMP always uses the 3 number format.  */
 #define GCC_GMP_STRINGIFY_VERSION3(X) #X
 #define GCC_GMP_STRINGIFY_VERSION2(X) GCC_GMP_STRINGIFY_VERSION3(X)
-#if __GNU_MP_VERSION_PATCHLEVEL == 0
+#define GCC_GMP_VERSION_NUM(X,Y,Z) (((X) << 16L) | ((Y) << 8) | (Z))
+#define GCC_GMP_VERSION \
+  GCC_GMP_VERSION_NUM(__GNU_MP_VERSION, __GNU_MP_VERSION_MINOR, __GNU_MP_VERSION_PATCHLEVEL)
+#if GCC_GMP_VERSION < GCC_GMP_VERSION_NUM(4,3,0) && __GNU_MP_VERSION_PATCHLEVEL == 0
 #define GCC_GMP_STRINGIFY_VERSION GCC_GMP_STRINGIFY_VERSION2(__GNU_MP_VERSION) "." \
   GCC_GMP_STRINGIFY_VERSION2(__GNU_MP_VERSION_MINOR)
 #else
@@ -1151,7 +1212,11 @@ print_version (FILE *file, const char *indent)
 #endif
   fprintf (file,
 	   file == stderr ? _(fmt2) : fmt2,
-	   GCC_GMP_STRINGIFY_VERSION, MPFR_VERSION_STRING);
+	   GCC_GMP_STRINGIFY_VERSION, MPFR_VERSION_STRING
+#ifdef HAVE_mpc
+	   , MPC_VERSION_STRING
+#endif
+	   );
   if (strcmp (GCC_GMP_STRINGIFY_VERSION, gmp_version))
     fprintf (file,
 	     file == stderr ? _(fmt3) : fmt3,
@@ -1162,10 +1227,19 @@ print_version (FILE *file, const char *indent)
 	     file == stderr ? _(fmt3) : fmt3,
 	     indent, *indent != 0 ? " " : "",
 	     "MPFR", MPFR_VERSION_STRING, mpfr_get_version ());
+#ifdef HAVE_mpc
+  if (strcmp (MPC_VERSION_STRING, mpc_get_version ()))
+    fprintf (file,
+	     file == stderr ? _(fmt3) : fmt3,
+	     indent, *indent != 0 ? " " : "",
+	     "MPC", MPC_VERSION_STRING, mpc_get_version ());
+#endif
   fprintf (file,
 	   file == stderr ? _(fmt4) : fmt4,
 	   indent, *indent != 0 ? " " : "",
 	   PARAM_VALUE (GGC_MIN_EXPAND), PARAM_VALUE (GGC_MIN_HEAPSIZE));
+
+  print_plugins_versions (file, indent);
 }
 
 #ifdef ASM_COMMENT_START
@@ -1509,6 +1583,15 @@ default_tree_printer (pretty_printer * pp, text_info *text, const char *spec,
 
   switch (*spec)
     {
+    case 'E':
+      t = va_arg (*text->args_ptr, tree);
+      if (TREE_CODE (t) == IDENTIFIER_NODE)
+	{
+	  pp_identifier (pp, IDENTIFIER_POINTER (t));
+	  return true;
+	}
+      break;
+
     case 'D':
       t = va_arg (*text->args_ptr, tree);
       if (DECL_DEBUG_EXPR_IS_FROM (t) && DECL_DEBUG_EXPR (t))
@@ -1530,8 +1613,8 @@ default_tree_printer (pretty_printer * pp, text_info *text, const char *spec,
   if (DECL_P (t))
     {
       const char *n = DECL_NAME (t)
-        ? lang_hooks.decl_printable_name (t, 2)
-        : "<anonymous>";
+        ? identifier_to_locale (lang_hooks.decl_printable_name (t, 2))
+        : _("<anonymous>");
       pp_string (pp, n);
     }
   else
@@ -1681,6 +1764,10 @@ process_options (void)
   if (warn_unused_value == -1)
     warn_unused_value = warn_unused;
 
+  /* This replaces set_Wextra.  */
+  if (warn_uninitialized == -1)
+    warn_uninitialized = extra_warnings;
+
   /* Allow the front end to perform consistency checks and do further
      initialization based on the command line options.  This hook also
      sets the original filename if appropriate (e.g. foo.i -> foo.c)
@@ -1795,7 +1882,7 @@ process_options (void)
 	debug_info_level = DINFO_LEVEL_NONE;
     }
 
-  if (flag_dump_final_insns)
+  if (flag_dump_final_insns && !flag_syntax_only && !no_backend)
     {
       FILE *final_output = fopen (flag_dump_final_insns, "w");
       if (!final_output)
@@ -1876,8 +1963,7 @@ process_options (void)
       || debug_hooks->var_location == do_nothing_debug_hooks.var_location)
     {
       if (flag_var_tracking == 1
-	  || flag_var_tracking_uninit == 1
-	  || flag_var_tracking_assignments == 1)
+	  || flag_var_tracking_uninit == 1)
         {
 	  if (debug_info_level < DINFO_LEVEL_NORMAL)
 	    warning (0, "variable tracking requested, but useless unless "
@@ -1888,7 +1974,6 @@ process_options (void)
 	}
       flag_var_tracking = 0;
       flag_var_tracking_uninit = 0;
-      flag_var_tracking_assignments = 0;
     }
 
   if (flag_rename_registers == AUTODETECT_VALUE)
@@ -1902,15 +1987,10 @@ process_options (void)
     flag_var_tracking_assignments = flag_var_tracking;
 
   if (flag_var_tracking_assignments_toggle)
-    flag_var_tracking_assignments = !flag_var_tracking_assignments
-      && flag_var_tracking;
+    flag_var_tracking_assignments = !flag_var_tracking_assignments;
 
   if (flag_var_tracking_assignments && !flag_var_tracking)
-    {
-      warning (0, "variable tracking in assignments requested, "
-	       "but useless without variable tracking");
-      flag_var_tracking_assignments = 0;
-    }
+    flag_var_tracking = flag_var_tracking_assignments = -1;
 
   if (flag_tree_cselim == AUTODETECT_VALUE)
 #ifdef HAVE_conditional_move
@@ -2084,11 +2164,51 @@ backend_init (void)
   backend_init_target ();
 }
 
+/* Initialize excess precision settings.  */
+static void
+init_excess_precision (void)
+{
+  /* Adjust excess precision handling based on the target options.  If
+     the front end cannot handle it, flag_excess_precision_cmdline
+     will already have been set accordingly in the post_options
+     hook.  */
+  gcc_assert (flag_excess_precision_cmdline != EXCESS_PRECISION_DEFAULT);
+  flag_excess_precision = flag_excess_precision_cmdline;
+  if (flag_unsafe_math_optimizations)
+    flag_excess_precision = EXCESS_PRECISION_FAST;
+  if (flag_excess_precision == EXCESS_PRECISION_STANDARD)
+    {
+      int flt_eval_method = TARGET_FLT_EVAL_METHOD;
+      switch (flt_eval_method)
+	{
+	case -1:
+	case 0:
+	  /* Either the target acts unpredictably (-1) or has all the
+	     operations required not to have excess precision (0).  */
+	  flag_excess_precision = EXCESS_PRECISION_FAST;
+	  break;
+	case 1:
+	case 2:
+	  /* In these cases, predictable excess precision makes
+	     sense.  */
+	  break;
+	default:
+	  /* Any other implementation-defined FLT_EVAL_METHOD values
+	     require the compiler to handle the associated excess
+	     precision rules in excess_precision_type.  */
+	  gcc_unreachable ();
+	}
+    }
+}
+
 /* Initialize things that are both lang-dependent and target-dependent.
    This function can be called more than once if target parameters change.  */
 static void
 lang_dependent_init_target (void)
 {
+  /* This determines excess precision settings.  */
+  init_excess_precision ();
+
   /* This creates various _DECL nodes, so needs to be called after the
      front end is initialized.  It also depends on the HAVE_xxx macros
      generated from the target machine description.  */
@@ -2176,6 +2296,8 @@ dump_memory_report (bool final)
   dump_bitmap_statistics ();
   dump_vec_loc_statistics ();
   dump_ggc_loc_statistics (final);
+  dump_alias_stats (stderr);
+  dump_pta_stats (stderr);
 }
 
 /* Clean up: close opened files, etc.  */
@@ -2244,6 +2366,9 @@ do_compile (void)
 	compile_file ();
 
       finalize ();
+
+      /* Invoke registered plugin callbacks.  */
+      invoke_plugin_callbacks (PLUGIN_FINISH_UNIT, NULL);
     }
 
   /* Stop timing and print the times.  */
@@ -2258,18 +2383,28 @@ do_compile (void)
    It is not safe to call this function more than once.  */
 
 int
-toplev_main (unsigned int argc, const char **argv)
+toplev_main (int argc, char **argv)
 {
-  save_argv = argv;
+  expandargv (&argc, &argv);
+
+  save_argv = CONST_CAST2 (const char **, char **, argv);
 
   /* Initialization of GCC's environment, and diagnostics.  */
   general_init (argv[0]);
 
   /* Parse the options and do minimal processing; basically just
      enough to default flags appropriately.  */
-  decode_options (argc, argv);
+  decode_options (argc, CONST_CAST2 (const char **, char **, argv));
 
   init_local_tick ();
+
+  initialize_plugins ();
+
+  if (version_flag)
+    print_version (stderr, "");
+
+  if (help_flag)
+    print_plugins_help (stderr, "");
 
   /* Exit early if we can (e.g. -help).  */
   if (!exit_after_options)
@@ -2278,6 +2413,10 @@ toplev_main (unsigned int argc, const char **argv)
   if (warningcount || errorcount) 
     print_ignored_options ();
 
+  /* Invoke registered plugin callbacks if any.  */
+  invoke_plugin_callbacks (PLUGIN_FINISH, NULL);
+
+  finalize_plugins ();
   if (errorcount || sorrycount)
     return (FATAL_EXIT_CODE);
 

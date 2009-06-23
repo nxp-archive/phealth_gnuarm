@@ -1,5 +1,5 @@
 /* Expression translation
-   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
    and Steven Bosscher <s.bosscher@student.tudelft.nl>
@@ -1505,9 +1505,17 @@ gfc_conv_function_val (gfc_se * se, gfc_symbol * sym)
 	sym->backend_decl = gfc_get_extern_function_decl (sym);
 
       tmp = sym->backend_decl;
+
       if (sym->attr.cray_pointee)
-	tmp = convert (build_pointer_type (TREE_TYPE (tmp)),
-		       gfc_get_symbol_decl (sym->cp_pointer));
+	{
+	  /* TODO - make the cray pointee a pointer to a procedure,
+	     assign the pointer to it and use it for the call.  This
+	     will do for now!  */
+	  tmp = convert (build_pointer_type (TREE_TYPE (tmp)),
+			 gfc_get_symbol_decl (sym->cp_pointer));
+	  tmp = gfc_evaluate_now (tmp, &se->pre);
+	}
+
       if (!POINTER_TYPE_P (TREE_TYPE (tmp)))
 	{
 	  gcc_assert (TREE_CODE (tmp) == FUNCTION_DECL);
@@ -1515,48 +1523,6 @@ gfc_conv_function_val (gfc_se * se, gfc_symbol * sym)
 	}
     }
   se->expr = tmp;
-}
-
-
-/* Translate the call for an elemental subroutine call used in an operator
-   assignment.  This is a simplified version of gfc_conv_function_call.  */
-
-tree
-gfc_conv_operator_assign (gfc_se *lse, gfc_se *rse, gfc_symbol *sym)
-{
-  tree args;
-  tree tmp;
-  gfc_se se;
-  stmtblock_t block;
-
-  /* Only elemental subroutines with two arguments.  */
-  gcc_assert (sym->attr.elemental && sym->attr.subroutine);
-  gcc_assert (sym->formal->next->next == NULL);
-
-  gfc_init_block (&block);
-
-  gfc_add_block_to_block (&block, &lse->pre);
-  gfc_add_block_to_block (&block, &rse->pre);
-
-  /* Build the argument list for the call, including hidden string lengths.  */
-  args = gfc_chainon_list (NULL_TREE, build_fold_addr_expr (lse->expr));
-  args = gfc_chainon_list (args, build_fold_addr_expr (rse->expr));
-  if (lse->string_length != NULL_TREE)
-    args = gfc_chainon_list (args, lse->string_length);
-  if (rse->string_length != NULL_TREE)
-    args = gfc_chainon_list (args, rse->string_length);    
-
-  /* Build the function call.  */
-  gfc_init_se (&se, NULL);
-  gfc_conv_function_val (&se, sym);
-  tmp = TREE_TYPE (TREE_TYPE (TREE_TYPE (se.expr)));
-  tmp = build_call_list (tmp, se.expr, args);
-  gfc_add_expr_to_block (&block, tmp);
-
-  gfc_add_block_to_block (&block, &lse->post);
-  gfc_add_block_to_block (&block, &rse->post);
-
-  return gfc_finish_block (&block);
 }
 
 
@@ -2452,7 +2418,8 @@ gfc_conv_function_call (gfc_se * se, gfc_symbol * sym,
 	      f = f || !sym->attr.always_explicit;
 	  
 	      argss = gfc_walk_expr (arg->expr);
-	      gfc_conv_array_parameter (se, arg->expr, argss, f, NULL, NULL);
+	      gfc_conv_array_parameter (se, arg->expr, argss, f,
+					NULL, NULL, NULL);
 	    }
 
 	  /* TODO -- the following two lines shouldn't be necessary, but
@@ -2623,7 +2590,18 @@ gfc_conv_function_call (gfc_se * se, gfc_symbol * sym,
 
 	  if (argss == gfc_ss_terminator)
             {
-	      if (fsym && fsym->attr.value)
+	      if (e->expr_type == EXPR_VARIABLE
+		    && e->symtree->n.sym->attr.cray_pointee
+		    && fsym && fsym->attr.flavor == FL_PROCEDURE)
+		{
+		    /* The Cray pointer needs to be converted to a pointer to
+		       a type given by the expression.  */
+		    gfc_conv_expr (&parmse, e);
+		    type = build_pointer_type (TREE_TYPE (parmse.expr));
+		    tmp = gfc_get_symbol_decl (e->symtree->n.sym->cp_pointer);
+		    parmse.expr = convert (type, tmp);
+		}
+ 	      else if (fsym && fsym->attr.value)
 		{
 		  if (fsym->ts.type == BT_CHARACTER
 		      && fsym->ts.is_c_interop
@@ -2689,7 +2667,7 @@ gfc_conv_function_call (gfc_se * se, gfc_symbol * sym,
 			fsym ? fsym->attr.intent : INTENT_INOUT);
 	      else
 	        gfc_conv_array_parameter (&parmse, e, argss, f, fsym,
-					  sym->name);
+					  sym->name, NULL);
 
               /* If an ALLOCATABLE dummy argument has INTENT(OUT) and is 
                  allocated on entry, it must be deallocated.  */
@@ -2763,7 +2741,18 @@ gfc_conv_function_call (gfc_se * se, gfc_symbol * sym,
 	      break;
 	    }
 
+	  if (e->expr_type == EXPR_OP
+		&& e->value.op.op == INTRINSIC_PARENTHESES
+		&& e->value.op.op1->expr_type == EXPR_VARIABLE)
+	    {
+	      tree local_tmp;
+	      local_tmp = gfc_evaluate_now (tmp, &se->pre);
+	      local_tmp = gfc_copy_alloc_comp (e->ts.derived, local_tmp, tmp, parm_rank);
+	      gfc_add_expr_to_block (&se->post, local_tmp);
+	    }
+
 	  tmp = gfc_deallocate_alloc_comp (e->ts.derived, tmp, parm_rank);
+
 	  gfc_add_expr_to_block (&se->post, tmp);
         }
 
@@ -4336,7 +4325,7 @@ gfc_trans_arrayfunc_assign (gfc_expr * expr1, gfc_expr * expr2)
   gfc_start_block (&se.pre);
   se.want_pointer = 1;
 
-  gfc_conv_array_parameter (&se, expr1, ss, 0, NULL, NULL);
+  gfc_conv_array_parameter (&se, expr1, ss, 0, NULL, NULL, NULL);
 
   se.direct_byref = 1;
   se.ss = gfc_walk_expr (expr2);
@@ -4411,11 +4400,14 @@ gfc_trans_zero_assign (gfc_expr * expr)
   len = fold_build2 (MULT_EXPR, gfc_array_index_type, len,
 		     fold_convert (gfc_array_index_type, tmp));
 
-  /* Convert arguments to the correct types.  */
+  /* If we are zeroing a local array avoid taking its address by emitting
+     a = {} instead.  */
   if (!POINTER_TYPE_P (TREE_TYPE (dest)))
-    dest = gfc_build_addr_expr (pvoid_type_node, dest);
-  else
-    dest = fold_convert (pvoid_type_node, dest);
+    return build2 (MODIFY_EXPR, void_type_node,
+		   dest, build_constructor (TREE_TYPE (dest), NULL));
+
+  /* Convert arguments to the correct types.  */
+  dest = fold_convert (pvoid_type_node, dest);
   len = fold_convert (size_type_node, len);
 
   /* Construct call to __builtin_memset.  */

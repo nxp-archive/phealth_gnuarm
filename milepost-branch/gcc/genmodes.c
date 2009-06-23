@@ -1,5 +1,5 @@
 /* Generate the machine mode enumeration and associated tables.
-   Copyright (C) 2003, 2004, 2007
+   Copyright (C) 2003, 2004, 2005, 2006, 2007
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -22,6 +22,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "errors.h"
 #include "hashtab.h"
+
+#define DEBUG if (0) printf
+
+/* FIXME: The intention is that across targets, modes are considered
+   equivalent if they have the same bitsize, mode_class and (where applicable)
+   precision.  Thus, QImode and a target with 32 bit units should be
+   equivalent to SImode on a target with 8 bit units.
+   However, at the moment we don't support mixing targets with different
+   BITS_PER_UNIT.  */
+/* FIXME: We need to change the handling of RESET_FLOAT_FORMAT so that
+   it doesn't change the original mode for other targets.  */
 
 /* enum mode_class is normally defined by machmode.h but we can't
    include that header here.  */
@@ -54,6 +65,7 @@ struct mode_data
   struct mode_data *next;	/* next this class - arbitrary order */
 
   const char *name;		/* printable mode name -- SI, not SImode */
+  const char *target;		/* the target this mode is specific to.  */
   enum mode_class cl;		/* this mode class */
   unsigned int precision;	/* size in bits, equiv to TYPE_PRECISION */
   unsigned int bytesize;	/* storage size in addressable units */
@@ -72,6 +84,8 @@ struct mode_data
   const char *file;		/* file and line of definition, */
   unsigned int line;		/* for error reporting */
   unsigned int counter;		/* Rank ordering of modes */
+  unsigned int ibit;		/* the number of integral bits */
+  unsigned int fbit;		/* the number of fractional bits */
 };
 
 static struct mode_data *modes[MAX_MODE_CLASS];
@@ -79,10 +93,10 @@ static unsigned int n_modes[MAX_MODE_CLASS];
 static struct mode_data *void_mode;
 
 static const struct mode_data blank_mode = {
-  0, "<unknown>", MAX_MODE_CLASS,
+  0, "<unknown>", (const char *) 0, MAX_MODE_CLASS,
   -1U, -1U, -1U, -1U,
   0, 0, 0, 0, 0, 0,
-  "<unknown>", 0, 0
+  "<unknown>", 0, 0, 0, 0
 };
 
 static htab_t modes_by_name;
@@ -95,6 +109,7 @@ struct mode_adjust
   struct mode_adjust *next;
   struct mode_data *mode;
   const char *adjustment;
+  const char *target;
 
   const char *file;
   unsigned int line;
@@ -103,6 +118,8 @@ struct mode_adjust
 static struct mode_adjust *adj_bytesize;
 static struct mode_adjust *adj_alignment;
 static struct mode_adjust *adj_format;
+static struct mode_adjust *adj_ibit;
+static struct mode_adjust *adj_fbit;
 
 /* Mode class operations.  */
 static enum mode_class
@@ -124,12 +141,20 @@ vector_class (enum mode_class cl)
   switch (cl)
     {
     case MODE_INT: return MODE_VECTOR_INT;
+    case MODE_PARTIAL_INT: return MODE_VECTOR_PARTIAL_INT;
     case MODE_FLOAT: return MODE_VECTOR_FLOAT;
+    case MODE_CC: return MODE_VECTOR_CC;
+    case MODE_FRACT: return MODE_VECTOR_FRACT;
+    case MODE_UFRACT: return MODE_VECTOR_UFRACT;
+    case MODE_ACCUM: return MODE_VECTOR_ACCUM;
+    case MODE_UACCUM: return MODE_VECTOR_UACCUM;
     default:
       error ("no vector class for class %s", mode_class_names[cl]);
       return MODE_RANDOM;
     }
 }
+
+static const char *target = (const char *) 0;
 
 /* Utility routines.  */
 static inline struct mode_data *
@@ -138,6 +163,7 @@ find_mode (const char *name)
   struct mode_data key;
 
   key.name = name;
+  key.target = target;
   return (struct mode_data *) htab_find (modes_by_name, &key);
 }
 
@@ -161,6 +187,7 @@ new_mode (enum mode_class cl, const char *name,
   memcpy (m, &blank_mode, sizeof (struct mode_data));
   m->cl = cl;
   m->name = name;
+  m->target = target;
   if (file)
     m->file = trim_filename (file);
   m->line = line;
@@ -188,7 +215,9 @@ eq_mode (const void *p, const void *q)
   const struct mode_data *a = (const struct mode_data *)p;
   const struct mode_data *b = (const struct mode_data *)q;
 
-  return !strcmp (a->name, b->name);
+  return (!strcmp (a->name, b->name)
+	  && ((a->target ? a->target : target)
+	      == (b->target ? b->target : target)));
 }
 
 #define for_all_modes(C, M)			\
@@ -199,7 +228,8 @@ static void ATTRIBUTE_UNUSED
 new_adjust (const char *name,
 	    struct mode_adjust **category, const char *catname,
 	    const char *adjustment,
-	    enum mode_class required_class,
+	    enum mode_class required_class_from,
+	    enum mode_class required_class_to,
 	    const char *file, unsigned int line)
 {
   struct mode_data *mode = find_mode (name);
@@ -213,10 +243,12 @@ new_adjust (const char *name,
       return;
     }
 
-  if (required_class != MODE_RANDOM && mode->cl != required_class)
+  if (required_class_from != MODE_RANDOM
+      && (mode->cl < required_class_from || mode->cl > required_class_to))
     {
-      error ("%s:%d: mode \"%s\" is not class %s",
-	     file, line, name, mode_class_names[required_class] + 5);
+      error ("%s:%d: mode \"%s\" is not among class {%s, %s}",
+	     file, line, name, mode_class_names[required_class_from] + 5,
+	     mode_class_names[required_class_to] + 5);
       return;
     }
   
@@ -231,6 +263,7 @@ new_adjust (const char *name,
 
   a = XNEW (struct mode_adjust);
   a->mode = mode;
+  a->target = target;
   a->adjustment = adjustment;
   a->file = file;
   a->line = line;
@@ -315,10 +348,15 @@ complete_mode (struct mode_data *m)
 
     case MODE_CC:
       /* Again, nothing more need be said.  For historical reasons,
-	 the size of a CC mode is four units.  */
-      validate_mode (m, UNSET, UNSET, UNSET, UNSET, UNSET);
+	 the size of a CC mode defaults to four units.  */
+      if (m->bytesize != blank_mode.bytesize)
+	validate_mode (m, UNSET, SET, UNSET, UNSET, UNSET);
+      else
+	{
+	  validate_mode (m, UNSET, UNSET, UNSET, UNSET, UNSET);
+	  m->bytesize = 4;
+	}
 
-      m->bytesize = 4;
       m->ncomponents = 1;
       m->component = 0;
       break;
@@ -326,11 +364,16 @@ complete_mode (struct mode_data *m)
     case MODE_INT:
     case MODE_FLOAT:
     case MODE_DECIMAL_FLOAT:
+    case MODE_FRACT:
+    case MODE_UFRACT:
+    case MODE_ACCUM:
+    case MODE_UACCUM:
       /* A scalar mode must have a byte size, may have a bit size,
 	 and must not have components.   A float mode must have a
          format.  */
       validate_mode (m, OPTIONAL, SET, UNSET, UNSET,
-		     m->cl != MODE_INT ? SET : UNSET);
+		     (m->cl == MODE_FLOAT || m->cl == MODE_DECIMAL_FLOAT)
+		     ? SET : UNSET);
 
       m->ncomponents = 1;
       m->component = 0;
@@ -359,7 +402,13 @@ complete_mode (struct mode_data *m)
       break;
 
     case MODE_VECTOR_INT:
+    case MODE_VECTOR_PARTIAL_INT:
     case MODE_VECTOR_FLOAT:
+    case MODE_VECTOR_CC:
+    case MODE_VECTOR_FRACT:
+    case MODE_VECTOR_UFRACT:
+    case MODE_VECTOR_ACCUM:
+    case MODE_VECTOR_UACCUM:
       /* Vector modes should have a component and a number of components.  */
       validate_mode (m, UNSET, UNSET, SET, SET, UNSET);
       if (m->component->precision != (unsigned int)-1)
@@ -400,6 +449,120 @@ complete_all_modes (void)
     complete_mode (m);
 }
 
+/* Remove the duplicate mode OLD.  All referenecs to it should be replaced
+   with NEW.  */
+static void
+drop_mode (struct mode_data *old, struct mode_data *new)
+{
+  struct mode_data *m, *last;
+
+  DEBUG ("dropping %s %s\n", m->name, m->target);
+  if (old->contained)
+    {
+      for (m = old->contained; m; last = m, m = m->next_cont)
+	m->component = new;
+      last->next_cont = new->contained;
+      new->contained = old->contained;
+    }
+}
+
+static void
+fixup_target_modes (void)
+{
+  struct mode_data *m, *m_prev, *m2, *m2_prev, *m3, *m3_prev;
+  int cl;
+
+  /* Find target-specific modes that describe the same data.  When a mode
+     is found that matches a mode earlier in the list, move all earlier modes
+     from the same target in the same mode class in front of the earlier mode;
+     of the equivalent modes, keep only the one that is for the output
+     target.  */
+  for (cl = 0; cl < MAX_MODE_CLASS; cl++)
+    {
+      if (cl == MODE_RANDOM || cl == MODE_CC || cl == MODE_VECTOR_CC)
+	continue;
+      for (m_prev = 0, m = modes[cl]; m; m_prev = m, m = m->next)
+	{
+	  for (m2_prev = 0, m2 = modes[cl]; m2 != m;
+	       m2_prev = m2, m2 = m2->next)
+	    if (m->precision == m2->precision
+		&& m->bytesize == m2->bytesize
+		&& m->ncomponents == m2->ncomponents
+		&& m->format == m2->format
+		&& m->ibit == m2->ibit
+		&& m->fbit == m2->fbit)
+	      {
+		gcc_assert (m->target && m2->target);
+		gcc_assert (m->target != m2->target);
+		/* Find all modes between m2 and m which are for the same
+		   target as m and insert them in front of m2.  */
+		for (m3_prev = m2; m3 = m3_prev->next, m3 != m; )
+		  {
+		    if (m3->target != m->target)
+		      {
+			m3_prev = m3;
+			continue;
+		      }
+		    m3_prev->next = m3->next;
+		    if (m2_prev)
+		      m2_prev->next = m3;
+		    else
+		      modes[cl] = m3;
+		    m2_prev = m3;
+		    m3->next = m2;
+		    if (m3 == m_prev)
+		      {
+			m_prev = m3_prev;
+			break;
+		      }
+		  }
+		/* Remove m from the list.  */
+		gcc_assert (m_prev && m_prev->next == m);
+		gcc_assert (m->next != m);
+		gcc_assert (m_prev != m);
+		m_prev->next = m->next;
+		/* If m is for the output target, retain it in place of m2.  */
+		if (!strcmp (m->target, output_target))
+		  {
+		    if (m2_prev)
+		      m2_prev->next = m;
+		    else
+		      modes[cl] = m;
+		    if (m_prev == m2)
+		      m_prev = m;
+		    m->next = m2->next;
+		    drop_mode (m2, m);
+		  }
+		else
+		  drop_mode (m, m2);
+		m = m_prev;
+		break;
+	      }
+	  gcc_assert (m2 == m || m == m_prev);
+	}
+    }
+
+  /* Reset the target field for modes that are for the output target.
+     Henceforth, all modes with the target field set are not modes for
+     the output target.  */
+  for_all_modes (cl, m)
+    if (m->target && !strcmp (m->target, output_target))
+      m->target = (const char *)0;
+    /* Mangle name of modes for other targets.  */
+    else if (m->target)
+      {
+	size_t t_len = strlen (m->target);
+	size_t n_len = strlen (m->name);
+	char *new_name
+	  = XNEWVEC (char, t_len + 1 + n_len + 1);
+
+	strcpy (new_name, m->target);
+	new_name[t_len] = '_';
+	strcat (new_name + t_len + 1, m->name);
+	m->name = new_name;
+      }
+}
+
 /* For each mode in class CLASS, construct a corresponding complex mode.  */
 #define COMPLEX_MODES(C) make_complex_modes(MODE_##C, __FILE__, __LINE__)
 static void
@@ -410,6 +573,7 @@ make_complex_modes (enum mode_class cl,
   struct mode_data *c;
   char buf[8];
   enum mode_class cclass = complex_class (cl);
+  const char *save_target;
 
   if (cclass == MODE_RANDOM)
     return;
@@ -418,6 +582,8 @@ make_complex_modes (enum mode_class cl,
     {
       /* Skip BImode.  FIXME: BImode probably shouldn't be MODE_INT.  */
       if (m->precision == 1)
+	continue;
+      if (m->target && target && m->target != target)
 	continue;
 
       if (strlen (m->name) >= sizeof buf)
@@ -452,7 +618,10 @@ make_complex_modes (enum mode_class cl,
       else
 	snprintf (buf, sizeof buf, "C%s", m->name);
 
+      save_target = target;
+      target = m->target;
       c = new_mode (cclass, xstrdup (buf), file, line);
+      target = save_target;
       c->component = m;
     }
 }
@@ -483,6 +652,8 @@ make_vector_modes (enum mode_class cl, unsigned int width,
 	continue;
       if (width % m->bytesize)
 	continue;
+      if (m->target && target && m->target != target)
+	continue;
 
       /* Skip QFmode and BImode.  FIXME: this special case should
 	 not be necessary.  */
@@ -510,12 +681,13 @@ make_vector_modes (enum mode_class cl, unsigned int width,
 #define _SPECIAL_MODE(C, N) make_special_mode(MODE_##C, #N, __FILE__, __LINE__)
 #define RANDOM_MODE(N) _SPECIAL_MODE (RANDOM, N)
 #define CC_MODE(N) _SPECIAL_MODE (CC, N)
+#define SIZED_CC_MODE(N, Y) (CC_MODE (N)->bytesize = (Y))
 
-static void
+static struct mode_data *
 make_special_mode (enum mode_class cl, const char *name,
 		   const char *file, unsigned int line)
 {
-  new_mode (cl, name, file, line);
+  return new_mode (cl, name, file, line);
 }
 
 #define INT_MODE(N, Y) FRACTIONAL_INT_MODE (N, -1U, Y)
@@ -530,6 +702,35 @@ make_int_mode (const char *name,
   struct mode_data *m = new_mode (MODE_INT, name, file, line);
   m->bytesize = bytesize;
   m->precision = precision;
+}
+
+#define FRACT_MODE(N, Y, F) \
+	make_fixed_point_mode (MODE_FRACT, #N, Y, 0, F, __FILE__, __LINE__)
+
+#define UFRACT_MODE(N, Y, F) \
+	make_fixed_point_mode (MODE_UFRACT, #N, Y, 0, F, __FILE__, __LINE__)
+
+#define ACCUM_MODE(N, Y, I, F) \
+	make_fixed_point_mode (MODE_ACCUM, #N, Y, I, F, __FILE__, __LINE__)
+
+#define UACCUM_MODE(N, Y, I, F) \
+	make_fixed_point_mode (MODE_UACCUM, #N, Y, I, F, __FILE__, __LINE__)
+
+/* Create a fixed-point mode by setting CL, NAME, BYTESIZE, IBIT, FBIT,
+   FILE, and LINE.  */
+
+static void
+make_fixed_point_mode (enum mode_class cl,
+		       const char *name,
+		       unsigned int bytesize,
+		       unsigned int ibit,
+		       unsigned int fbit,
+		       const char *file, unsigned int line)
+{
+  struct mode_data *m = new_mode (cl, name, file, line);
+  m->bytesize = bytesize;
+  m->ibit = ibit;
+  m->fbit = fbit;
 }
 
 #define FLOAT_MODE(N, Y, F)             FRACTIONAL_FLOAT_MODE (N, -1U, Y, F)
@@ -598,7 +799,7 @@ make_partial_integer_mode (const char *base, const char *name,
   struct mode_data *component = find_mode (base);
   if (!component)
     {
-      error ("%s:%d: no mode \"%s\"", file, line, name);
+      error ("%s:%d: no base mode \"%s\" for \"%s\"", file, line, base, name);
       return;
     }
   if (component->cl != MODE_INT)
@@ -657,12 +858,14 @@ make_vector_mode (enum mode_class bclass,
 }
 
 /* Adjustability.  */
-#define _ADD_ADJUST(A, M, X, C) \
-  new_adjust (#M, &adj_##A, #A, #X, MODE_##C, __FILE__, __LINE__)
+#define _ADD_ADJUST(A, M, X, C1, C2) \
+  new_adjust (#M, &adj_##A, #A, #X, MODE_##C1, MODE_##C2, __FILE__, __LINE__)
 
-#define ADJUST_BYTESIZE(M, X)  _ADD_ADJUST(bytesize, M, X, RANDOM)
-#define ADJUST_ALIGNMENT(M, X) _ADD_ADJUST(alignment, M, X, RANDOM)
-#define ADJUST_FLOAT_FORMAT(M, X)    _ADD_ADJUST(format, M, X, FLOAT)
+#define ADJUST_BYTESIZE(M, X)  _ADD_ADJUST(bytesize, M, X, RANDOM, RANDOM)
+#define ADJUST_ALIGNMENT(M, X) _ADD_ADJUST(alignment, M, X, RANDOM, RANDOM)
+#define ADJUST_FLOAT_FORMAT(M, X)    _ADD_ADJUST(format, M, X, FLOAT, FLOAT)
+#define ADJUST_IBIT(M, X)  _ADD_ADJUST(ibit, M, X, ACCUM, UACCUM)
+#define ADJUST_FBIT(M, X)  _ADD_ADJUST(fbit, M, X, FRACT, UACCUM)
 
 static void
 create_modes (void)
@@ -688,8 +891,8 @@ create_modes (void)
 static int
 cmp_modes (const void *a, const void *b)
 {
-  struct mode_data *m = *(struct mode_data **)a;
-  struct mode_data *n = *(struct mode_data **)b;
+  const struct mode_data *const m = *(const struct mode_data *const*)a;
+  const struct mode_data *const n = *(const struct mode_data *const*)b;
 
   if (m->bytesize > n->bytesize)
     return 1;
@@ -729,7 +932,7 @@ static void
 calc_wider_mode (void)
 {
   int c;
-  struct mode_data *m;
+  struct mode_data *m, *last;
   struct mode_data **sortbuf;
   unsigned int max_n_modes = 0;
   unsigned int i, j;
@@ -773,9 +976,18 @@ calc_wider_mode (void)
 	  qsort (sortbuf, i, sizeof (struct mode_data *), cmp_modes);
 
 	  sortbuf[i] = 0;
+	  last = 0;
 	  for (j = 0; j < i; j++)
-	    sortbuf[j]->next = sortbuf[j]->wider = sortbuf[j + 1];
-
+	    {
+	      sortbuf[j]->wider = void_mode;
+	      if (!sortbuf[j]->target)
+		{
+		  if (last)
+		    last->wider = sortbuf[j];
+		  last = sortbuf[j];
+		}
+	      sortbuf[j]->next = sortbuf[j + 1];
+	    }
 
 	  modes[c] = sortbuf[0];
 	}
@@ -785,8 +997,7 @@ calc_wider_mode (void)
 /* Output routines.  */
 
 #define tagged_printf(FMT, ARG, TAG) do {		\
-  int count_;						\
-  printf ("  " FMT ",%n", ARG, &count_);		\
+  int count_ = printf ("  " FMT ",", ARG);		\
   printf ("%*s/* %s */\n", 27 - count_, "", TAG);	\
 } while (0)
 
@@ -794,8 +1005,10 @@ calc_wider_mode (void)
   puts ("\nconst " TYPE " " NAME "[" ASIZE "] =\n{");
 
 #define print_maybe_const_decl(TYPE, NAME, ASIZE, CATEGORY)	\
-  printf ("\n" TYPE " " NAME "[" ASIZE "] = \n{\n",		\
-	  adj_##CATEGORY ? "" : "const ")
+  printf ("\n%s" TYPE " " NAME "[" ASIZE "] = \n{\n",		\
+	  (adj_##CATEGORY \
+	   ? "" \
+	   : "extern const " TYPE " " NAME "[" ASIZE "];\nconst "));
 
 #define print_closer() puts ("};")
 
@@ -820,8 +1033,7 @@ enum machine_mode\n{");
   for (c = 0; c < MAX_MODE_CLASS; c++)
     for (m = modes[c]; m; m = m->next)
       {
-	int count_;
-	printf ("  %smode,%n", m->name, &count_);
+	int count_ = printf ("  %smode,", m->name);
 	printf ("%*s/* %s:%d */\n", 27 - count_, "",
 		 trim_filename (m->file), m->line);
       }
@@ -832,14 +1044,14 @@ enum machine_mode\n{");
     {
       first = modes[c];
       last = 0;
-      for (m = first; m; last = m, m = m->next)
+      for (m = first; m && !m->target; last = m, m = m->next)
 	;
 
       /* Don't use BImode for MIN_MODE_INT, since otherwise the middle
 	 end will try to use it for bitfields in structures and the
 	 like, which we do not want.  Only the target md file should
 	 generate BImode widgets.  */
-      if (first && first->precision == 1)
+      while (first && (first->precision == 1 || first->target))
 	first = first->next;
 
       if (first && last)
@@ -862,6 +1074,8 @@ enum machine_mode\n{");
 #if 0 /* disabled for backward compatibility, temporary */
   printf ("#define CONST_REAL_FORMAT_FOR_MODE%s\n", adj_format ? "" :" const");
 #endif
+  printf ("#define CONST_MODE_IBIT%s\n", adj_ibit ? "" : " const");
+  printf ("#define CONST_MODE_FBIT%s\n", adj_fbit ? "" : " const");
   puts ("\
 \n\
 #endif /* insn-modes.h */");
@@ -882,7 +1096,10 @@ emit_insn_modes_c_header (void)
 #include \"coretypes.h\"\n\
 #include \"tm.h\"\n\
 #include \"machmode.h\"\n\
-#include \"real.h\"");
+#include \"real.h\"\n\
+#include \"multi-target.h\"\n\
+\n\
+START_TARGET_SPECIFIC");
 }
 
 static void
@@ -897,7 +1114,10 @@ emit_min_insn_modes_c_header (void)
 \n\
 #include \"bconfig.h\"\n\
 #include \"system.h\"\n\
-#include \"machmode.h\"");
+#include \"machmode.h\"\n\
+#include \"multi-target.h\"\n\
+\n\
+START_TARGET_SPECIFIC");
 }
 
 static void
@@ -951,7 +1171,7 @@ emit_mode_size (void)
   int c;
   struct mode_data *m;
 
-  print_maybe_const_decl ("%sunsigned char", "mode_size",
+  print_maybe_const_decl ("unsigned char", "mode_size",
 			  "NUM_MACHINE_MODES", bytesize);
 
   for_all_modes (c, m)
@@ -998,6 +1218,8 @@ emit_mode_wider (void)
 	   m2 && m2 != void_mode;
 	   m2 = m2->wider)
 	{
+	  if (m2->target)
+	    continue;
 	  if (m2->bytesize < 2 * m->bytesize)
 	    continue;
 	  if (m->precision != (unsigned int) -1)
@@ -1013,7 +1235,7 @@ emit_mode_wider (void)
 
 	  break;
 	}
-      if (m2 == void_mode)
+      if (m->target || m2 == void_mode)
 	m2 = 0;
       tagged_printf ("%smode",
 		     m2 ? m2->name : void_mode->name,
@@ -1069,7 +1291,7 @@ emit_mode_base_align (void)
   int c;
   struct mode_data *m;
 
-  print_maybe_const_decl ("%sunsigned char",
+  print_maybe_const_decl ("unsigned char",
 			  "mode_base_align", "NUM_MACHINE_MODES",
 			  alignment);
 
@@ -1124,14 +1346,18 @@ emit_real_format_for_mode (void)
 
   /* The beginning of the table is entries for float modes.  */
   for (m = modes[MODE_FLOAT]; m; m = m->next)
-    if (!strcmp (m->format, "0"))
+    if (m->target)
+      ; /* Skip.  */
+    else if (!strcmp (m->format, "0"))
       tagged_printf ("%s", m->format, m->name);
     else
       tagged_printf ("&%s", m->format, m->name);
 
   /* The end of the table is entries for decimal float modes.  */
   for (m = modes[MODE_DECIMAL_FLOAT]; m; m = m->next)
-    if (!strcmp (m->format, "0"))
+    if (m->target)
+      ; /* Skip.  */
+    else if (!strcmp (m->format, "0"))
       tagged_printf ("%s", m->format, m->name);
     else
       tagged_printf ("&%s", m->format, m->name);
@@ -1155,6 +1381,8 @@ emit_mode_adjustments (void)
      A size adjustment forces us to recalculate the alignment too.  */
   for (a = adj_bytesize; a; a = a->next)
     {
+      if (a->target && a->target != output_target)
+	continue;
       printf ("\n  /* %s:%d */\n  s = %s;\n",
 	      a->file, a->line, a->adjustment);
       printf ("  mode_size[%smode] = s;\n", a->mode->name);
@@ -1173,7 +1401,12 @@ emit_mode_adjustments (void)
 	      break;
 
 	    case MODE_VECTOR_INT:
+	    case MODE_VECTOR_PARTIAL_INT:
 	    case MODE_VECTOR_FLOAT:
+	    case MODE_VECTOR_FRACT:
+	    case MODE_VECTOR_UFRACT:
+	    case MODE_VECTOR_ACCUM:
+	    case MODE_VECTOR_UACCUM:
 	      printf ("  mode_size[%smode] = %d*s;\n",
 		      m->name, m->ncomponents);
 	      printf ("  mode_base_align[%smode] = (%d*s) & (~(%d*s)+1);\n",
@@ -1193,6 +1426,8 @@ emit_mode_adjustments (void)
      ??? This may not be the right thing for vector modes.  */
   for (a = adj_alignment; a; a = a->next)
     {
+      if (a->target && a->target != output_target)
+	continue;
       printf ("\n  /* %s:%d */\n  s = %s;\n",
 	      a->file, a->line, a->adjustment);
       printf ("  mode_base_align[%smode] = s;\n", a->mode->name);
@@ -1207,7 +1442,12 @@ emit_mode_adjustments (void)
 	      break;
 
 	    case MODE_VECTOR_INT:
+	    case MODE_VECTOR_PARTIAL_INT:
 	    case MODE_VECTOR_FLOAT:
+	    case MODE_VECTOR_FRACT:
+	    case MODE_VECTOR_UFRACT:
+	    case MODE_VECTOR_ACCUM:
+	    case MODE_VECTOR_UACCUM:
 	      printf ("  mode_base_align[%smode] = %d*s;\n",
 		      m->name, m->ncomponents);
 	      break;
@@ -1220,14 +1460,75 @@ emit_mode_adjustments (void)
 	    }
 	}
     }
+
+  /* Ibit adjustments don't have to propagate.  */
+  for (a = adj_ibit; a; a = a->next)
+    {
+      if (a->target && a->target != output_target)
+	continue;
+      printf ("\n  /* %s:%d */\n  s = %s;\n",
+	      a->file, a->line, a->adjustment);
+      printf ("  mode_ibit[%smode] = s;\n", a->mode->name);
+    }
+
+  /* Fbit adjustments don't have to propagate.  */
+  for (a = adj_fbit; a; a = a->next)
+    {
+      if (a->target && a->target != output_target)
+	continue;
+      printf ("\n  /* %s:%d */\n  s = %s;\n",
+	      a->file, a->line, a->adjustment);
+      printf ("  mode_fbit[%smode] = s;\n", a->mode->name);
+    }
       
   /* Real mode formats don't have to propagate anywhere.  */
   for (a = adj_format; a; a = a->next)
-    printf ("\n  /* %s:%d */\n  REAL_MODE_FORMAT (%smode) = %s;\n",
-	    a->file, a->line, a->mode->name, a->adjustment);
+    {
+      if (a->target && a->target != output_target)
+	continue;
+      printf ("\n  /* %s:%d */\n  REAL_MODE_FORMAT (%smode) = %s;\n",
+	      a->file, a->line, a->mode->name, a->adjustment);
+    }
 
   puts ("}");
 }
+
+/* Emit ibit for all modes.  */
+
+static void
+emit_mode_ibit (void)
+{
+  int c;
+  struct mode_data *m;
+
+  print_maybe_const_decl ("unsigned char",
+			  "mode_ibit", "NUM_MACHINE_MODES",
+			  ibit);
+
+  for_all_modes (c, m)
+    tagged_printf ("%u", m->ibit, m->name);
+
+  print_closer ();
+}
+
+/* Emit fbit for all modes.  */
+
+static void
+emit_mode_fbit (void)
+{
+  int c;
+  struct mode_data *m;
+
+  print_maybe_const_decl ("unsigned char",
+			  "mode_fbit", "NUM_MACHINE_MODES",
+			  fbit);
+
+  for_all_modes (c, m)
+    tagged_printf ("%u", m->fbit, m->name);
+
+  print_closer ();
+}
+
 
 static void
 emit_insn_modes_c (void)
@@ -1245,6 +1546,9 @@ emit_insn_modes_c (void)
   emit_class_narrowest_mode ();
   emit_real_format_for_mode ();
   emit_mode_adjustments ();
+  emit_mode_ibit ();
+  emit_mode_fbit ();
+  puts ("END_TARGET_SPECIFIC");
 }
 
 static void
@@ -1255,11 +1559,12 @@ emit_min_insn_modes_c (void)
   emit_mode_class ();
   emit_mode_wider ();
   emit_class_narrowest_mode ();
+  puts ("END_TARGET_SPECIFIC");
 }
 
 /* Master control.  */
 int
-main(int argc, char **argv)
+main (int argc, char **argv)
 {
   bool gen_header = false, gen_min = false;
   progname = argv[0];
@@ -1283,6 +1588,8 @@ main(int argc, char **argv)
 
   if (have_error)
     return FATAL_EXIT_CODE;
+
+  fixup_target_modes ();
   
   calc_wider_mode ();
 

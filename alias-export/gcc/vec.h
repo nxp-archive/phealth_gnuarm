@@ -1,12 +1,12 @@
 /* Vector API for GNU compiler.
-   Copyright (C) 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Nathan Sidwell <nathan@codesourcery.com>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +15,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_VEC_H
 #define GCC_VEC_H
@@ -430,7 +429,12 @@ extern void *vec_heap_p_reserve_exact (void *, int MEM_STAT_DECL);
 extern void *vec_heap_o_reserve (void *, int, size_t, size_t MEM_STAT_DECL);
 extern void *vec_heap_o_reserve_exact (void *, int, size_t, size_t
 				       MEM_STAT_DECL);
+extern void dump_vec_loc_statistics (void);
+#ifdef GATHER_STATISTICS
+void vec_heap_free (void *);
+#else
 #define vec_heap_free(V) free (V)
+#endif
 
 #if ENABLE_CHECKING
 #define VEC_CHECK_INFO ,__FILE__,__LINE__,__FUNCTION__
@@ -467,7 +471,7 @@ typedef struct VEC(T,B) 				 		  \
 } VEC(T,B)
 
 #define VEC_T_GTY(T,B)							  \
-typedef struct VEC(T,B) GTY(())				 		  \
+typedef struct GTY(()) VEC(T,B)				 		  \
 {									  \
   unsigned num;								  \
   unsigned alloc;							  \
@@ -476,7 +480,13 @@ typedef struct VEC(T,B) GTY(())				 		  \
 
 /* Derived vector type, user visible.  */
 #define VEC_TA_GTY(T,B,A,GTY)						  \
-typedef struct VEC(T,A) GTY						  \
+typedef struct GTY VEC(T,A)						  \
+{									  \
+  VEC(T,B) base;							  \
+} VEC(T,A)
+
+#define VEC_TA(T,B,A)							  \
+typedef struct VEC(T,A)							  \
 {									  \
   VEC(T,B) base;							  \
 } VEC(T,A)
@@ -492,11 +502,11 @@ static inline void VEC_OP (T,must_be,integral_type) (void) 		  \
 }									  \
 									  \
 VEC_T(T,base);								  \
-VEC_TA_GTY(T,base,none,);						  \
+VEC_TA(T,base,none);							  \
 DEF_VEC_FUNC_P(T)							  \
 struct vec_swallow_trailing_semi
 #define DEF_VEC_ALLOC_I(T,A)						  \
-VEC_TA_GTY(T,base,A,);							  \
+VEC_TA(T,base,A);							  \
 DEF_VEC_ALLOC_FUNC_I(T,A)						  \
 struct vec_swallow_trailing_semi
 
@@ -508,11 +518,11 @@ static inline void VEC_OP (T,must_be,pointer_type) (void) 		  \
 }									  \
 									  \
 VEC_T_GTY(T,base);							  \
-VEC_TA_GTY(T,base,none,);						  \
+VEC_TA(T,base,none);							  \
 DEF_VEC_FUNC_P(T)							  \
 struct vec_swallow_trailing_semi
 #define DEF_VEC_ALLOC_P(T,A)						  \
-VEC_TA_GTY(T,base,A,);							  \
+VEC_TA(T,base,A);							  \
 DEF_VEC_ALLOC_FUNC_P(T,A)						  \
 struct vec_swallow_trailing_semi
 
@@ -548,7 +558,7 @@ static inline int VEC_OP (T,base,iterate)			  	  \
     }									  \
   else									  \
     {									  \
-      *ptr = 0;								  \
+      *ptr = (T) 0;							  \
       return 0;								  \
     }									  \
 }									  \
@@ -798,11 +808,11 @@ static inline T *VEC_OP (T,A,safe_insert)		     	  	  \
 /* Vector of object.  */
 #define DEF_VEC_O(T)							  \
 VEC_T_GTY(T,base);							  \
-VEC_TA_GTY(T,base,none,);						  \
+VEC_TA(T,base,none);						  \
 DEF_VEC_FUNC_O(T)							  \
 struct vec_swallow_trailing_semi
 #define DEF_VEC_ALLOC_O(T,A)						  \
-VEC_TA_GTY(T,base,A,);							  \
+VEC_TA(T,base,A);							  \
 DEF_VEC_ALLOC_FUNC_O(T,A)						  \
 struct vec_swallow_trailing_semi
 

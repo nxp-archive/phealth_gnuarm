@@ -35,6 +35,7 @@ with Namet;    use Namet;
 with Opt;      use Opt;
 with Output;   use Output;
 with Sem;      use Sem;
+with Sem_Aux;  use Sem_Aux;
 with Sem_Ch6;  use Sem_Ch6;
 with Sem_Ch8;  use Sem_Ch8;
 with Sem_Ch12; use Sem_Ch12;
@@ -1422,15 +1423,36 @@ package body Sem_Type is
                   end if;
 
                elsif Is_Numeric_Type (Etype (F1))
-                 and then
-                   (Has_Abstract_Interpretation (Act1)
-                     or else Has_Abstract_Interpretation (Act2))
+                 and then Has_Abstract_Interpretation (Act1)
                then
-                  if It = Disambiguate.It1 then
-                     return Disambiguate.It2;
-                  elsif It = Disambiguate.It2 then
-                     return Disambiguate.It1;
-                  end if;
+                  --  Current interpretation is not the right one because it
+                  --  expects a numeric operand. Examine all the other ones.
+
+                  declare
+                     I  : Interp_Index;
+                     It : Interp;
+
+                  begin
+                     Get_First_Interp (N, I, It);
+                     while Present (It.Typ) loop
+                        if
+                          not Is_Numeric_Type (Etype (First_Formal (It.Nam)))
+                        then
+                           if No (Act2)
+                             or else not Has_Abstract_Interpretation (Act2)
+                             or else not
+                               Is_Numeric_Type
+                                 (Etype (Next_Formal (First_Formal (It.Nam))))
+                           then
+                              return It;
+                           end if;
+                        end if;
+
+                        Get_Next_Interp (I, It);
+                     end loop;
+
+                     return No_Interp;
+                  end;
                end if;
             end if;
 
@@ -2415,7 +2437,7 @@ package body Sem_Type is
          end if;
       end Check_Right_Argument;
 
-   --  Start processing for Intersect_Types
+   --  Start of processing for Intersect_Types
 
    begin
       if Etype (L) = Any_Type or else Etype (R) = Any_Type then

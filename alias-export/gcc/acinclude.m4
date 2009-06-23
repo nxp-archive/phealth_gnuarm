@@ -1,3 +1,21 @@
+dnl Copyright (C) 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+dnl
+dnl This file is part of GCC.
+dnl
+dnl GCC is free software; you can redistribute it and/or modify
+dnl it under the terms of the GNU General Public License as published by
+dnl the Free Software Foundation; either version 3, or (at your option)
+dnl any later version.
+dnl
+dnl GCC is distributed in the hope that it will be useful,
+dnl but WITHOUT ANY WARRANTY; without even the implied warranty of
+dnl MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+dnl GNU General Public License for more details.
+dnl
+dnl You should have received a copy of the GNU General Public License
+dnl along with GCC; see the file COPYING3.  If not see
+dnl <http://www.gnu.org/licenses/>.
+
 dnl See whether we need a declaration for a function.
 dnl The result is highly dependent on the INCLUDES passed in, so make sure
 dnl to use a different cache variable name in this macro if it is invoked
@@ -295,34 +313,6 @@ if test $gcc_cv_func_mmap_anon = yes; then
 fi
 ])
 
-dnl Locate a program and check that its version is acceptable.
-dnl AC_PROG_CHECK_VER(var, name, version-switch,
-dnl                  version-extract-regexp, version-glob)
-AC_DEFUN([gcc_AC_CHECK_PROG_VER],
-[AC_REQUIRE([gcc_AC_BUILD_EXEEXT])
-AC_CHECK_PROG([$1], [$2], [$2])
-if test -n "[$]$1"; then
-  # Found it, now check the version.
-  AC_CACHE_CHECK(for modern $2, gcc_cv_prog_$2_modern,
-[changequote(<<,>>)dnl
-  ac_prog_version=`<<$>>$1 $3 2>&1 |
-                   sed -n 's/^.*patsubst(<<$4>>,/,\/).*$/\1/p'`
-changequote([,])dnl
-  echo "configure:__oline__: version of $2 is $ac_prog_version" >&AS_MESSAGE_LOG_FD
-changequote(<<,>>)dnl
-  case $ac_prog_version in
-    '')     gcc_cv_prog_$2_modern=no;;
-    <<$5>>)
-            gcc_cv_prog_$2_modern=yes;;
-    *)      gcc_cv_prog_$2_modern=no;;
-  esac
-changequote([,])dnl
-])
-else
-  gcc_cv_prog_$2_modern=no
-fi
-])
-
 dnl Determine if enumerated bitfields are unsigned.   ISO C says they can 
 dnl be either signed or unsigned.
 dnl
@@ -375,7 +365,7 @@ if test $gcc_cv_c_nbby = failed; then
   AC_MSG_ERROR(cannot determine number of bits in a byte)
 else
   AC_DEFINE_UNQUOTED(CHAR_BIT, $gcc_cv_c_nbby,
-  [Define as the number of bits in a byte, if \`limits.h' doesn't.])
+  [Define as the number of bits in a byte, if `limits.h' doesn't.])
 fi
 fi])
 

@@ -1,12 +1,12 @@
 /* Various declarations for language-independent pretty-print subroutines.
-   Copyright (C) 2002, 2003, 2004 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -15,9 +15,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_PRETTY_PRINT_H
 #define GCC_PRETTY_PRINT_H
@@ -36,6 +35,7 @@ typedef struct
   va_list *args_ptr;
   int err_no;  /* for %m */
   location_t *locus;
+  tree *abstract_origin;
 } text_info;
 
 /* How often diagnostics are prefixed by their locations:
@@ -142,11 +142,15 @@ typedef bool (*printer_fn) (pretty_printer *, text_info *, const char *,
    formatting.  */
 #define pp_needs_newline(PP)  pp_base (PP)->need_newline 
 
-/* True if PRETTY-PTINTER is in line-wrapping mode.  */
+/* True if PRETTY-PRINTER is in line-wrapping mode.  */
 #define pp_is_wrapping_line(PP) (pp_line_cutoff (PP) > 0)
 
 /* The amount of whitespace to be emitted when starting a new line.  */
 #define pp_indentation(PP) pp_base (PP)->indent_skip
+
+/* True if identifiers are translated to the locale character set on
+   output.  */
+#define pp_translate_identifiers(PP) pp_base (PP)->translate_identifiers
 
 /* The data structure that contains the bare minimum required to do
    proper pretty-printing.  Clients may derived from this structure
@@ -187,6 +191,10 @@ struct pretty_print_info
 
   /* Nonzero means one should emit a newline before outputting anything.  */
   bool need_newline;
+
+  /* Nonzero means identifiers are translated to the locale character
+     set on output.  */
+  bool translate_identifiers;
 };
 
 #define pp_set_line_maximum_length(PP, L) \
@@ -273,10 +281,11 @@ struct pretty_print_info
    pp_scalar (PP, HOST_WIDEST_INT_PRINT_DEC, (HOST_WIDEST_INT) I)
 #define pp_pointer(PP, P)      pp_scalar (PP, "%p", P)
 
-#define pp_identifier(PP, ID)  pp_string (PP, ID)
+#define pp_identifier(PP, ID)  pp_string (PP, (pp_translate_identifiers (PP) \
+					  ? identifier_to_locale (ID)	\
+					  : (ID)))
 #define pp_tree_identifier(PP, T)                      \
-  pp_append_text(PP, IDENTIFIER_POINTER (T), \
-                 IDENTIFIER_POINTER (T) + IDENTIFIER_LENGTH (T))
+  pp_base_tree_identifier (pp_base (PP), T)
 
 #define pp_unsupported_tree(PP, T)                         \
   pp_verbatim (pp_base (PP), "#%qs not supported by %s#", \
@@ -322,6 +331,7 @@ extern void pp_base_character (pretty_printer *, int);
 extern void pp_base_string (pretty_printer *, const char *);
 extern void pp_write_text_to_stream (pretty_printer *pp);
 extern void pp_base_maybe_space (pretty_printer *);
+extern void pp_base_tree_identifier (pretty_printer *, tree);
 
 /* Switch into verbatim mode and return the old mode.  */
 static inline pp_wrapping_mode_t
@@ -333,5 +343,7 @@ pp_set_verbatim_wrapping_ (pretty_printer *pp)
   return oldmode;
 }
 #define pp_set_verbatim_wrapping(PP) pp_set_verbatim_wrapping_ (pp_base (PP))
+
+extern const char *identifier_to_locale (const char *);
 
 #endif /* GCC_PRETTY_PRINT_H */

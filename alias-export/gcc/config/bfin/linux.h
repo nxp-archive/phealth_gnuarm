@@ -1,32 +1,32 @@
+/* Copyright (C) 2007, 2008 Free Software Foundation, Inc.
+
+This file is part of GCC.
+
+GCC is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3, or (at your option) any later
+version.
+
+GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
+
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
+
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */
+
 #undef SUBTARGET_DRIVER_SELF_SPECS
 #define SUBTARGET_DRIVER_SELF_SPECS \
-  "%{!mno-fdpic:-mfdpic}",
-
-/* The GNU C++ standard library requires that these macros be defined.  */
-#undef CPLUSPLUS_CPP_SPEC
-#define CPLUSPLUS_CPP_SPEC "-D_GNU_SOURCE %(cpp)"
-
-#ifdef __BFIN_FDPIC__
-#define CRT_CALL_STATIC_FUNCTION(SECTION_OP, FUNC)	\
-asm (SECTION_OP); \
-asm ("P3 = [SP + 20];\n\tcall " USER_LABEL_PREFIX #FUNC ";"); \
-asm (TEXT_SECTION_ASM_OP);
-#endif
-
-#define NO_IMPLICIT_EXTERN_C
+  "%{!mno-fdpic:-mfdpic} -micplb",
 
 #undef TARGET_OS_CPP_BUILTINS
-#define TARGET_OS_CPP_BUILTINS()		\
-  do						\
-    {						\
-      LINUX_TARGET_OS_CPP_BUILTINS();		\
-      if (flag_pic)				\
-	{					\
-	  builtin_define ("__PIC__");		\
-	  builtin_define ("__pic__");		\
-	}					\
-    }						\
-  while (0)
+#define TARGET_OS_CPP_BUILTINS() LINUX_TARGET_OS_CPP_BUILTINS()
 
 #undef STARTFILE_SPEC
 #define STARTFILE_SPEC \
@@ -35,7 +35,8 @@ asm (TEXT_SECTION_ASM_OP);
 
 #undef LINK_GCC_C_SEQUENCE_SPEC
 #define LINK_GCC_C_SEQUENCE_SPEC \
-  "%{mfast-fp:-lbffastfp} %{static:--start-group} %G %L %{static:--end-group}%{!static:%G}"
+  "%{static:--start-group} %{mfast-fp:-lbffastfp} %G %L %{static:--end-group} \
+   %{!static:%{mfast-fp:-lbffastfp} %G}"
 
 #undef LINK_SPEC
 #define LINK_SPEC "\
@@ -47,3 +48,4 @@ asm (TEXT_SECTION_ASM_OP);
    %{!dynamic-linker:-dynamic-linker /lib/ld-uClibc.so.0}} \
    %{static}} -init __init -fini __fini"
 
+#define MD_UNWIND_SUPPORT "config/bfin/linux-unwind.h"

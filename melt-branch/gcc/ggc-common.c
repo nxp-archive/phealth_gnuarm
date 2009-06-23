@@ -30,6 +30,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "params.h"
 #include "hosthooks.h"
 #include "hosthooks-def.h"
+#include "plugin.h"
+#include "vec.h"
 
 #ifdef HAVE_SYS_RESOURCE_H
 # include <sys/resource.h>
@@ -86,18 +88,38 @@ ggc_htab_delete (void **slot, void *info)
   return 1;
 }
 
-/* Iterate through all registered roots and mark each element.  */
-void
-ggc_mark_roots (void)
+
+/* This extra vector of dynamically registered root_tab-s is used by
+   ggc_mark_roots and gives the ability to dynamically add new GGC root
+   tables, for instance from some plugins; this vector is a heap one
+   [since it is used by GGC internally!] */
+typedef const struct ggc_root_tab* const_ggc_root_tab_t;
+DEF_VEC_P(const_ggc_root_tab_t);
+DEF_VEC_ALLOC_P(const_ggc_root_tab_t, heap);
+static VEC(const_ggc_root_tab_t, heap) *extra_root_vec;
+
+
+/* Dynamically register a new GGC root table RT. This is useful for
+   plugins. */
+
+void 
+ggc_register_root_tab (const struct ggc_root_tab* rt)
 {
-  ggc_mark_roots_extra_marking ((gt_pointer_walker)0, (void*)0);
+  if (!rt)
+    return;
+  if (!extra_root_vec) 
+    {
+      int vlen = 32;
+      extra_root_vec = VEC_alloc (const_ggc_root_tab_t, heap, vlen);
+    }
+  VEC_safe_push (const_ggc_root_tab_t, heap, extra_root_vec, rt);
 }
 
 
-/* Iterate likewise through registered roots and also do some extra
-   marking. */
-void 
-ggc_mark_roots_extra_marking(gt_pointer_walker extramarker, void*extradata)
+/* Iterate through all registered roots and mark each element.  */
+
+void
+ggc_mark_roots (void)
 {
   const struct ggc_root_tab *const *rt;
   const struct ggc_root_tab *rti;
@@ -112,13 +134,24 @@ ggc_mark_roots_extra_marking(gt_pointer_walker extramarker, void*extradata)
   for (rt = gt_ggc_rtab; *rt; rt++)
     for (rti = *rt; rti->base != NULL; rti++)
       for (i = 0; i < rti->nelt; i++)
-	(*rti->cb)(*(void **)((char *)rti->base + rti->stride * i));
+	(*rti->cb) (*(void **)((char *)rti->base + rti->stride * i));
+
+  if (extra_root_vec 
+      && VEC_length(const_ggc_root_tab_t,extra_root_vec) > 0)
+    {
+      const_ggc_root_tab_t rtp = NULL;
+      for (i=0; 
+	   VEC_iterate(const_ggc_root_tab_t, extra_root_vec, i, rtp); 
+	   i++) 
+	{
+	  for (rti = rtp; rti->base != NULL; rti++)
+	    for (i = 0; i < rti->nelt; i++)
+	      (*rti->cb) (*(void **) ((char *)rti->base + rti->stride * i));
+	}
+    }
 
   if (ggc_protect_identifiers)
     ggc_mark_stringpool ();
-
-  if (extramarker)
-    (*extramarker) (extradata);
 
   /* Now scan all hash tables that have objects which are to be deleted if
      they are not already marked.  */
@@ -134,6 +167,9 @@ ggc_mark_roots_extra_marking(gt_pointer_walker extramarker, void*extradata)
 
   if (! ggc_protect_identifiers)
     ggc_purge_stringpool ();
+
+  /* Some plugins may call ggc_set_mark from here.  */
+  invoke_plugin_callbacks (PLUGIN_GGC_MARKING, NULL);
 }
 
 /* Allocate a block of memory, then clear it.  */
@@ -856,7 +892,7 @@ loc_descriptor (const char *name, int line, const char *function)
   if (!loc_hash)
     loc_hash = htab_create (10, hash_descriptor, eq_descriptor, NULL);
 
-  slot = (struct loc_descriptor **) htab_find_slot (loc_hash, &loc, 1);
+  slot = (struct loc_descriptor **) htab_find_slot (loc_hash, &loc, INSERT);
   if (*slot)
     return *slot;
   *slot = XCNEW (struct loc_descriptor);
@@ -1032,11 +1068,4 @@ dump_ggc_loc_statistics (bool final ATTRIBUTE_UNUSED)
   fprintf (stderr, "-------------------------------------------------------\n");
   ggc_force_collect = false;
 #endif
-}
-
-/* Top level mark-and-sweep routine without extra marker. */
-void
-ggc_collect(void)
-{
-  ggc_collect_extra_marking ((gt_pointer_walker)0, (void*)0);
 }

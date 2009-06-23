@@ -1,5 +1,6 @@
 /* Natural loop analysis code for GNU compiler.
-   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -51,6 +52,8 @@ just_once_each_iteration_p (const struct loop *loop, const_basic_block bb)
   return true;
 }
 
+static bool irred_loop_found;
+
 /* Marks the edge E in graph G irreducible if it connects two vertices in the
    same scc.  */
 
@@ -67,6 +70,7 @@ check_irred (struct graph *g, struct graph_edge *e)
     return;
 
   real->flags |= EDGE_IRREDUCIBLE_LOOP;
+  irred_loop_found = true;
   if (flow_bb_inside_loop_p (real->src->loop_father, real->dest))
     real->src->flags |= BB_IRREDUCIBLE_LOOP;
 }
@@ -83,7 +87,7 @@ check_irred (struct graph *g, struct graph_edge *e)
 #define LOOP_REPR(LOOP) ((LOOP)->num + last_basic_block)
 #define BB_REPR(BB) ((BB)->index + 1)
 
-void
+bool
 mark_irreducible_loops (void)
 {
   basic_block act;
@@ -152,12 +156,14 @@ mark_irreducible_loops (void)
   /* Find the strongly connected components.  */
   graphds_scc (g, NULL);
 
+  irred_loop_found = false;
   /* Mark the irreducible loops.  */
   for_each_edge (g, check_irred);
 
   free_graph (g);
 
   loops_state_set (LOOPS_HAVE_MARKED_IRREDUCIBLE_REGIONS);
+  return irred_loop_found;
 }
 
 /* Counts number of insns inside LOOP.  */
@@ -396,8 +402,8 @@ estimate_reg_pressure_cost (unsigned n_new, unsigned n_old, bool speed)
        one.  */
     cost = target_spill_cost [speed] * n_new;
 
-  if (optimize && flag_ira && (flag_ira_region == IRA_REGION_ALL
-			       || flag_ira_region == IRA_REGION_MIXED)
+  if (optimize && (flag_ira_region == IRA_REGION_ALL
+		   || flag_ira_region == IRA_REGION_MIXED)
       && number_of_loops () <= (unsigned) IRA_MAX_LOOPS_NUM)
     /* IRA regional allocation deals with high register pressure
        better.  So decrease the cost (to do more accurate the cost

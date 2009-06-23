@@ -1,5 +1,6 @@
 /* A pass for lowering trees to RTL.
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -487,8 +488,7 @@ get_decl_align_unit (tree decl)
 {
   unsigned int align;
 
-  align = DECL_ALIGN (decl);
-  align = LOCAL_ALIGNMENT (TREE_TYPE (decl), align);
+  align = LOCAL_DECL_ALIGNMENT (decl);
 
   if (align > MAX_SUPPORTED_STACK_ALIGNMENT)
     align = MAX_SUPPORTED_STACK_ALIGNMENT;

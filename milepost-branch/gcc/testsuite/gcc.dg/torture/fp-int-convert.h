@@ -7,7 +7,7 @@ extern void exit (int);
 
 /* Not all platforms support TImode integers; logic as in
    gcc.dg/titype-1.c.  */
-#if defined(__LP64__) && !defined(__hppa__)
+#if (defined(__LP64__) && !defined(__hppa__)) || defined(_WIN64)
 typedef int TItype __attribute__ ((mode (TI)));
 typedef unsigned int UTItype __attribute__ ((mode (TI)));
 #else
@@ -80,7 +80,9 @@ do {							\
   ivin = (VAL);						\
   fv1 = (VAL);						\
   fv2 = ivin;						\
-  ivout = fv2;						\
+  /* (unsigned long long)(double)~0ULL invokes undefined behaviour.  */\
+  if (PREC_OK)						\
+    ivout = fv2;					\
   if (ivin != (VAL)					\
       || ((PREC_OK) && ivout != ivin)			\
       || ((PREC_OK) && ivout != (VAL))			\

@@ -1,6 +1,6 @@
 /* Functions related to building classes and their related objects.
    Copyright (C) 1987, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
 
@@ -1439,16 +1439,17 @@ determine_primary_bases (tree t)
       BINFO_VIRTUALS (type_binfo) = BINFO_VIRTUALS (primary);
     }
 }
-
-/* Set memoizing fields and bits of T (and its variants) for later
-   use.  */
 
-static void
-finish_struct_bits (tree t)
+/* Update the variant types of T.  */
+
+void
+fixup_type_variants (tree t)
 {
   tree variants;
 
-  /* Fix up variants (if any).  */
+  if (!t)
+    return;
+
   for (variants = TYPE_NEXT_VARIANT (t);
        variants;
        variants = TYPE_NEXT_VARIANT (variants))
@@ -1472,6 +1473,17 @@ finish_struct_bits (tree t)
       /* All variants of a class have the same attributes.  */
       TYPE_ATTRIBUTES (variants) = TYPE_ATTRIBUTES (t);
     }
+}
+
+
+/* Set memoizing fields and bits of T (and its variants) for later
+   use.  */
+
+static void
+finish_struct_bits (tree t)
+{
+  /* Fix up variants (if any).  */
+  fixup_type_variants (t);
 
   if (BINFO_N_BASE_BINFOS (TYPE_BINFO (t)) && TYPE_POLYMORPHIC_P (t))
     /* For a class w/o baseclasses, 'finish_struct' has set
@@ -4090,6 +4102,9 @@ type_has_user_provided_constructor (tree t)
 {
   tree fns;
 
+  if (!CLASS_TYPE_P (t))
+    return false;
+
   if (!TYPE_HAS_USER_CONSTRUCTOR (t))
     return false;
 
@@ -5784,6 +5799,9 @@ currently_open_class (tree t)
 {
   int i;
 
+  if (!CLASS_TYPE_P (t))
+    return false;
+
   /* We start looking from 1 because entry 0 is from global scope,
      and has no type.  */
   for (i = current_class_depth; i > 0; --i)
@@ -6455,7 +6473,7 @@ is_empty_class (tree type)
   if (type == error_mark_node)
     return 0;
 
-  if (! MAYBE_CLASS_TYPE_P (type))
+  if (! CLASS_TYPE_P (type))
     return 0;
 
   /* In G++ 3.2, whether or not a class was empty was determined by
@@ -6492,6 +6510,37 @@ contains_empty_class_p (tree type)
     }
   else if (TREE_CODE (type) == ARRAY_TYPE)
     return contains_empty_class_p (TREE_TYPE (type));
+  return false;
+}
+
+/* Returns true if TYPE contains no actual data, just various
+   possible combinations of empty classes.  */
+
+bool
+is_really_empty_class (tree type)
+{
+  if (is_empty_class (type))
+    return true;
+  if (CLASS_TYPE_P (type))
+    {
+      tree field;
+      tree binfo;
+      tree base_binfo;
+      int i;
+
+      for (binfo = TYPE_BINFO (type), i = 0;
+	   BINFO_BASE_ITERATE (binfo, i, base_binfo); ++i)
+	if (!is_really_empty_class (BINFO_TYPE (base_binfo)))
+	  return false;
+      for (field = TYPE_FIELDS (type); field; field = TREE_CHAIN (field))
+	if (TREE_CODE (field) == FIELD_DECL
+	    && !DECL_ARTIFICIAL (field)
+	    && !is_really_empty_class (TREE_TYPE (field)))
+	  return false;
+      return true;
+    }
+  else if (TREE_CODE (type) == ARRAY_TYPE)
+    return is_really_empty_class (TREE_TYPE (type));
   return false;
 }
 

@@ -1,5 +1,5 @@
 /* DDG - Data Dependence Graph - interface.
-   Copyright (C) 2004, 2007
+   Copyright (C) 2004, 2005, 2006, 2007
    Free Software Foundation, Inc.
    Contributed by Ayal Zaks and Mustafa Hagog <zaks,mustafa@il.ibm.com>
 
@@ -26,7 +26,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "sbitmap.h"
 /* For basic_block.  */
 #include "basic-block.h"
-/* For struct df.  */
 #include "df.h"
  
 typedef struct ddg_node *ddg_node_ptr;
@@ -165,12 +164,17 @@ struct ddg_all_sccs
 };
 
 
-ddg_ptr create_ddg (basic_block, struct df *, int closing_branch_deps);
+#ifdef EXTRA_TARGET
+namespace EXTRA_TARGET {
+#endif
+
+ddg_ptr create_ddg (basic_block, int closing_branch_deps);
 void free_ddg (ddg_ptr);
 
 void print_ddg (FILE *, ddg_ptr);
 void vcg_print_ddg (FILE *, ddg_ptr);
 void print_ddg_edge (FILE *, ddg_edge_ptr);
+void print_sccs (FILE *, ddg_all_sccs_ptr, ddg_ptr);
 
 ddg_node_ptr get_node_of_insn (ddg_ptr, rtx);
 
@@ -182,5 +186,9 @@ void free_ddg_all_sccs (ddg_all_sccs_ptr);
 
 int find_nodes_on_paths (sbitmap result, ddg_ptr, sbitmap from, sbitmap to);
 int longest_simple_path (ddg_ptr, int from, int to, sbitmap via);
+
+#ifdef EXTRA_TARGET
+} /* Close EXTRA_TARGET namespace.  */
+#endif
 
 #endif /* GCC_DDG_H */

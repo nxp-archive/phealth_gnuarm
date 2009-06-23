@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1996-2006, Free Software Foundation, Inc.         --
+--          Copyright (C) 1996-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -34,6 +33,7 @@ with Nlists;   use Nlists;
 with Nmake;    use Nmake;
 with Opt;      use Opt;
 with Rtsfind;  use Rtsfind;
+with Sem_Aux;  use Sem_Aux;
 with Sem_Eval; use Sem_Eval;
 with Sem_Util; use Sem_Util;
 with Sem_Warn; use Sem_Warn;
@@ -220,8 +220,7 @@ package body Exp_Code is
 
       Name_Len := 0;
       loop
-         Name_Len := Name_Len + 1;
-         Name_Buffer (Name_Len) := C;
+         Add_Char_To_Name_Buffer (C);
          Clobber_Ptr := Clobber_Ptr + 1;
          exit when Clobber_Ptr > Len;
          C := Get_Character (Get_String_Char (Str, Clobber_Ptr));

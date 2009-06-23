@@ -1,6 +1,6 @@
 /* Subroutines for insn-output.c for VAX.
    Copyright (C) 1987, 1994, 1995, 1997, 1998, 1999, 2000, 2001, 2002,
-   2004, 2005, 2006, 2007
+   2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -122,7 +122,7 @@ vax_output_function_prologue (FILE * file, HOST_WIDE_INT size)
 
   if (dwarf2out_do_frame ())
     {
-      const char *label = dwarf2out_cfi_label ();
+      const char *label = dwarf2out_cfi_label (false);
       int offset = 0;
 
       for (regno = FIRST_PSEUDO_REGISTER-1; regno >= 0; --regno)

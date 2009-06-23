@@ -1,6 +1,6 @@
 /* Communication between the Integrated Register Allocator (IRA) and
    the rest of the compiler.
-   Copyright (C) 2006, 2007, 2008
+   Copyright (C) 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
@@ -20,11 +20,14 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
+/* True if we have allocno conflicts.  It is false for non-optimized
+   mode or when the conflict table is too big.  */
+extern bool ira_conflicts_p;
+
 extern void ira_init_once (void);
 extern void ira_init (void);
 extern void ira_finish_once (void);
 extern rtx ira_eliminate_regs (rtx, enum machine_mode);
-extern void ira_sort_insn_chain (bool);
 
 extern void ira_sort_regnos_for_alter_reg (int *, int, unsigned int *);
 extern void ira_mark_allocation_change (int);

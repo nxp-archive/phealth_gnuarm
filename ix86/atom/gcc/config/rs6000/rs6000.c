@@ -1,6 +1,6 @@
 /* Subroutines used for code generation on IBM RS/6000.
    Copyright (C) 1991, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu)
 
@@ -885,7 +885,6 @@ static rtx paired_expand_predicate_builtin (enum insn_code, tree, rtx);
 static void enable_mask_for_builtins (struct builtin_description *, int,
 				      enum rs6000_builtins,
 				      enum rs6000_builtins);
-static tree build_opaque_vector_type (tree, int);
 static void spe_init_builtins (void);
 static rtx spe_expand_builtin (tree, rtx, bool *);
 static rtx spe_expand_stv_builtin (enum insn_code, tree);
@@ -916,7 +915,6 @@ static void compute_save_world_info (rs6000_stack_t *info_ptr);
 static void is_altivec_return_reg (rtx, void *);
 static rtx generate_set_vrsave (rtx, rs6000_stack_t *, int);
 int easy_vector_constant (rtx, enum machine_mode);
-static bool rs6000_is_opaque_type (const_tree);
 static rtx rs6000_dwarf_register_span (rtx);
 static void rs6000_init_dwarf_reg_sizes_extra (tree);
 static rtx rs6000_legitimize_tls_address (rtx, enum tls_model);
@@ -1190,9 +1188,6 @@ static const char alt_reg_names[][8] =
 #define TARGET_RTX_COSTS rs6000_rtx_costs
 #undef TARGET_ADDRESS_COST
 #define TARGET_ADDRESS_COST hook_int_rtx_bool_0
-
-#undef TARGET_VECTOR_OPAQUE_P
-#define TARGET_VECTOR_OPAQUE_P rs6000_is_opaque_type
 
 #undef TARGET_DWARF_REGISTER_SPAN
 #define TARGET_DWARF_REGISTER_SPAN rs6000_dwarf_register_span
@@ -2324,6 +2319,11 @@ rs6000_handle_option (size_t code, const char *arg, int value)
     case OPT_maix_struct_return:
     case OPT_msvr4_struct_return:
       rs6000_explicit_options.aix_struct_ret = true;
+      break;
+
+    case OPT_mvrsave:
+      rs6000_explicit_options.vrsave = true;
+      TARGET_ALTIVEC_VRSAVE = value;
       break;
 
     case OPT_mvrsave_:
@@ -7087,7 +7087,6 @@ rs6000_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
 	 reg number is 0 for f1, so we want to make it odd.  */
       else if (reg == fpr && TYPE_MODE (type) == TDmode)
 	{
-	  regalign = 1;
 	  t = build2 (BIT_IOR_EXPR, TREE_TYPE (reg), unshare_expr (reg),
 		      build_int_cst (TREE_TYPE (reg), 1));
 	  u = build2 (MODIFY_EXPR, void_type_node, unshare_expr (reg), t);
@@ -9358,18 +9357,11 @@ rs6000_expand_builtin (tree exp, rtx target, rtx subtarget ATTRIBUTE_UNUSED,
   gcc_unreachable ();
 }
 
-static tree
-build_opaque_vector_type (tree node, int nunits)
-{
-  node = copy_node (node);
-  TYPE_MAIN_VARIANT (node) = node;
-  TYPE_CANONICAL (node) = node;
-  return build_vector_type (node, nunits);
-}
-
 static void
 rs6000_init_builtins (void)
 {
+  tree tdecl;
+  
   V2SI_type_node = build_vector_type (intSI_type_node, 2);
   V2SF_type_node = build_vector_type (float_type_node, 2);
   V4HI_type_node = build_vector_type (intHI_type_node, 4);
@@ -9385,7 +9377,7 @@ rs6000_init_builtins (void)
   opaque_V2SF_type_node = build_opaque_vector_type (float_type_node, 2);
   opaque_V2SI_type_node = build_opaque_vector_type (intSI_type_node, 2);
   opaque_p_V2SI_type_node = build_pointer_type (opaque_V2SI_type_node);
-  opaque_V4SI_type_node = copy_node (V4SI_type_node);
+  opaque_V4SI_type_node = build_opaque_vector_type (intSI_type_node, 4);
 
   /* The 'vector bool ...' types must be kept distinct from 'vector unsigned ...'
      types, especially in C++ land.  Similarly, 'vector pixel' is distinct from
@@ -9407,60 +9399,75 @@ rs6000_init_builtins (void)
   float_type_internal_node = float_type_node;
   void_type_internal_node = void_type_node;
 
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__bool char"),
-					    bool_char_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__bool short"),
-					    bool_short_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__bool int"),
-					    bool_int_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__pixel"),
-					    pixel_type_node));
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__bool char"),
+		      bool_char_type_node);
+  TYPE_NAME (bool_char_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__bool short"),
+		      bool_short_type_node);
+  TYPE_NAME (bool_short_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__bool int"),
+		      bool_int_type_node);
+  TYPE_NAME (bool_int_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__pixel"),
+		      pixel_type_node);
+  TYPE_NAME (pixel_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
 
   bool_V16QI_type_node = build_vector_type (bool_char_type_node, 16);
   bool_V8HI_type_node = build_vector_type (bool_short_type_node, 8);
   bool_V4SI_type_node = build_vector_type (bool_int_type_node, 4);
   pixel_V8HI_type_node = build_vector_type (pixel_type_node, 8);
 
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector unsigned char"),
-					    unsigned_V16QI_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector signed char"),
-					    V16QI_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector __bool char"),
-					    bool_V16QI_type_node));
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector unsigned char"),
+		      unsigned_V16QI_type_node);
+  TYPE_NAME (unsigned_V16QI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector signed char"),
+		      V16QI_type_node);
+  TYPE_NAME (V16QI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector __bool char"),
+		      bool_V16QI_type_node);
+  TYPE_NAME ( bool_V16QI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
 
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector unsigned short"),
-					    unsigned_V8HI_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector signed short"),
-					    V8HI_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector __bool short"),
-					    bool_V8HI_type_node));
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector unsigned short"),
+		      unsigned_V8HI_type_node);
+  TYPE_NAME (unsigned_V8HI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector signed short"),
+		      V8HI_type_node);
+  TYPE_NAME (V8HI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector __bool short"),
+		      bool_V8HI_type_node);
+  TYPE_NAME (bool_V8HI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
 
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector unsigned int"),
-					    unsigned_V4SI_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector signed int"),
-					    V4SI_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector __bool int"),
-					    bool_V4SI_type_node));
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector unsigned int"),
+		      unsigned_V4SI_type_node);
+  TYPE_NAME (unsigned_V4SI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector signed int"),
+		      V4SI_type_node);
+  TYPE_NAME (V4SI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector __bool int"),
+		      bool_V4SI_type_node);
+  TYPE_NAME (bool_V4SI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
 
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector float"),
-					    V4SF_type_node));
-  (*lang_hooks.decls.pushdecl) (build_decl (TYPE_DECL,
-					    get_identifier ("__vector __pixel"),
-					    pixel_V8HI_type_node));
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector float"),
+		      V4SF_type_node);
+  TYPE_NAME (V4SF_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
+  tdecl = build_decl (TYPE_DECL, get_identifier ("__vector __pixel"),
+		      pixel_V8HI_type_node);
+  TYPE_NAME (pixel_V8HI_type_node) = tdecl;
+  (*lang_hooks.decls.pushdecl) (tdecl);
 
   if (TARGET_PAIRED_FLOAT)
     paired_init_builtins ();
@@ -15254,7 +15261,7 @@ rs6000_ra_ever_killed (void)
   rtx reg;
   rtx insn;
 
-  if (crtl->is_thunk)
+  if (cfun->is_thunk)
     return 0;
 
   /* regs_ever_live has LR marked as used if any sibcalls are present,
@@ -15933,7 +15940,6 @@ rs6000_emit_stack_reset (rs6000_stack_t *info,
   
   if (frame_reg_rtx != sp_reg_rtx)
     {
-      rs6000_emit_stack_tie ();
       if (sp_offset != 0)
 	emit_insn (gen_addsi3 (sp_reg_rtx, frame_reg_rtx,
 			       GEN_INT (sp_offset)));
@@ -17556,7 +17562,7 @@ rs6000_output_function_epilogue (FILE *file,
      System V.4 Powerpc's (and the embedded ABI derived from it) use a
      different traceback table.  */
   if (DEFAULT_ABI == ABI_AIX && ! flag_inhibit_size_directive
-      && rs6000_traceback != traceback_none && !crtl->is_thunk)
+      && rs6000_traceback != traceback_none && !cfun->is_thunk)
     {
       const char *fname = NULL;
       const char *language_string = lang_hooks.name;
@@ -22580,7 +22586,8 @@ rs6000_function_value (const_tree valtype, const_tree func ATTRIBUTE_UNUSED)
   if (DECIMAL_FLOAT_MODE_P (mode) && TARGET_HARD_FLOAT && TARGET_FPRS)
     /* _Decimal128 must use an even/odd register pair.  */
     regno = (mode == TDmode) ? FP_ARG_RETURN + 1 : FP_ARG_RETURN;
-  else if (SCALAR_FLOAT_TYPE_P (valtype) && TARGET_HARD_FLOAT && TARGET_FPRS)
+  else if (SCALAR_FLOAT_TYPE_P (valtype) && TARGET_HARD_FLOAT && TARGET_FPRS
+	   && ((TARGET_SINGLE_FLOAT && (mode == SFmode)) || TARGET_DOUBLE_FLOAT))
     regno = FP_ARG_RETURN;
   else if (TREE_CODE (valtype) == COMPLEX_TYPE
 	   && targetm.calls.split_complex_arg)
@@ -22673,25 +22680,19 @@ rs6000_initial_elimination_offset (int from, int to)
   return offset;
 }
 
-/* Return true if TYPE is a SPE or AltiVec opaque type.  */
-
-static bool
-rs6000_is_opaque_type (const_tree type)
-{
-  return (type == opaque_V2SI_type_node
-	      || type == opaque_V2SF_type_node
-	      || type == opaque_V4SI_type_node);
-}
-
 static rtx
 rs6000_dwarf_register_span (rtx reg)
 {
-  unsigned regno;
+  rtx parts[8];
+  int i, words;
+  unsigned regno = REGNO (reg);
+  enum machine_mode mode = GET_MODE (reg);
 
   if (TARGET_SPE
+      && regno < 32
       && (SPE_VECTOR_MODE (GET_MODE (reg))
-	  || (TARGET_E500_DOUBLE
-	      && (GET_MODE (reg) == DFmode || GET_MODE (reg) == DDmode))))
+	  || (TARGET_E500_DOUBLE && FLOAT_MODE_P (mode)
+	      && mode != SFmode && mode != SDmode && mode != SCmode)))
     ;
   else
     return NULL_RTX;
@@ -22701,15 +22702,23 @@ rs6000_dwarf_register_span (rtx reg)
   /* The duality of the SPE register size wreaks all kinds of havoc.
      This is a way of distinguishing r0 in 32-bits from r0 in
      64-bits.  */
-  return
-    gen_rtx_PARALLEL (VOIDmode,
-		      BYTES_BIG_ENDIAN
-		      ? gen_rtvec (2,
-				   gen_rtx_REG (SImode, regno + 1200),
-				   gen_rtx_REG (SImode, regno))
-		      : gen_rtvec (2,
-				   gen_rtx_REG (SImode, regno),
-				   gen_rtx_REG (SImode, regno + 1200)));
+  words = (GET_MODE_SIZE (mode) + UNITS_PER_FP_WORD - 1) / UNITS_PER_FP_WORD;
+  gcc_assert (words <= 4);
+  for (i = 0; i < words; i++, regno++)
+    {
+      if (BYTES_BIG_ENDIAN)
+	{
+	  parts[2 * i] = gen_rtx_REG (SImode, regno + 1200);
+	  parts[2 * i + 1] = gen_rtx_REG (SImode, regno);
+	}
+      else
+	{
+	  parts[2 * i] = gen_rtx_REG (SImode, regno);
+	  parts[2 * i + 1] = gen_rtx_REG (SImode, regno + 1200);
+	}
+    }
+
+  return gen_rtx_PARALLEL (VOIDmode, gen_rtvec_v (words * 2, parts));
 }
 
 /* Fill in sizes for SPE register high parts in table used by unwinder.  */

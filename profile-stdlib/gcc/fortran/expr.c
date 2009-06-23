@@ -1,5 +1,5 @@
 /* Routines for manipulation of expression nodes.
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
@@ -182,6 +182,7 @@ free_expr0 (gfc_expr *e)
       break;
 
     case EXPR_COMPCALL:
+    case EXPR_PPC:
       gfc_free_actual_arglist (e->value.compcall.actual);
       break;
 
@@ -507,6 +508,7 @@ gfc_copy_expr (gfc_expr *p)
       break;
 
     case EXPR_COMPCALL:
+    case EXPR_PPC:
       q->value.compcall.actual =
 	gfc_copy_actual_arglist (p->value.compcall.actual);
       q->value.compcall.tbp = p->value.compcall.tbp;
@@ -1028,6 +1030,14 @@ find_array_element (gfc_constructor *cons, gfc_array_ref *ar,
   mpz_init_set_ui (span, 1);
   for (i = 0; i < ar->dimen; i++)
     {
+      if (gfc_reduce_init_expr (ar->as->lower[i]) == FAILURE
+	  || gfc_reduce_init_expr (ar->as->upper[i]) == FAILURE)
+	{
+	  t = FAILURE;
+	  cons = NULL;
+	  goto depart;
+	}
+
       e = gfc_copy_expr (ar->start[i]);
       if (e->expr_type != EXPR_CONSTANT)
 	{
@@ -1035,14 +1045,15 @@ find_array_element (gfc_constructor *cons, gfc_array_ref *ar,
 	  goto depart;
 	}
 
+      gcc_assert (ar->as->upper[i]->expr_type == EXPR_CONSTANT
+		  && ar->as->lower[i]->expr_type == EXPR_CONSTANT);
+
       /* Check the bounds.  */
       if ((ar->as->upper[i]
-	   && ar->as->upper[i]->expr_type == EXPR_CONSTANT
 	   && mpz_cmp (e->value.integer,
 		       ar->as->upper[i]->value.integer) > 0)
-	  || (ar->as->lower[i]->expr_type == EXPR_CONSTANT
-	      && mpz_cmp (e->value.integer,
-			  ar->as->lower[i]->value.integer) < 0))
+	  || (mpz_cmp (e->value.integer,
+		       ar->as->lower[i]->value.integer) < 0))
 	{
 	  gfc_error ("Index in dimension %d is out of bounds "
 		     "at %L", i + 1, &ar->c_where[i]);
@@ -1201,7 +1212,12 @@ find_array_section (gfc_expr *expr, gfc_ref *ref)
 	    }
 
 	  gcc_assert (begin->rank == 1);
-	  gcc_assert (begin->shape);
+	  /* Zero-sized arrays have no shape and no elements, stop early.  */
+	  if (!begin->shape) 
+	    {
+	      mpz_init_set_ui (nelts, 0);
+	      break;
+	    }
 
 	  vecsub[d] = begin->value.constructor;
 	  mpz_set (ctr[d], vecsub[d]->expr->value.integer);
@@ -1714,6 +1730,7 @@ gfc_simplify_expr (gfc_expr *p, int type)
       break;
 
     case EXPR_COMPCALL:
+    case EXPR_PPC:
       gcc_unreachable ();
       break;
     }
@@ -1928,16 +1945,6 @@ check_intrinsic_op (gfc_expr *e, gfc_try (*check_function) (gfc_expr *))
 
       if (!numeric_type (et0 (op1)) || !numeric_type (et0 (op2)))
 	goto not_numeric;
-
-      if (e->value.op.op == INTRINSIC_POWER
-	  && check_function == check_init_expr && et0 (op2) != BT_INTEGER)
-	{
-	  if (gfc_notify_std (GFC_STD_F2003,"Fortran 2003: Noninteger "
-			      "exponent in an initialization "
-			      "expression at %L", &op2->where)
-	      == FAILURE)
-	    return FAILURE;
-	}
 
       break;
 
@@ -2378,20 +2385,14 @@ check_init_expr (gfc_expr *e)
   return t;
 }
 
+/* Reduces a general expression to an initialization expression (a constant).
+   This used to be part of gfc_match_init_expr.
+   Note that this function doesn't free the given expression on FAILURE.  */
 
-/* Match an initialization expression.  We work by first matching an
-   expression, then reducing it to a constant.  */
-
-match
-gfc_match_init_expr (gfc_expr **result)
+gfc_try
+gfc_reduce_init_expr (gfc_expr *expr)
 {
-  gfc_expr *expr;
-  match m;
   gfc_try t;
-
-  m = gfc_match_expr (&expr);
-  if (m != MATCH_YES)
-    return m;
 
   gfc_init_expr = 1;
   t = gfc_resolve_expr (expr);
@@ -2400,18 +2401,12 @@ gfc_match_init_expr (gfc_expr **result)
   gfc_init_expr = 0;
 
   if (t == FAILURE)
-    {
-      gfc_free_expr (expr);
-      return MATCH_ERROR;
-    }
+    return FAILURE;
 
   if (expr->expr_type == EXPR_ARRAY
       && (gfc_check_constructor_type (expr) == FAILURE
-	  || gfc_expand_constructor (expr) == FAILURE))
-    {
-      gfc_free_expr (expr);
-      return MATCH_ERROR;
-    }
+      || gfc_expand_constructor (expr) == FAILURE))
+    return FAILURE;
 
   /* Not all inquiry functions are simplified to constant expressions
      so it is necessary to call check_inquiry again.  */ 
@@ -2419,10 +2414,48 @@ gfc_match_init_expr (gfc_expr **result)
       && !gfc_in_match_data ())
     {
       gfc_error ("Initialization expression didn't reduce %C");
+      return FAILURE;
+    }
+
+  return SUCCESS;
+}
+
+
+/* Match an initialization expression.  We work by first matching an
+   expression, then reducing it to a constant.  The reducing it to 
+   constant part requires a global variable to flag the prohibition
+   of a non-integer exponent in -std=f95 mode.  */
+
+bool init_flag = false;
+
+match
+gfc_match_init_expr (gfc_expr **result)
+{
+  gfc_expr *expr;
+  match m;
+  gfc_try t;
+
+  expr = NULL;
+
+  init_flag = true;
+
+  m = gfc_match_expr (&expr);
+  if (m != MATCH_YES)
+    {
+      init_flag = false;
+      return m;
+    }
+
+  t = gfc_reduce_init_expr (expr);
+  if (t != SUCCESS)
+    {
+      gfc_free_expr (expr);
+      init_flag = false;
       return MATCH_ERROR;
     }
 
   *result = expr;
+  init_flag = false;
 
   return MATCH_YES;
 }
@@ -2888,7 +2921,7 @@ gfc_check_assign (gfc_expr *lvalue, gfc_expr *rvalue, int conform)
 
   if (rvalue->expr_type == EXPR_NULL)
     {  
-      if (lvalue->symtree->n.sym->attr.pointer
+      if (has_pointer && (ref == NULL || ref->next == NULL)
 	  && lvalue->symtree->n.sym->attr.data)
         return SUCCESS;
       else
@@ -3008,7 +3041,7 @@ gfc_check_pointer_assign (gfc_expr *lvalue, gfc_expr *rvalue)
   symbol_attribute attr;
   gfc_ref *ref;
   int is_pure;
-  int pointer, check_intent_in;
+  int pointer, check_intent_in, proc_pointer;
 
   if (lvalue->symtree->n.sym->ts.type == BT_UNKNOWN
       && !lvalue->symtree->n.sym->attr.proc_pointer)
@@ -3019,7 +3052,8 @@ gfc_check_pointer_assign (gfc_expr *lvalue, gfc_expr *rvalue)
     }
 
   if (lvalue->symtree->n.sym->attr.flavor == FL_PROCEDURE
-      && lvalue->symtree->n.sym->attr.use_assoc)
+      && lvalue->symtree->n.sym->attr.use_assoc
+      && !lvalue->symtree->n.sym->attr.proc_pointer)
     {
       gfc_error ("'%s' in the pointer assignment at %L cannot be an "
 		 "l-value since it is a procedure",
@@ -3031,16 +3065,19 @@ gfc_check_pointer_assign (gfc_expr *lvalue, gfc_expr *rvalue)
   /* Check INTENT(IN), unless the object itself is the component or
      sub-component of a pointer.  */
   check_intent_in = 1;
-  pointer = lvalue->symtree->n.sym->attr.pointer
-	      | lvalue->symtree->n.sym->attr.proc_pointer;
+  pointer = lvalue->symtree->n.sym->attr.pointer;
+  proc_pointer = lvalue->symtree->n.sym->attr.proc_pointer;
 
   for (ref = lvalue->ref; ref; ref = ref->next)
     {
       if (pointer)
 	check_intent_in = 0;
 
-      if (ref->type == REF_COMPONENT && ref->u.c.component->attr.pointer)
-	pointer = 1;
+      if (ref->type == REF_COMPONENT)
+	{
+	  pointer = ref->u.c.component->attr.pointer;
+	  proc_pointer = ref->u.c.component->attr.proc_pointer;
+	}
 
       if (ref->type == REF_ARRAY && ref->next == NULL)
 	{
@@ -3076,7 +3113,7 @@ gfc_check_pointer_assign (gfc_expr *lvalue, gfc_expr *rvalue)
       return FAILURE;
     }
 
-  if (!pointer)
+  if (!pointer && !proc_pointer)
     {
       gfc_error ("Pointer assignment to non-POINTER at %L", &lvalue->where);
       return FAILURE;
@@ -3097,9 +3134,56 @@ gfc_check_pointer_assign (gfc_expr *lvalue, gfc_expr *rvalue)
   if (rvalue->expr_type == EXPR_NULL && rvalue->ts.type == BT_UNKNOWN)
     return SUCCESS;
 
-  /* TODO checks on rvalue for a procedure pointer assignment.  */
-  if (lvalue->symtree->n.sym->attr.proc_pointer)
-    return SUCCESS;
+  /* Checks on rvalue for procedure pointer assignments.  */
+  if (proc_pointer)
+    {
+      attr = gfc_expr_attr (rvalue);
+      if (!((rvalue->expr_type == EXPR_NULL)
+	    || (rvalue->expr_type == EXPR_FUNCTION && attr.proc_pointer)
+	    || (rvalue->expr_type == EXPR_VARIABLE && attr.proc_pointer)
+	    || (rvalue->expr_type == EXPR_VARIABLE
+		&& attr.flavor == FL_PROCEDURE)))
+	{
+	  gfc_error ("Invalid procedure pointer assignment at %L",
+		     &rvalue->where);
+	  return FAILURE;
+	}
+      if (attr.abstract)
+	{
+	  gfc_error ("Abstract interface '%s' is invalid "
+		     "in procedure pointer assignment at %L",
+		     rvalue->symtree->name, &rvalue->where);
+	  return FAILURE;
+	}
+      /* Check for C727.  */
+      if (attr.flavor == FL_PROCEDURE)
+	{
+	  if (attr.proc == PROC_ST_FUNCTION)
+	    {
+	      gfc_error ("Statement function '%s' is invalid "
+			 "in procedure pointer assignment at %L",
+			 rvalue->symtree->name, &rvalue->where);
+	      return FAILURE;
+	    }
+	  if (attr.proc == PROC_INTERNAL &&
+	      gfc_notify_std (GFC_STD_F2008, "Internal procedure '%s' is "
+			      "invalid in procedure pointer assignment at %L",
+			      rvalue->symtree->name, &rvalue->where) == FAILURE)
+	    return FAILURE;
+	}
+      /* TODO: Enable interface check for PPCs.  */
+      if (is_proc_ptr_comp (rvalue, NULL))
+	return SUCCESS;
+      if (rvalue->expr_type == EXPR_VARIABLE
+	  && !gfc_compare_interfaces (lvalue->symtree->n.sym,
+				      rvalue->symtree->n.sym, 0, 1))
+	{
+	  gfc_error ("Interfaces don't match "
+		     "in procedure pointer assignment at %L", &rvalue->where);
+	  return FAILURE;
+	}
+      return SUCCESS;
+    }
 
   if (!gfc_compare_types (&lvalue->ts, &rvalue->ts))
     {
@@ -3127,15 +3211,11 @@ gfc_check_pointer_assign (gfc_expr *lvalue, gfc_expr *rvalue)
   if (rvalue->expr_type == EXPR_NULL)
     return SUCCESS;
 
-  if (lvalue->ts.type == BT_CHARACTER
-      && lvalue->ts.cl && rvalue->ts.cl
-      && lvalue->ts.cl->length && rvalue->ts.cl->length
-      && abs (gfc_dep_compare_expr (lvalue->ts.cl->length,
-				    rvalue->ts.cl->length)) == 1)
+  if (lvalue->ts.type == BT_CHARACTER)
     {
-      gfc_error ("Different character lengths in pointer "
-		 "assignment at %L", &lvalue->where);
-      return FAILURE;
+      gfc_try t = gfc_check_same_strlen (lvalue, rvalue, "pointer assignment");
+      if (t == FAILURE)
+	return FAILURE;
     }
 
   if (rvalue->expr_type == EXPR_VARIABLE && is_subref_array (rvalue))
@@ -3427,11 +3507,41 @@ gfc_expr_set_symbols_referenced (gfc_expr *expr)
 }
 
 
+/* Determine if an expression is a procedure pointer component. If yes, the
+   argument 'comp' will point to the component (provided that 'comp' was
+   provided).  */
+
+bool
+is_proc_ptr_comp (gfc_expr *expr, gfc_component **comp)
+{
+  gfc_ref *ref;
+  bool ppc = false;
+
+  if (!expr || !expr->ref)
+    return false;
+
+  ref = expr->ref;
+  while (ref->next)
+    ref = ref->next;
+
+  if (ref->type == REF_COMPONENT)
+    {
+      ppc = ref->u.c.component->attr.proc_pointer;
+      if (ppc && comp)
+	*comp = ref->u.c.component;
+    }
+
+  return ppc;
+}
+
+
 /* Walk an expression tree and check each variable encountered for being typed.
    If strict is not set, a top-level variable is tolerated untyped in -std=gnu
-   mode; this is for things in legacy-code like:
+   mode as is a basic arithmetic expression using those; this is for things in
+   legacy-code like:
 
      INTEGER :: arr(n), n
+     INTEGER :: arr(n + 1), n
 
    The namespace is needed for IMPLICIT typing.  */
 
@@ -3458,13 +3568,61 @@ gfc_expr_check_typed (gfc_expr* e, gfc_namespace* ns, bool strict)
 {
   bool error_found;
 
-  /* If this is a top-level variable, do the check with strict given to us.  */
-  if (!strict && e->expr_type == EXPR_VARIABLE && !e->ref)
-    return gfc_check_symbol_typed (e->symtree->n.sym, ns, strict, e->where);
+  /* If this is a top-level variable or EXPR_OP, do the check with strict given
+     to us.  */
+  if (!strict)
+    {
+      if (e->expr_type == EXPR_VARIABLE && !e->ref)
+	return gfc_check_symbol_typed (e->symtree->n.sym, ns, strict, e->where);
+
+      if (e->expr_type == EXPR_OP)
+	{
+	  gfc_try t = SUCCESS;
+
+	  gcc_assert (e->value.op.op1);
+	  t = gfc_expr_check_typed (e->value.op.op1, ns, strict);
+
+	  if (t == SUCCESS && e->value.op.op2)
+	    t = gfc_expr_check_typed (e->value.op.op2, ns, strict);
+
+	  return t;
+	}
+    }
 
   /* Otherwise, walk the expression and do it strictly.  */
   check_typed_ns = ns;
   error_found = gfc_traverse_expr (e, NULL, &expr_check_typed_help, 0);
 
   return error_found ? FAILURE : SUCCESS;
+}
+
+/* Walk an expression tree and replace all symbols with a corresponding symbol
+   in the formal_ns of "sym". Needed for copying interfaces in PROCEDURE
+   statements. The boolean return value is required by gfc_traverse_expr.  */
+
+static bool
+replace_symbol (gfc_expr *expr, gfc_symbol *sym, int *i ATTRIBUTE_UNUSED)
+{
+  if ((expr->expr_type == EXPR_VARIABLE 
+       || (expr->expr_type == EXPR_FUNCTION
+	   && !gfc_is_intrinsic (expr->symtree->n.sym, 0, expr->where)))
+      && expr->symtree->n.sym->ns == sym->ts.interface->formal_ns)
+    {
+      gfc_symtree *stree;
+      gfc_namespace *ns = sym->formal_ns;
+      /* Don't use gfc_get_symtree as we prefer to fail badly if we don't find
+	 the symtree rather than create a new one (and probably fail later).  */
+      stree = gfc_find_symtree (ns ? ns->sym_root : gfc_current_ns->sym_root,
+		      		expr->symtree->n.sym->name);
+      gcc_assert (stree);
+      stree->n.sym->attr = expr->symtree->n.sym->attr;
+      expr->symtree = stree;
+    }
+  return false;
+}
+
+void
+gfc_expr_replace_symbols (gfc_expr *expr, gfc_symbol *dest)
+{
+  gfc_traverse_expr (expr, dest, &replace_symbol, 0);
 }

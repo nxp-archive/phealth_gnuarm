@@ -11224,6 +11224,8 @@ fold_binary (enum tree_code code, tree type, tree op0, tree op1)
 	      if (prec < HOST_BITS_PER_WIDE_INT
 		  || newmask == ~(unsigned HOST_WIDE_INT) 0)
 		{
+		  tree newmaskt;
+
 		  if (shift_type != TREE_TYPE (arg0))
 		    {
 		      tem = fold_build2 (TREE_CODE (arg0), shift_type,
@@ -11234,9 +11236,9 @@ fold_binary (enum tree_code code, tree type, tree op0, tree op1)
 		    }
 		  else
 		    tem = op0;
-		  return fold_build2 (BIT_AND_EXPR, type, tem,
-				      build_int_cst_type (TREE_TYPE (op1),
-							  newmask));
+		  newmaskt = build_int_cst_type (TREE_TYPE (op1), newmask);
+		  if (!tree_int_cst_equal (newmaskt, arg1))
+		    return fold_build2 (BIT_AND_EXPR, type, tem, newmaskt);
 		}
 	    }
 	}
@@ -11724,7 +11726,8 @@ fold_binary (enum tree_code code, tree type, tree op0, tree op1)
 	      if (code == LROTATE_EXPR || code == RROTATE_EXPR)
 	        low = low % TYPE_PRECISION (type);
 	      else if (TYPE_UNSIGNED (type) || code == LSHIFT_EXPR)
-	        return build_int_cst (type, 0);
+		return omit_one_operand (type, build_int_cst (type, 0),
+					 TREE_OPERAND (arg0, 0));
 	      else
 		low = TYPE_PRECISION (type) - 1;
 	    }
@@ -12722,6 +12725,8 @@ fold_binary (enum tree_code code, tree type, tree op0, tree op1)
 	 optimizations involving comparisons with non-negative constants.  */
       if (TREE_CODE (arg1) == INTEGER_CST
 	  && TREE_CODE (arg0) != INTEGER_CST
+	  && (TYPE_PRECISION (TREE_TYPE (arg0))
+	      == TYPE_PRECISION (TREE_TYPE (arg1)))
 	  && tree_int_cst_sgn (arg1) > 0)
 	{
 	  if (code == GE_EXPR)

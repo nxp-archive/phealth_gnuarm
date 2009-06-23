@@ -1,0 +1,128 @@
+2009-04-20  Rafael Avila de Espindola  <espindola@google.com>
+
+	Merge with mainline @146369.
+
+	* configure.ac (ACX_PKGVERSION): Update.
+	* configure: Regenerate.
+
+2009-04-16  Rafael Avila de Espindola  <espindola@google.com>
+
+	* toplev.c (compile_file): Remove call to initialize_plugins.
+	(toplev_main): Remove an empty line.
+
+2009-04-14  Rafael Avila de Espindola  <espindola@google.com>
+
+	Merge with mainline @146095.
+
+	* configure.ac (ACX_PKGVERSION): Update.
+	* configure: Regenerate.
+
+2009-04-14  Diego Novillo  <dnovillo@google.com>
+
+	Merge with mainline @146060.
+
+	* configure.ac (ACX_PKGVERSION): Update.
+	* configure: Regenerate.
+
+2009-04-14  Diego Novillo  <dnovillo@google.com>
+
+	* gcc-plugin.h (enum plugin_event)<PLUGIN_FINISH_TYPE>: Rename
+	from PLUGIN_FINISH_STRUCT.
+	(plugin_event_name): Declare.
+	* plugin.c: Only include dlfcn.h if ENABLE_PLUGIN is set.
+	Do not include errors.h.
+	Include timevar.h.
+	Do not prefix strings in calls to error() with G_.
+	(plugin_event_name): Define.
+	(str_plugin_init_func_name): Only declare if ENABLE_PLUGIN is
+	set.
+	(invoke_plugin_callbacks): Call timevar_push/timevar_pop.
+	(try_init_one_plugin, init_one_plugin): Protect with
+	ENABLE_PLUGIN macro.
+	(initialize_plugins): Call timevar_push/timevar_pop.
+	(plugins_active_p): New.
+	(dump_active_plugins): New.
+	(debug_active_plugins): New.
+	* plugin.h: Tidy declarations.
+	(plugins_active_p): Declare.
+	(dump_active_plugins): Declare.
+	(debug_active_plugins): Declare.
+
+2009-04-09  Rafael Avila de Espindola  <espindola@google.com>
+
+	* common.opt (fhelp): Add Var(help_flag).
+	* gcc-plugin.h (plugin_info): Add help.
+	* plugin.c (plugin_name_args): Add help.
+	(register_plugin_info): Set plugin->help.
+	(print_help_one_plugin): New.
+	(print_plugins_help): New.
+	* plugin.h (print_plugins_help): New.
+	* toplev.c (toplev_main): Call print_plugins_help if needed.
+
+2009-04-09  Rafael Avila de Espindola  <espindola@google.com>
+
+	* gcc-plugin.h (plugin_event): Add PLUGIN_INFO.
+	(plugin_info): New.
+	* opts.c (common_handle_option): Don't call print_version.
+	* plugin.c (plugin_name_args): Add version.
+	(register_plugin_info): New.
+	(register_callback): Handle PLUGIN_INFO.
+	(try_init_one_plugin): New.
+	(init_one_plugin): Use try_init_one_plugin.
+	(finalize_one_plugin): New.
+	(finalize_plugins): New.
+	(print_options): New.
+	(print_version_one_plugin): New.
+	(print_plugins_versions): New.
+	* plugin.h (print_plugins_versions): New.
+	(finalize_plugins): New.
+	* toplev.c (compile_file): Don't call initialize_plugins.
+	(print_version): Call print_plugins_versions.
+	(toplev_main): Call initialize_plugins. Call print_version if needed.
+	Call finalize_plugins.
+
+2009-04-07  Rafael Avila de Espindola  <espindola@google.com>
+
+	* common.opt (fversion): New.
+	* gcc.c (print_version): New.
+	(process_command): Don't print the version. Just set print_version.
+	(main): Print version. Call subprocesses if print_version and
+	verbose_flag are set.
+	* opts.c (common_handle_option): Handle OPT_fversion.
+
+2009-04-01  Diego Novillo  <dnovillo@google.com>
+
+	Merge with mainline @145344.
+
+	* configure.ac (ACX_PKGVERSION): Update.
+	* configure: Regenerate.
+
+2009-03-25  Le-Chun Wu  <lcwu@google.com>
+
+	* gcc-plugin.h: Add a declaration of 'plugin_init'.
+
+2009-03-10  Le-Chun Wu  <lcwu@google.com>
+
+	* plugin.c (parse_plugin_arg_opt): Fix an issue occurring when plugin
+	arguments contain '-' characters. Also warn about multiple '='
+	characters in plugin argument options.
+
+2009-02-25  Le-Chun Wu  <lcwu@google.com>
+
+	* configure.ac: Add PLUGINLIBS variable.
+	* configure: Regenerate.
+	* Makefile.in: Add PLUGINLIBS to link command. Add/modify dependencies
+	for plugin.o and files including plugin.h.
+	* tree-pass.h (register_one_dump_file): Add a prototype for
+	register_one_dump_file.
+	* toplev.c (compile_file): Call initialize_plugins.
+	(do_compile): Call invoke_plugin_callbacks.
+	(toplev_main): Call invoke_plugin_callbacks.
+	* opts.c (common_handle_option): Handle OPT_fplugin_ and
+	OPT_fplugin_arg_.
+	* common.opt: Add -fplugin= and -fplugin-arg-.
+	* gcc-plugin.h: New public header file for plugins to include.
+	* plugin.c: New source file.
+	* plugin.h: New internal header file.
+	* passes.c (register_one_dump_file): Make it external.
+	* c-parser.c (c_parser_declspecs): Call invoke_plugin_callbacks.

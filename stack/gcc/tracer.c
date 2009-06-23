@@ -1,7 +1,7 @@
 /* The tracer pass for the GNU compiler.
    Contributed by Jan Hubicka, SuSE Labs.
    Adapted to work on GIMPLE instead of RTL by Robert Kidd, UIUC.
-   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
    This file is part of GCC.
@@ -92,7 +92,7 @@ ignore_bb_p (const_basic_block bb)
 {
   if (bb->index < NUM_FIXED_BLOCKS)
     return true;
-  if (!maybe_hot_bb_p (bb))
+  if (optimize_bb_for_size_p (bb))
     return true;
   return false;
 }

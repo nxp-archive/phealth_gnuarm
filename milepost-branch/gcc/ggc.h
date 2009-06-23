@@ -1,5 +1,5 @@
 /* Garbage collection for the GNU compiler.
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -21,6 +21,7 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_GGC_H
 #define GCC_GGC_H
 #include "statistics.h"
+#include "multi-target.h"
 
 /* Symbols are marked with `ggc' for `gcc gc' so as not to interfere with
    an external gc library that might be linked in.  */
@@ -120,6 +121,9 @@ extern int ggc_marked_p	(const void *);
 /* Mark the entries in the string pool.  */
 extern void ggc_mark_stringpool	(void);
 
+/* Purge the entries in the string pool.  */
+extern void ggc_purge_stringpool (void);
+
 /* Call ggc_set_mark on all the roots.  */
 
 extern void ggc_mark_roots (void);
@@ -134,7 +138,7 @@ extern void gt_pch_restore_stringpool (void);
 
 extern void gt_pch_p_S (void *, void *, gt_pointer_operator, void *);
 extern void gt_pch_n_S (const void *);
-extern void gt_ggc_m_S (void *);
+extern void gt_ggc_m_S (const void *);
 
 /* Initialize the string pool.  */
 extern void init_stringpool (void);
@@ -159,12 +163,14 @@ struct ggc_pch_data;
 /* Return a new ggc_pch_data structure.  */
 extern struct ggc_pch_data *init_ggc_pch (void);
 
+START_TARGET_SPECIFIC
 /* The second parameter and third parameters give the address and size
    of an object.  Update the ggc_pch_data structure with as much of
    that information as is necessary. The bool argument should be true
    if the object is a string.  */
 extern void ggc_pch_count_object (struct ggc_pch_data *, void *, size_t, bool,
 				  enum gt_types_enum);
+END_TARGET_SPECIFIC
 
 /* Return the total size of the data to be written to hold all
    the objects previously passed to ggc_pch_count_object.  */
@@ -174,11 +180,13 @@ extern size_t ggc_pch_total_size (struct ggc_pch_data *);
    in the second parameter.  */
 extern void ggc_pch_this_base (struct ggc_pch_data *, void *);
 
+START_TARGET_SPECIFIC
 /* Assuming that the objects really do end up at the address
    passed to ggc_pch_this_base, return the address of this object.
    The bool argument should be true if the object is a string.  */
 extern char *ggc_pch_alloc_object (struct ggc_pch_data *, void *, size_t, bool,
 				   enum gt_types_enum);
+END_TARGET_SPECIFIC
 
 /* Write out any initial information required.  */
 extern void ggc_pch_prepare_write (struct ggc_pch_data *, FILE *);
@@ -200,11 +208,19 @@ extern void ggc_pch_read (FILE *, void *);
 /* When set, ggc_collect will do collection.  */
 extern bool ggc_force_collect;
 
+/* When true, identifier nodes are considered as GC roots.  When
+   false, identifier nodes are treated like any other GC-allocated
+   object, and the identifier hash table is treated as a weak
+   hash.  */
+extern bool ggc_protect_identifiers;
+
 /* The internal primitive.  */
 extern void *ggc_alloc_stat (size_t MEM_STAT_DECL);
 #define ggc_alloc(s) ggc_alloc_stat (s MEM_STAT_INFO)
+START_TARGET_SPECIFIC
 /* Allocate an object of the specified type and size.  */
 extern void *ggc_alloc_typed_stat (enum gt_types_enum, size_t MEM_STAT_DECL);
+END_TARGET_SPECIFIC
 #define ggc_alloc_typed(s,z) ggc_alloc_typed_stat (s,z MEM_STAT_INFO)
 /* Like ggc_alloc, but allocates cleared memory.  */
 extern void *ggc_alloc_cleared_stat (size_t MEM_STAT_DECL);
@@ -221,16 +237,17 @@ extern void ggc_record_overhead (size_t, size_t, void * MEM_STAT_DECL);
 extern void ggc_free_overhead (void *);
 extern void ggc_prune_overhead_list (void);
 
-extern void dump_ggc_loc_statistics (void);
+extern void dump_ggc_loc_statistics (bool);
 
 /* Type-safe, C++-friendly versions of ggc_alloc() and gcc_calloc().  */
 #define GGC_NEW(T)		((T *) ggc_alloc (sizeof (T)))
 #define GGC_CNEW(T)		((T *) ggc_alloc_cleared (sizeof (T)))
 #define GGC_NEWVEC(T, N)	((T *) ggc_alloc ((N) * sizeof(T)))
 #define GGC_CNEWVEC(T, N)	((T *) ggc_alloc_cleared ((N) * sizeof(T)))
+#define GGC_RESIZEVEC(T, P, N)  ((T *) ggc_realloc ((P), (N) * sizeof (T)))
 #define GGC_NEWVAR(T, S)	((T *) ggc_alloc ((S)))
 #define GGC_CNEWVAR(T, S)	((T *) ggc_alloc_cleared ((S)))
-#define GGC_RESIZEVEC(T, P, N)  ((T *) ggc_realloc ((P), (N) * sizeof (T)))
+#define GGC_RESIZEVAR(T, P, N)  ((T *) ggc_realloc ((P), (N)))
 
 #define ggc_alloc_rtvec(NELT)						 \
   ((rtvec) ggc_alloc_zone (sizeof (struct rtvec_def) + ((NELT) - 1)	 \
@@ -239,7 +256,7 @@ extern void dump_ggc_loc_statistics (void);
 #define ggc_alloc_tree(LENGTH) ((tree) ggc_alloc_zone (LENGTH, &tree_zone))
 
 #define htab_create_ggc(SIZE, HASH, EQ, DEL) \
-  htab_create_alloc (SIZE, HASH, EQ, DEL, ggc_calloc, NULL)
+  htab_create_alloc (SIZE, HASH, EQ, DEL, ggc_calloc, ggc_free)
 
 #define splay_tree_new_ggc(COMPARE)					 \
   splay_tree_new_with_allocator (COMPARE, NULL, NULL,			 \
@@ -313,4 +330,4 @@ extern void *ggc_alloc_zone_stat (size_t, struct alloc_zone * MEM_STAT_DECL);
 
 #endif
 
-#endif
+#endif /* GCC_GGC_H */

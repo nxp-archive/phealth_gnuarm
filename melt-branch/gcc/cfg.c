@@ -1,6 +1,6 @@
 /* Control flow graph manipulation code for GNU compiler.
    Copyright (C) 1987, 1988, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -450,7 +450,7 @@ check_bb_profile (basic_block bb, FILE * file)
   gcov_type lsum;
   edge_iterator ei;
 
-  if (!cfun || profile_status == PROFILE_ABSENT)
+  if (profile_status == PROFILE_ABSENT)
     return;
 
   if (bb != EXIT_BLOCK_PTR)

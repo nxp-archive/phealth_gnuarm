@@ -1,6 +1,6 @@
 /* Utility routines for data type conversion for GCC.
    Copyright (C) 1987, 1988, 1991, 1992, 1993, 1994, 1995, 1997, 1998,
-   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -139,40 +139,45 @@ convert_to_real (tree type, tree expr)
       switch (fcode)
         {
 #define CASE_MATHFN(FN) case BUILT_IN_##FN: case BUILT_IN_##FN##L:
-	  CASE_MATHFN (ACOS)
-	  CASE_MATHFN (ACOSH)
-	  CASE_MATHFN (ASIN)
-	  CASE_MATHFN (ASINH)
-	  CASE_MATHFN (ATAN)
-	  CASE_MATHFN (ATANH)
-	  CASE_MATHFN (CBRT)
-	  CASE_MATHFN (COS)
 	  CASE_MATHFN (COSH)
-	  CASE_MATHFN (ERF)
-	  CASE_MATHFN (ERFC)
 	  CASE_MATHFN (EXP)
 	  CASE_MATHFN (EXP10)
 	  CASE_MATHFN (EXP2)
-	  CASE_MATHFN (EXPM1)
-	  CASE_MATHFN (FABS)
+ 	  CASE_MATHFN (EXPM1)
 	  CASE_MATHFN (GAMMA)
 	  CASE_MATHFN (J0)
 	  CASE_MATHFN (J1)
 	  CASE_MATHFN (LGAMMA)
-	  CASE_MATHFN (LOG)
-	  CASE_MATHFN (LOG10)
-	  CASE_MATHFN (LOG1P)
-	  CASE_MATHFN (LOG2)
-	  CASE_MATHFN (LOGB)
 	  CASE_MATHFN (POW10)
-	  CASE_MATHFN (SIN)
 	  CASE_MATHFN (SINH)
-	  CASE_MATHFN (SQRT)
-	  CASE_MATHFN (TAN)
-	  CASE_MATHFN (TANH)
 	  CASE_MATHFN (TGAMMA)
 	  CASE_MATHFN (Y0)
 	  CASE_MATHFN (Y1)
+	    /* The above functions may set errno differently with float
+	       input or output so this transformation is not safe with
+	       -fmath-errno.  */
+	    if (flag_errno_math)
+	      break;
+	  CASE_MATHFN (ACOS)
+	  CASE_MATHFN (ACOSH)
+	  CASE_MATHFN (ASIN)
+ 	  CASE_MATHFN (ASINH)
+ 	  CASE_MATHFN (ATAN)
+	  CASE_MATHFN (ATANH)
+ 	  CASE_MATHFN (CBRT)
+ 	  CASE_MATHFN (COS)
+ 	  CASE_MATHFN (ERF)
+ 	  CASE_MATHFN (ERFC)
+ 	  CASE_MATHFN (FABS)
+	  CASE_MATHFN (LOG)
+	  CASE_MATHFN (LOG10)
+	  CASE_MATHFN (LOG2)
+ 	  CASE_MATHFN (LOG1P)
+ 	  CASE_MATHFN (LOGB)
+ 	  CASE_MATHFN (SIN)
+	  CASE_MATHFN (SQRT)
+ 	  CASE_MATHFN (TAN)
+ 	  CASE_MATHFN (TANH)
 #undef CASE_MATHFN
 	    {
 	      tree arg0 = strip_float_extensions (CALL_EXPR_ARG (expr, 0));
@@ -321,7 +326,8 @@ convert_to_real (tree type, tree expr)
 		      && (flag_unsafe_math_optimizations
 			  || (TYPE_PRECISION (newtype) == TYPE_PRECISION (type)
 			      && real_can_shorten_arithmetic (TYPE_MODE (itype),
-							      TYPE_MODE (type)))))
+							      TYPE_MODE (type))
+			      && !excess_precision_type (newtype))))
 		    {
 		      expr = build2 (TREE_CODE (expr), newtype,
 				     fold (convert_to_real (newtype, arg0)),
@@ -476,6 +482,37 @@ convert_to_integer (tree type, tree expr)
 	}
     }
 
+  /* Convert (int)logb(d) -> ilogb(d).  */
+  if (optimize
+      && flag_unsafe_math_optimizations
+      && !flag_trapping_math && !flag_errno_math && flag_finite_math_only
+      && integer_type_node
+      && (outprec > TYPE_PRECISION (integer_type_node)
+	  || (outprec == TYPE_PRECISION (integer_type_node)
+	      && !TYPE_UNSIGNED (type))))
+    {
+      tree s_expr = strip_float_extensions (expr);
+      tree s_intype = TREE_TYPE (s_expr);
+      const enum built_in_function fcode = builtin_mathfn_code (s_expr);
+      tree fn = 0;
+       
+      switch (fcode)
+	{
+	CASE_FLT_FN (BUILT_IN_LOGB):
+	  fn = mathfn_built_in (s_intype, BUILT_IN_ILOGB);
+	  break;
+
+	default:
+	  break;
+	}
+
+      if (fn)
+        {
+	  tree newexpr = build_call_expr (fn, 1, CALL_EXPR_ARG (s_expr, 0));
+	  return convert_to_integer (type, newexpr);
+	}
+    }
+
   switch (TREE_CODE (intype))
     {
     case POINTER_TYPE:
@@ -493,6 +530,7 @@ convert_to_integer (tree type, tree expr)
     case INTEGER_TYPE:
     case ENUMERAL_TYPE:
     case BOOLEAN_TYPE:
+    case OFFSET_TYPE:
       /* If this is a logical operation, which just returns 0 or 1, we can
 	 change the type of the expression.  */
 

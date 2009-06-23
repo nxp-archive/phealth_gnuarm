@@ -1,5 +1,5 @@
 /* Callgraph construction.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
@@ -58,7 +58,7 @@ record_reference (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
 	 functions reachable unconditionally.  */
       decl = TREE_OPERAND (*tp, 0);
       if (TREE_CODE (decl) == FUNCTION_DECL)
-	cgraph_mark_needed_node (cgraph_node (decl));
+	cgraph_mark_address_taken_node (cgraph_node (decl));
       break;
 
     default:
@@ -76,30 +76,6 @@ record_reference (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
     }
 
   return NULL_TREE;
-}
-
-/* Give initial reasons why inlining would fail on all calls from
-   NODE.  Those get either nullified or usually overwritten by more precise
-   reason later.  */
-
-static void
-initialize_inline_failed (struct cgraph_node *node)
-{
-  struct cgraph_edge *e;
-
-  for (e = node->callers; e; e = e->next_caller)
-    {
-      gcc_assert (!e->callee->global.inlined_to);
-      gcc_assert (e->inline_failed);
-      if (node->local.redefined_extern_inline)
-	e->inline_failed = CIF_REDEFINED_EXTERN_INLINE;
-      else if (!node->local.inlinable)
-	e->inline_failed = CIF_FUNCTION_NOT_INLINABLE;
-      else if (e->call_stmt_cannot_inline_p)
-	e->inline_failed = CIF_MISMATCHED_ARGUMENTS;
-      else
-	e->inline_failed = CIF_FUNCTION_NOT_CONSIDERED;
-    }
 }
 
 /* Reset inlining information of all incoming call edges of NODE.  */
@@ -128,10 +104,13 @@ reset_inline_failed (struct cgraph_node *node)
 /* Computes the frequency of the call statement so that it can be stored in
    cgraph_edge.  BB is the basic block of the call statement.  */
 int
-compute_call_stmt_bb_frequency (basic_block bb)
+compute_call_stmt_bb_frequency (tree decl, basic_block bb)
 {
   int entry_freq = ENTRY_BLOCK_PTR->frequency;
   int freq = bb->frequency;
+
+  if (profile_status_for_function (DECL_STRUCT_FUNCTION (decl)) == PROFILE_ABSENT)
+    return CGRAPH_FREQ_BASE;
 
   if (!entry_freq)
     entry_freq = 1, freq++;
@@ -168,7 +147,7 @@ build_cgraph_edges (void)
 	    size_t i;
 	    size_t n = gimple_call_num_args (stmt);
 	    cgraph_create_edge (node, cgraph_node (decl), stmt,
-				bb->count, compute_call_stmt_bb_frequency (bb),
+				bb->count, compute_call_stmt_bb_frequency (current_function_decl, bb),
 				bb->loop_depth);
 	    for (i = 0; i < n; i++)
 	      walk_tree (gimple_call_arg_ptr (stmt, i), record_reference,
@@ -216,7 +195,6 @@ build_cgraph_edges (void)
     }
 
   pointer_set_destroy (visited_nodes);
-  initialize_inline_failed (node);
   return 0;
 }
 
@@ -230,7 +208,7 @@ struct gimple_opt_pass pass_build_cgraph_edges =
   NULL,					/* sub */
   NULL,					/* next */
   0,					/* static_pass_number */
-  0,					/* tv_id */
+  TV_NONE,				/* tv_id */
   PROP_cfg,				/* properties_required */
   0,					/* properties_provided */
   0,					/* properties_destroyed */
@@ -272,12 +250,14 @@ rebuild_cgraph_edges (void)
 
 	if (is_gimple_call (stmt) && (decl = gimple_call_fndecl (stmt)))
 	  cgraph_create_edge (node, cgraph_node (decl), stmt,
-			      bb->count, compute_call_stmt_bb_frequency (bb),
+			      bb->count,
+			      compute_call_stmt_bb_frequency
+			        (current_function_decl, bb),
 			      bb->loop_depth);
 
       }
-  initialize_inline_failed (node);
   gcc_assert (!node->global.inlined_to);
+
   return 0;
 }
 
@@ -291,11 +271,38 @@ struct gimple_opt_pass pass_rebuild_cgraph_edges =
   NULL,					/* sub */
   NULL,					/* next */
   0,					/* static_pass_number */
-  0,					/* tv_id */
+  TV_NONE,				/* tv_id */
   PROP_cfg,				/* properties_required */
   0,					/* properties_provided */
   0,					/* properties_destroyed */
   0,					/* todo_flags_start */
   TODO_dump_func,			/* todo_flags_finish */
+ }
+};
+
+
+static unsigned int
+remove_cgraph_callee_edges (void)
+{
+  cgraph_node_remove_callees (cgraph_node (current_function_decl));
+  return 0;
+}
+
+struct gimple_opt_pass pass_remove_cgraph_callee_edges =
+{
+ {
+  GIMPLE_PASS,
+  NULL,					/* name */
+  NULL,					/* gate */
+  remove_cgraph_callee_edges,		/* execute */
+  NULL,					/* sub */
+  NULL,					/* next */
+  0,					/* static_pass_number */
+  TV_NONE,				/* tv_id */
+  0,					/* properties_required */
+  0,					/* properties_provided */
+  0,					/* properties_destroyed */
+  0,					/* todo_flags_start */
+  0,					/* todo_flags_finish */
  }
 };

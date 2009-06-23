@@ -1,6 +1,6 @@
 /* RTL utility routines.
    Copyright (C) 1987, 1988, 1991, 1994, 1997, 1998, 1999, 2000, 2001, 2002,
-   2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -180,9 +180,7 @@ rtx_size (const_rtx x)
 rtx
 rtx_alloc_stat (RTX_CODE code MEM_STAT_DECL)
 {
-  rtx rt;
-
-  rt = (rtx) ggc_alloc_zone_pass_stat (RTX_CODE_SIZE (code), &rtl_zone);
+  rtx rt = ggc_alloc_rtx_def (RTX_CODE_SIZE (code));
 
   /* We want to clear everything up to the FLD array.  Normally, this
      is one int, but we don't want to assume that and it isn't very
@@ -322,8 +320,8 @@ rtx
 shallow_copy_rtx_stat (const_rtx orig MEM_STAT_DECL)
 {
   const unsigned int size = rtx_size (orig);
-  rtx const copy = (rtx) ggc_alloc_zone_pass_stat (size, &rtl_zone);
-  return memcpy (copy, orig, size);
+  rtx const copy = ggc_alloc_rtx_def (size);
+  return (rtx) memcpy (copy, orig, size);
 }
 
 /* Nonzero when we are generating CONCATs.  */
@@ -333,21 +331,28 @@ int generating_concat_p;
 int currently_expanding_to_rtl;
 
 
-/* Return 1 if X and Y are identical-looking rtx's.
-   This is the Lisp function EQUAL for rtx arguments.  */
+
+/* Same as rtx_equal_p, but call CB on each pair of rtx if CB is not NULL.  
+   When the callback returns true, we continue with the new pair.  */
 
 int
-rtx_equal_p (const_rtx x, const_rtx y)
+rtx_equal_p_cb (const_rtx x, const_rtx y, rtx_equal_p_callback_function cb)
 {
   int i;
   int j;
   enum rtx_code code;
   const char *fmt;
+  rtx nx, ny;
 
   if (x == y)
     return 1;
   if (x == 0 || y == 0)
     return 0;
+
+  /* Invoke the callback first.  */
+  if (cb != NULL
+      && ((*cb) (&x, &y, &nx, &ny)))
+    return rtx_equal_p_cb (nx, ny, cb);
 
   code = GET_CODE (x);
   /* Rtx's of different codes cannot be equal.  */
@@ -409,12 +414,13 @@ rtx_equal_p (const_rtx x, const_rtx y)
 
 	  /* And the corresponding elements must match.  */
 	  for (j = 0; j < XVECLEN (x, i); j++)
-	    if (rtx_equal_p (XVECEXP (x, i, j), XVECEXP (y, i, j)) == 0)
+	    if (rtx_equal_p_cb (XVECEXP (x, i, j), 
+                                XVECEXP (y, i, j), cb) == 0)
 	      return 0;
 	  break;
 
 	case 'e':
-	  if (rtx_equal_p (XEXP (x, i), XEXP (y, i)) == 0)
+	  if (rtx_equal_p_cb (XEXP (x, i), XEXP (y, i), cb) == 0)
 	    return 0;
 	  break;
 
@@ -442,6 +448,15 @@ rtx_equal_p (const_rtx x, const_rtx y)
 	}
     }
   return 1;
+}
+
+/* Return 1 if X and Y are identical-looking rtx's.
+   This is the Lisp function EQUAL for rtx arguments.  */
+
+int
+rtx_equal_p (const_rtx x, const_rtx y)
+{
+  return rtx_equal_p_cb (x, y, NULL);
 }
 
 void

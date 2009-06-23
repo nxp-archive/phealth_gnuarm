@@ -1,23 +1,22 @@
 /* Top-level LTO routines.
-   Copyright 2006 Free Software Foundation, Inc.
+   Copyright 2009 Free Software Foundation, Inc.
    Contributed by CodeSourcery, Inc.
 
 This file is part of GCC.
 
-GCC is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
-any later version.
+GCC is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 3, or (at your option) any later
+version.
 
-GCC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -33,21 +32,17 @@ Boston, MA 02110-1301, USA.  */
 #include "tree-ssa-operands.h"
 #include "tree-pass.h"
 #include "langhooks.h"
-#include "lto.h"
-#include "lto-tree.h"
-#include "lto-section.h"
-#include "lto-section-in.h"
-#include "lto-section-out.h"
-#include "lto-tree-in.h"
-#include "lto-tags.h"
-#include "lto-opts.h"
-#include "lto-utils.h"
 #include "vec.h"
 #include "bitmap.h"
 #include "pointer-set.h"
 #include "ipa-prop.h"
 #include "common.h"
 #include "timevar.h"
+#include "gimple.h"
+#include "lto.h"
+#include "lto-tree.h"
+#include "lto-tags.h"
+#include "lto-streamer.h"
 
 /* This needs to be included after config.h.  Otherwise, _GNU_SOURCE will not
    be defined in time to set __USE_GNU in the system headers, and strsignal
@@ -92,16 +87,20 @@ lto_materialize_function (struct cgraph_node *node)
     {
       struct function *fn;
 
+      gcc_assert (!DECL_IS_BUILTIN (decl));
+
       /* This function has a definition.  */
       TREE_STATIC (decl) = 1;
-      DECL_EXTERNAL (decl) = 0;
 
       allocate_struct_function (decl, false);
 
       /* Load the function body only if not operating in WPA mode.  In
 	 WPA mode, the body of the function is not needed.  */
       if (!flag_wpa)
-        lto_input_function_body (file_data, decl, data);
+	{
+	  lto_input_function_body (file_data, decl, data);
+	  lto_stats.num_function_bodies++;
+	}
 
       fn = DECL_STRUCT_FUNCTION (decl);
       lto_free_section_data (file_data, LTO_section_function_body, name,
@@ -157,16 +156,8 @@ preload_common_nodes (struct data_in *data_in)
   index_table = htab_create (37, lto_hash_global_slot_node,
 			     lto_eq_global_slot_node, free);
 
-#ifdef GLOBAL_STREAMER_TRACE
-  fprintf (stderr, "\n\nPreloading all common_nodes.\n");
-#endif
-
   for (i = 0; VEC_iterate (tree, common_nodes, i, node); i++)
     preload_common_node (node, index_table, &data_in->globals_index, NULL);
-
-#ifdef GLOBAL_STREAMER_TRACE
-  fprintf (stderr, "\n\nPreloaded %u common nodes.\n", i - 1);
-#endif
 
   VEC_free(tree, heap, common_nodes);
   htab_delete (index_table);
@@ -199,7 +190,15 @@ lto_read_in_decl_state (struct data_in *data_in, const uint32_t *data,
       tree *decls = (tree *) xcalloc (size, sizeof (tree));
 
       for (j = 0; j < size; j++)
-        decls[j] = VEC_index (tree, data_in->globals_index, data[j]);
+	{
+	  decls[j] = VEC_index (tree, data_in->globals_index, data[j]);
+
+	  /* Register every type in the global type table.  If the
+	     type existed already, use the existing type.  */
+	  if (TYPE_P (decls[j]))
+	    decls[j] = gimple_register_type (decls[j]);
+	}
+
       state->streams[i].size = size;
       state->streams[i].trees = decls;
       data += size;
@@ -216,26 +215,15 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
   const int32_t decl_offset = sizeof (struct lto_decl_header);
   const int32_t main_offset = decl_offset + header->decl_state_size;
   const int32_t string_offset = main_offset + header->main_size;
-#ifdef LTO_STREAM_DEBUGGING
-  int32_t debug_main_offset;
-  struct lto_input_block debug_main;
-#endif
   struct lto_input_block ib_main;
   struct data_in data_in;
   unsigned int i;
   const uint32_t *data_ptr, *data_end;
   uint32_t num_decl_states;
 
-#ifdef LTO_STREAM_DEBUGGING
-  debug_main_offset = string_offset + header->string_size;
-#endif
   
   LTO_INIT_INPUT_BLOCK (ib_main, (const char *) data + main_offset, 0,
 			header->main_size);
-#ifdef LTO_STREAM_DEBUGGING
-  LTO_INIT_INPUT_BLOCK (debug_main, (const char *) data + debug_main_offset, 0,
-			header->debug_main_size);
-#endif
 
   memset (&data_in, 0, sizeof (struct data_in));
   data_in.file_data          = decl_data;
@@ -246,14 +234,7 @@ lto_read_decls (struct lto_file_decl_data *decl_data, const void *data,
 
   /* FIXME: This doesn't belong here.
      Need initialization not done in lto_static_init ().  */
-  lto_static_init_local ();
-
-#ifdef LTO_STREAM_DEBUGGING
-  lto_debug_context.out = lto_debug_in_fun;
-  lto_debug_context.indent = 0;
-  lto_debug_context.tag_names = LTO_tree_tag_names;
-  lto_debug_context.current_data = &debug_main;
-#endif
+  lto_init_reader ();
 
   /* Preload references to well-known trees.  */
   preload_common_nodes (&data_in);
@@ -350,7 +331,7 @@ lto_resolution_read (FILE *resolution, const char *file_name)
 	{
 	  if (strcmp (lto_resolution_str[j], r_str) == 0)
 	    {
-	      r = j;
+	      r = (enum ld_plugin_symbol_resolution) j;
 	      break;
 	    }
 	}
@@ -462,6 +443,7 @@ get_section_data (struct lto_file_decl_data *file_data,
   const char *section_name = lto_get_section_name (section_type, name);
   char *data = NULL;
 
+  *len = 0;
   s_slot.name = section_name;
   f_slot = (struct lto_section_slot *) htab_find (section_hash_table, &s_slot);
   if (f_slot)
@@ -491,15 +473,16 @@ free_section_data (struct lto_file_decl_data *file_data,
   if (file_data->fd == -1)
     return;
 
-  computed_offset = ((intptr_t)offset) & page_mask;
-  diff = (intptr_t)offset - computed_offset;
+  computed_offset = ((intptr_t) offset) & page_mask;
+  diff = (intptr_t) offset - computed_offset;
   computed_len = len + diff;
 
-  munmap ((void *)computed_offset, computed_len);
+  munmap ((void *) computed_offset, computed_len);
 }
 
 /* Vector of all cgraph node sets. */
-static GTY (()) VEC(cgraph_node_set ,gc) *lto_cgraph_node_sets;
+static GTY (()) VEC(cgraph_node_set, gc) *lto_cgraph_node_sets;
+
 
 /* Group cgrah nodes by input files.  This is used mainly for testing
    right now.  */
@@ -513,6 +496,8 @@ lto_1_to_1_map (void)
   cgraph_node_set set;
   void **slot;
 
+  timevar_push (TV_WHOPR_WPA);
+
   lto_cgraph_node_sets = VEC_alloc (cgraph_node_set, gc, 1);
 
   /* If the cgraph is empty, create one cgraph node set so that there is still
@@ -521,20 +506,22 @@ lto_1_to_1_map (void)
     {
       set = cgraph_node_set_new ();
       VEC_safe_push (cgraph_node_set, gc, lto_cgraph_node_sets, set);
-      return;
+      goto finish;
     }
 
   pmap = pointer_map_create ();
 
   for (node = cgraph_nodes; node; node = node->next)
     {
-      /* We assume file_data are unique.  */
+      /* We only need to partition the nodes that we read from the
+	 gimple bytecode files.  */
       file_data = node->local.lto_file_data;
-      gcc_assert (file_data);
+      if (file_data == NULL)
+	continue;
 
       slot = pointer_map_contains (pmap, file_data);
       if (slot)
-	  set = (cgraph_node_set) *slot;
+	set = (cgraph_node_set) *slot;
       else
 	{
 	  set = cgraph_node_set_new ();
@@ -542,49 +529,47 @@ lto_1_to_1_map (void)
 	  *slot = set;
 	  VEC_safe_push (cgraph_node_set, gc, lto_cgraph_node_sets, set);
 	}
+
       cgraph_node_set_add (set, node);
     }
 
   pointer_map_destroy (pmap);
+
+finish:
+  timevar_pop (TV_WHOPR_WPA);
+
+  lto_stats.num_cgraph_partitions += VEC_length (cgraph_node_set, 
+						 lto_cgraph_node_sets);
 }
 
+
 /* Add inlined clone NODE and its master clone to SET, if NODE itself has
-   inlined callee, recursively add the callees.  */
+   inlined callees, recursively add the callees.  */
 
 static void
 lto_add_inline_clones (cgraph_node_set set, struct cgraph_node *node,
-		       bitmap original_nodes, bitmap inlined_decls)
+		       bitmap original_decls, bitmap inlined_decls)
 {
-   struct cgraph_node *master_clone, *callee;
+   struct cgraph_node *callee;
    struct cgraph_edge *edge;
 
-   /* NODE must be an inlined clone.  Add both its master clone and node
-      itself to SET and mark the decls as inlined.  */
-   if (!bitmap_bit_p (original_nodes, node->uid))
-     {
-	master_clone = cgraph_master_clone (node, false);
-	gcc_assert (master_clone != NULL && master_clone != node);
-	if (!cgraph_node_in_set_p (master_clone, set))
-	  {
-	    cgraph_node_set_add (set, master_clone);
-	    bitmap_set_bit (inlined_decls, DECL_UID (node->decl));
-	  }
-	cgraph_node_set_add (set, node);
-     }
-   
+   cgraph_node_set_add (set, node);
+
+   if (!bitmap_bit_p (original_decls, DECL_UID (node->decl)))
+     bitmap_set_bit (inlined_decls, DECL_UID (node->decl));
+
    /* Check to see if NODE has any inlined callee.  */
    for (edge = node->callees; edge != NULL; edge = edge->next_callee)
      {
 	callee = edge->callee;
 	if (callee->global.inlined_to != NULL)
-	    lto_add_inline_clones (set, callee, original_nodes,
-				   inlined_decls);
+	  lto_add_inline_clones (set, callee, original_decls, inlined_decls);
      }
 }
 
 /* Compute the transitive closure of inlining of SET based on the
-   information in the call-graph.  Returns a bitmap of decls indexed
-   by UID.  */
+   information in the callgraph.  Returns a bitmap of decls that have
+   been inlined into SET indexed by UID.  */
 
 static bitmap
 lto_add_all_inlinees (cgraph_node_set set)
@@ -592,21 +577,59 @@ lto_add_all_inlinees (cgraph_node_set set)
   cgraph_node_set_iterator csi;
   struct cgraph_node *node;
   bitmap original_nodes = lto_bitmap_alloc ();
+  bitmap original_decls = lto_bitmap_alloc ();
   bitmap inlined_decls = lto_bitmap_alloc();
+  bool changed;
 
-  /* We are going to iterate SET will adding to it, mark all original
+  /* We are going to iterate SET while adding to it, mark all original
      nodes so that we only add node inlined to original nodes.  */
   for (csi = csi_start (set); !csi_end_p (csi); csi_next (&csi))
-    bitmap_set_bit (original_nodes, csi_node (csi)->uid);
+    {
+      bitmap_set_bit (original_nodes, csi_node (csi)->uid);
+      bitmap_set_bit (original_decls, DECL_UID (csi_node (csi)->decl));
+    }
 
+  /* Some of the original nodes might not be needed anymore.  
+     Remove them.  */
+  do
+    {
+      changed = false;
+      for (csi = csi_start (set); !csi_end_p (csi); csi_next (&csi))
+	{
+	  struct cgraph_node *inlined_to;
+	  node = csi_node (csi);
+
+	  /* NODE was not inlined.  We still need it.  */
+	  if (!node->global.inlined_to)
+	    continue;
+
+	  inlined_to = node->global.inlined_to;
+
+	  /* NODE should have only one caller.  */
+	  gcc_assert (!node->callers->next_caller);
+
+	  if (!bitmap_bit_p (original_nodes, inlined_to->uid))
+	    {
+	      bitmap_clear_bit (original_nodes, node->uid);
+	      cgraph_node_set_remove (set, node);
+	      changed = true;
+	    }
+	}
+    }
+  while (changed);
+
+  /* Transitively add to SET all the inline clones for every node that
+     has been inlined.  */
   for (csi = csi_start (set); !csi_end_p (csi); csi_next (&csi))
     {
       node = csi_node (csi);
       if (bitmap_bit_p (original_nodes, node->uid))
-	lto_add_inline_clones (set, node, original_nodes, inlined_decls);
+	lto_add_inline_clones (set, node, original_decls, inlined_decls);
     }
 
   lto_bitmap_free (original_nodes);
+  lto_bitmap_free (original_decls);
+
   return inlined_decls;
 }
 
@@ -735,14 +758,14 @@ lto_scan_statics_in_cgraph_node (struct cgraph_node *node,
 {
   struct lto_in_decl_state *state;
   
-  /* Return if NODE has no function body or is not the master clone. */
-  if (!node->analyzed
-      || (node->master_clone != NULL && node->master_clone != node))
+  /* Do nothing if NODE has no function body.  */
+  if (!node->analyzed)
     return;
   
   /* Return if the DECL of nodes has been visited before.  */
   if (bitmap_bit_p (context->seen_node_decls, DECL_UID (node->decl)))
     return;
+
   bitmap_set_bit (context->seen_node_decls, DECL_UID (node->decl));
 
   state = lto_get_function_in_decl_state (node->local.lto_file_data,
@@ -788,11 +811,10 @@ lto_promote_cross_file_statics (void)
   cgraph_node_set set;
   cgraph_node_set_iterator csi;
   globalize_context_t context;
-  
+
   memset (&context, 0, sizeof (context));
   context.all_vars = lto_bitmap_alloc ();
   context.all_static_vars = lto_bitmap_alloc ();
-  context.seen_node_decls = lto_bitmap_alloc ();
 
   n_sets = VEC_length (cgraph_node_set, lto_cgraph_node_sets);
   for (i = 0; i < n_sets; i++)
@@ -801,6 +823,8 @@ lto_promote_cross_file_statics (void)
       context.set = set;
       context.visited = pointer_set_create ();
       context.static_vars_in_set = lto_bitmap_alloc ();
+      context.seen_node_decls = lto_bitmap_alloc ();
+
       for (csi = csi_start (set); !csi_end_p (csi); csi_next (&csi))
 	lto_scan_statics_in_cgraph_node (csi_node (csi), &context);
 
@@ -808,16 +832,85 @@ lto_promote_cross_file_statics (void)
         lto_scan_statics_in_remaining_global_vars (&context);
 
       bitmap_ior_into (context.all_static_vars, context.static_vars_in_set);
+
       pointer_set_destroy (context.visited);
       lto_bitmap_free (context.static_vars_in_set);
+      lto_bitmap_free (context.seen_node_decls);
     }
 
   lto_bitmap_free (context.all_vars);
   lto_bitmap_free (context.all_static_vars);
-  lto_bitmap_free (context.seen_node_decls);
+}
+
+
+/* Given a file name FNAME, return a string with FNAME prefixed with '*'.  */
+
+static char *
+prefix_name_with_star (const char *fname)
+{
+  char *star_fname;
+  size_t len;
+  
+  len = strlen (fname) + 1 + 1;
+  star_fname = XNEWVEC (char, len);
+  snprintf (star_fname, len, "*%s", fname);
+
+  return star_fname;
+}
+
+/* Return a file name associated with cgraph node set SET.  This may
+   be a new temporary file name if SET needs to be processed by
+   LTRANS, or the original file name if all the nodes in SET belong to
+   the same input file.  */
+
+static char *
+get_filename_for_set (cgraph_node_set set)
+{
+  char *fname = NULL;
+  static const size_t max_suffix_len = 100;
+
+  if (cgraph_node_set_needs_ltrans_p (set))
+    {
+      /* Create a new temporary file to store SET.  To facilitate
+	 debugging, use file names from SET as part of the new
+	 temporary file name.  */
+      cgraph_node_set_iterator si;
+      struct pointer_set_t *pset = pointer_set_create ();
+      char *suffix = NULL;
+      for (si = csi_start (set); !csi_end_p (si); csi_next (&si))
+	{
+	  struct cgraph_node *n = csi_node (si);
+	  const char *f = lbasename (n->local.lto_file_data->file_name);
+	  if (!pointer_set_insert (pset, n->local.lto_file_data))
+	    suffix = reconcat (suffix, "-", f, suffix, NULL);
+	  if (strlen (suffix) > max_suffix_len)
+	    break;
+	}
+      pointer_set_destroy (pset);
+      suffix = reconcat (suffix, suffix, ".lto.o", NULL);
+      fname = make_cwd_temp_file (suffix);
+      
+      /* If suffix proved to be too long, try something smaller.  */
+      if (fname == NULL)
+	fname = make_cwd_temp_file (".lto.o");
+
+      gcc_assert (fname);
+    }
+  else
+    {
+      /* Since SET does not need to be processed by LTRANS, use
+	 the original file name and mark it with a '*' prefix so that
+	 lto_execute_ltrans knows not to send it to ltrans_driver.  */
+      cgraph_node_set_iterator si = csi_start (set);
+      struct cgraph_node *first = csi_node (si);
+      fname = prefix_name_with_star (first->local.lto_file_data->file_name);
+    }
+
+  return fname;
 }
 
 static lto_file *current_lto_file;
+
 
 /* Write all output files in WPA mode.  Returns a NULL-terminated array of
    output file names.  */
@@ -826,59 +919,82 @@ static char **
 lto_wpa_write_files (void)
 {
   char **output_files;
-  unsigned i, n_sets;
+  unsigned i, n_sets, last_out_file_ix, num_out_files;
   lto_file *file;
   cgraph_node_set set;
   bitmap decls;
   VEC(bitmap,heap) *inlined_decls = NULL;
 
-  /* Include all inlined functions.  */
+  timevar_push (TV_WHOPR_WPA);
+
+  /* Include all inlined functions and determine what sets need to be
+     compiled by LTRANS.  After this loop, only those sets that
+     contain callgraph nodes from more than one file will need to be
+     compiled by LTRANS.  */
   for (i = 0; VEC_iterate (cgraph_node_set, lto_cgraph_node_sets, i, set); i++)
     {
       decls = lto_add_all_inlinees (set);
       VEC_safe_push (bitmap, heap, inlined_decls, decls);
+      lto_stats.num_output_cgraph_nodes += VEC_length (cgraph_node_ptr,
+						       set->nodes);
     }
 
   /* After adding all inlinees, find out statics that need to be promoted
      to globals because of cross-file inlining.  */
   lto_promote_cross_file_statics ();
 
-  output_files = XNEWVEC (char *, VEC_length (cgraph_node_set,
-					      lto_cgraph_node_sets) + 1);
+  timevar_pop (TV_WHOPR_WPA);
+
+  timevar_push (TV_WHOPR_WPA_IO);
+
+  /* The number of output files depends on the number of input files
+     and how many callgraph node sets we create.  Reserve enough space
+     for the maximum of these two.  */
+  num_out_files = MAX (VEC_length (cgraph_node_set, lto_cgraph_node_sets),
+                       num_in_fnames);
+  output_files = XNEWVEC (char *, num_out_files + 1);
 
   n_sets = VEC_length (cgraph_node_set, lto_cgraph_node_sets);
   for (i = 0; i < n_sets; i++)
     {
-      char *temp_filename = make_cwd_temp_file (".lto.o");
+      char *temp_filename;
 
+      set = VEC_index (cgraph_node_set, lto_cgraph_node_sets, i);
+      temp_filename = get_filename_for_set (set);
       output_files[i] = temp_filename;
 
-      file = lto_elf_file_open (temp_filename, true);
-      if (!file)
-        fatal_error ("lto_elf_file_open() failed");
+      if (cgraph_node_set_needs_ltrans_p (set))
+	{
+	  /* Write all the nodes in SET to TEMP_FILENAME.  */
+	  file = lto_elf_file_open (temp_filename, true);
+	  if (!file)
+	    fatal_error ("lto_elf_file_open() failed");
 
-      lto_set_current_out_file (file);
-      lto_new_static_inline_states ();
+	  lto_set_current_out_file (file);
+	  lto_new_extern_inline_states ();
 
-      decls = VEC_index (bitmap, inlined_decls, i);
-      lto_force_functions_static_inline (decls);
+	  decls = VEC_index (bitmap, inlined_decls, i);
+	  lto_force_functions_extern_inline (decls);
 
-      /* Set AUX to 1 in the last LTRANS file.  */
-      set = VEC_index (cgraph_node_set, lto_cgraph_node_sets, i);
-      set->aux = (void*) ((intptr_t) (i == (n_sets - 1)));
-      ipa_write_summaries_of_cgraph_node_set (set);
-      lto_delete_static_inline_states ();
-      
-      lto_set_current_out_file (NULL);
-      lto_elf_file_close (file);
+	  ipa_write_summaries_of_cgraph_node_set (set);
+	  lto_delete_extern_inline_states ();
 
-    } 
+	  lto_set_current_out_file (NULL);
+	  lto_elf_file_close (file);
+	}
+    }
 
-  output_files[i] = NULL;
+  last_out_file_ix = n_sets;
+
+  lto_stats.num_output_files += n_sets;
+
+  output_files[last_out_file_ix] = NULL;
 
   for (i = 0; VEC_iterate (bitmap, inlined_decls, i, decls); i++)
     lto_bitmap_free (decls);
   VEC_free (bitmap, heap, inlined_decls);
+
+  timevar_pop (TV_WHOPR_WPA_IO);
 
   return output_files;
 }
@@ -898,7 +1014,7 @@ lto_execute_ltrans (char *const *files)
   const char *env_val;
   const char *extra_cflags = " -fno-wpa -fltrans -xlto";
   struct obstack env_obstack;
-  char **argv;
+  const char **argv;
   const char **argv_ptr;
   const char *errmsg;
   size_t i;
@@ -906,34 +1022,11 @@ lto_execute_ltrans (char *const *files)
   int status;
   FILE *ltrans_output_list_stream = NULL;
 
-  /* Set the CC environment variable.  */
-  env_val = getenv ("COLLECT_GCC");
-  if (!env_val)
-    fatal_error ("environment variable COLLECT_GCC must be set");
-
-  obstack_init (&env_obstack);
-  obstack_grow (&env_obstack, "CC=", sizeof ("CC=") - 1);
-  obstack_grow (&env_obstack, env_val, strlen (env_val) + 1);
-  putenv (XOBFINISH (&env_obstack, char *));
-
-  /* Set the CFLAGS environment variable.  */
-  env_val = getenv ("COLLECT_GCC_OPTIONS");
-  if (!env_val)
-    fatal_error ("environment variable COLLECT_GCC_OPTIONS must be set");
-
-  obstack_init (&env_obstack);
-  obstack_grow (&env_obstack, "CFLAGS=", sizeof ("CFLAGS=") - 1);
-  obstack_grow (&env_obstack, env_val, strlen (env_val));
-  obstack_grow (&env_obstack, extra_cflags, strlen (extra_cflags) + 1);
-  putenv (XOBFINISH (&env_obstack, char *));
-
-  pex = pex_init (0, "lto1", NULL);
-  if (pex == NULL)
-    fatal_error ("pex_init failed: %s", xstrerror (errno));
+  timevar_push (TV_WHOPR_WPA_LTRANS_EXEC);
 
   /* Initalize the arguments for the LTRANS driver.  */
   for (i = 0; files[i]; ++i);
-  argv = XNEWVEC (char *, i + 2);
+  argv = XNEWVEC (const char *, i + 2);
 
   /* Open the LTRANS output list.  */
   if (ltrans_output_list)
@@ -943,52 +1036,106 @@ lto_execute_ltrans (char *const *files)
 	error ("opening LTRANS output list %s: %m", ltrans_output_list);
     }
 
-  argv_ptr = (const char **)argv;
+  argv_ptr = argv;
   *argv_ptr++ = ltrans_driver;
   for (i = 0; files[i]; ++i)
     {
-      *argv_ptr++ = files[i];
+      size_t len;
 
-      /* Replace the .o suffix with a .ltrans.o suffix and write the resulting
-	 name to the LTRANS output list.  */
-      if (ltrans_output_list_stream)
+      /* If the file is prefixed with a '*', it means that we do not
+	 need to re-compile it with LTRANS because it has not been
+	 modified by WPA.  Skip it from the command line to
+	 ltrans-driver, but add it to ltrans_output_list_stream so it
+	 is linked after we are done.  */
+      if (files[i][0] == '*')
 	{
-	  size_t len = strlen (files[i]) - 2;
+	  size_t len = strlen (files[i]) - 1;
+	  if (ltrans_output_list_stream)
+	    if (fwrite (&files[i][1], 1, len, ltrans_output_list_stream) < len
+		|| fwrite ("\n", 1, 1, ltrans_output_list_stream) < 1)
+	      error ("writing to LTRANS output list %s: %m",
+		     ltrans_output_list);
+	}
+      else
+	{
+	  /* Otherwise, add FILES[I] to ltrans-driver's command line
+	     and add the resulting file to LTRANS output list.  */
+	  *argv_ptr++ = files[i];
 
-	  if (fwrite (files[i], 1, len, ltrans_output_list_stream) < len
-	      || fwrite (".ltrans.o\n", 1, 10, ltrans_output_list_stream) < 10)
-	    error ("writing to LTRANS output list %s: %m", ltrans_output_list);
+	  /* Replace the .o suffix with a .ltrans.o suffix and write
+	     the resulting name to the LTRANS output list.  */
+	  if (ltrans_output_list_stream)
+	    {
+	      len = strlen (files[i]) - 2;
+
+	      if (fwrite (files[i], 1, len, ltrans_output_list_stream) < len
+		  || fwrite (".ltrans.o\n", 1, 10, ltrans_output_list_stream)
+		     < 10)
+		error ("writing to LTRANS output list %s: %m",
+		       ltrans_output_list);
+	    }
 	}
     }
+
   *argv_ptr++ = NULL;
 
   /* Close the LTRANS output list.  */
   if (ltrans_output_list_stream && fclose (ltrans_output_list_stream))
     error ("closing LTRANS output list %s: %m", ltrans_output_list);
 
-  /* Execute the LTRANS driver.  */
-  errmsg = pex_run (pex, PEX_LAST | PEX_SEARCH, argv[0], argv, NULL, NULL,
-		    &err);
-  if (errmsg)
-    fatal_error ("%s: %s", errmsg, xstrerror (err));
-
-  if (!pex_get_status (pex, 1, &status))
-    fatal_error ("can't get program status: %s", xstrerror (errno));
-
-  pex_free (pex);
-
-  if (status)
+  /* If there are any files to compile, execute the LTRANS driver.  */
+  if (argv[1] != NULL)
     {
-      if (WIFSIGNALED (status))
+      /* Set the CC environment variable.  */
+      env_val = getenv ("COLLECT_GCC");
+      if (!env_val)
+	fatal_error ("environment variable COLLECT_GCC must be set");
+
+      obstack_init (&env_obstack);
+      obstack_grow (&env_obstack, "CC=", sizeof ("CC=") - 1);
+      obstack_grow (&env_obstack, env_val, strlen (env_val) + 1);
+      putenv (XOBFINISH (&env_obstack, char *));
+
+      /* Set the CFLAGS environment variable.  */
+      env_val = getenv ("COLLECT_GCC_OPTIONS");
+      if (!env_val)
+	fatal_error ("environment variable COLLECT_GCC_OPTIONS must be set");
+
+      obstack_init (&env_obstack);
+      obstack_grow (&env_obstack, "CFLAGS=", sizeof ("CFLAGS=") - 1);
+      obstack_grow (&env_obstack, env_val, strlen (env_val));
+      obstack_grow (&env_obstack, extra_cflags, strlen (extra_cflags) + 1);
+      putenv (XOBFINISH (&env_obstack, char *));
+
+      pex = pex_init (0, "lto1", NULL);
+      if (pex == NULL)
+	fatal_error ("pex_init failed: %s", xstrerror (errno));
+
+      errmsg = pex_run (pex, PEX_LAST | PEX_SEARCH, argv[0],
+			CONST_CAST (char **, argv), NULL, NULL, &err);
+      if (errmsg)
+	fatal_error ("%s: %s", errmsg, xstrerror (err));
+
+      if (!pex_get_status (pex, 1, &status))
+	fatal_error ("can't get program status: %s", xstrerror (errno));
+
+      if (status)
 	{
-	  int sig = WTERMSIG (status);
-	  fatal_error ("%s terminated with signal %d [%s]%s",
-		       argv[0], sig, strsignal (sig),
-		       WCOREDUMP (status) ? ", core dumped" : "");
+	  if (WIFSIGNALED (status))
+	    {
+	      int sig = WTERMSIG (status);
+	      fatal_error ("%s terminated with signal %d [%s]%s",
+			   argv[0], sig, strsignal (sig),
+			   WCOREDUMP (status) ? ", core dumped" : "");
+	    }
+	  else
+	    fatal_error ("%s terminated with status %d", argv[0], status);
 	}
-      else
-	fatal_error ("%s terminated with status %d", argv[0], status);
+
+      pex_free (pex);
     }
+
+  timevar_pop (TV_WHOPR_WPA_LTRANS_EXEC);
 }
 
 
@@ -1000,6 +1147,15 @@ typedef struct {
 #define LTO_FIXUP_SUBTREE(t) \
   do \
     walk_tree (&(t), lto_fixup_tree, data, NULL); \
+  while (0)
+
+#define LTO_REGISTER_TYPE_AND_FIXUP_SUBTREE(t) \
+  do \
+    { \
+      if (t) \
+	(t) = gimple_register_type (t); \
+      walk_tree (&(t), lto_fixup_tree, data, NULL); \
+    } \
   while (0)
 
 static tree lto_fixup_tree (tree *, int *, void *);
@@ -1019,6 +1175,11 @@ no_fixup_p (tree t)
 static void
 lto_fixup_common (tree t, void *data)
 {
+  /* If T has a type, make sure it is registered in the global type
+     table.  If the type existed already, use the existing one.  */
+  if (TREE_TYPE (t))
+    TREE_TYPE (t) = gimple_register_type (TREE_TYPE (t));
+
   LTO_FIXUP_SUBTREE (TREE_TYPE (t));
   /* This is not very efficient because we cannot do tail-recursion with
      a long chain of trees. */
@@ -1107,8 +1268,8 @@ lto_fixup_type (tree t, void *data)
   gcc_assert (no_fixup_p (TYPE_SIZE (t)));
   gcc_assert (no_fixup_p (TYPE_SIZE_UNIT (t)));
   LTO_FIXUP_SUBTREE (TYPE_ATTRIBUTES (t));
-  LTO_FIXUP_SUBTREE (TYPE_POINTER_TO (t));
-  LTO_FIXUP_SUBTREE (TYPE_REFERENCE_TO (t));
+  LTO_REGISTER_TYPE_AND_FIXUP_SUBTREE (TYPE_POINTER_TO (t));
+  LTO_REGISTER_TYPE_AND_FIXUP_SUBTREE (TYPE_REFERENCE_TO (t));
   LTO_FIXUP_SUBTREE (TYPE_NAME (t));
 
   /* Accessors are for derived node types only. */
@@ -1121,8 +1282,8 @@ lto_fixup_type (tree t, void *data)
   /* Accessor is for derived node types only. */
   LTO_FIXUP_SUBTREE (t->type.binfo);
 
-  LTO_FIXUP_SUBTREE (TYPE_CONTEXT (t));
-  LTO_FIXUP_SUBTREE (TYPE_CANONICAL (t));
+  LTO_REGISTER_TYPE_AND_FIXUP_SUBTREE (TYPE_CONTEXT (t));
+  LTO_REGISTER_TYPE_AND_FIXUP_SUBTREE (TYPE_CANONICAL (t));
 }
 
 /* Fix up fields of a BINFO T.  DATA points to fix-up states.  */
@@ -1364,6 +1525,53 @@ lto_maybe_unlink (const char *file)
     fprintf (stderr, "[Leaving LTRANS %s]\n", file);
 }
 
+/* Read the options saved from each file in the command line.  Called
+   from lang_hooks.post_options which is called by process_options
+   right before all the options are used to initialize the compiler.
+   This assumes that decode_options has already run, so the
+   num_in_fnames and in_fnames are properly set.
+
+   FIXME lto, this assumes that all the files had been compiled with
+   the same options, which is not a good assumption.  In general,
+   options ought to be read from all the files in the set and merged.
+   However, it is still unclear what the merge rules should be.  */
+
+void
+lto_read_all_file_options (void)
+{
+  size_t i;
+
+  /* Clear any file options currently saved.  */
+  lto_clear_file_options ();
+
+  /* Set the hooks to read ELF sections.  */
+  lto_set_in_hooks (NULL, get_section_data, free_section_data);
+
+  for (i = 0; i < num_in_fnames; i++)
+    {
+      struct lto_file_decl_data *file_data;
+      lto_file *file = lto_elf_file_open (in_fnames[i], false);
+      if (!file)
+	break;
+
+      file_data = XCNEW (struct lto_file_decl_data);
+      file_data->file_name = file->filename;
+      file_data->fd = -1;
+      file_data->section_hash_table = lto_elf_build_section_table (file);
+
+      lto_read_file_options (file_data);
+
+      lto_elf_file_close (file);
+      htab_delete (file_data->section_hash_table);
+      if (file_data->fd != -1)
+	close (file_data->fd);
+      free (file_data);
+    }
+
+  /* Apply globally the options read from all the files.  */
+  lto_reissue_options ();
+}
+
 
 /* Read all the symbols from the input files FNAMES.  NFILES is the
    number of files requested in the command line.  Instantiate a
@@ -1377,8 +1585,12 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
   struct lto_file_decl_data **all_file_decl_data;
   FILE *resolution;
 
+  lto_stats.num_input_files = nfiles;
+
+  timevar_push (TV_IPA_LTO_DECL_IO);
+
   /* Set the hooks so that all of the ipa passes can read in their data.  */
-  all_file_decl_data = XNEWVEC (struct lto_file_decl_data*, nfiles + 1);
+  all_file_decl_data = XNEWVEC (struct lto_file_decl_data *, nfiles + 1);
   lto_set_in_hooks (all_file_decl_data, get_section_data, free_section_data);
 
   /* Read the resolution file.  */
@@ -1397,15 +1609,12 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
       gcc_assert (num_objects == nfiles);
     }
 
-  /* Clear any file options currently saved.  */
-  lto_clear_file_options ();
-
   /* Read all of the object files specified on the command line.  */
   for (i = 0, last_file_ix = 0; i < nfiles; ++i)
     {
       struct lto_file_decl_data *file_data = NULL;
 
-      current_lto_file = lto_elf_file_open (fnames[i], /*writable=*/false);
+      current_lto_file = lto_elf_file_open (fnames[i], false);
       if (!current_lto_file)
 	break;
 
@@ -1413,22 +1622,11 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
       if (!file_data)
 	break;
 
-      /* Read the options saved from each file in the link set.
-	 FIXME lto, this assumes that all the files had been compiled
-	 with the same options, which is not a good assumption.  In
-	 general, options ought to be read from all the files in the
-	 set and merged.  However, it is still unclear what the merge
-	 rules should be.  */
-      lto_read_file_options (file_data);
-
       all_file_decl_data[last_file_ix++] = file_data;
 
       lto_elf_file_close (current_lto_file);
       current_lto_file = NULL;
     }
-
-  /* Apply globally the options read from the first file.  */
-  lto_reissue_options ();
 
   if (resolution_file_name)
     fclose (resolution);
@@ -1438,7 +1636,15 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
   /* Set the hooks so that all of the ipa passes can read in their data.  */
   lto_set_in_hooks (all_file_decl_data, get_section_data, free_section_data);
 
+  /* Each pass will set the appropriate timer.  */
+  timevar_pop (TV_IPA_LTO_DECL_IO);
+
+  /* Read the callgraph.  */
+  input_cgraph ();
+
   ipa_read_summaries ();
+
+  timevar_push (TV_IPA_LTO_DECL_IO);
 
   lto_fixup_decls (all_file_decl_data);
 
@@ -1450,6 +1656,11 @@ read_cgraph_and_symbols (unsigned nfiles, const char **fnames)
 	struct lto_file_decl_data *file_data = all_file_decl_data [i];
 	lto_materialize_constructors_and_inits (file_data);
       }
+
+  /* Indicate that the cgraph is built and ready.  */
+  cgraph_function_flags_ready = true;
+
+  timevar_pop (TV_IPA_LTO_DECL_IO);
 }
 
 
@@ -1461,6 +1672,7 @@ materialize_cgraph (void)
   tree decl;
   struct cgraph_node *node; 
   unsigned i;
+  timevar_id_t lto_timer;
 
   /* Now that we have input the cgraph, we need to clear all of the aux
      nodes and read the functions if we are not running in WPA mode.  
@@ -1477,8 +1689,35 @@ materialize_cgraph (void)
      code be pulled out of lto_materialize_function, but that is a
      small part of what will be a complex set of management
      issues.  */
+  timevar_push (TV_IPA_LTO_GIMPLE_IO);
+
   for (node = cgraph_nodes; node; node = node->next)
-    lto_materialize_function (node);
+    {
+      /* Some cgraph nodes get created on the fly, and they don't need
+	 to be materialized.  For instance, nodes for nested functions
+	 where the parent function was not streamed out or builtin
+	 functions.  Additionally, builtin functions should not be
+	 materialized and may, in fact, cause confusion because there
+	 may be a regular function in the file whose assembler name
+	 matches that of the function.
+	 See gcc.c-torture/execute/20030125-1.c and
+	 gcc.c-torture/execute/921215-1.c.  */
+      if (node->local.lto_file_data
+          && !DECL_IS_BUILTIN (node->decl))
+	{
+	  lto_materialize_function (node);
+	  lto_stats.num_input_cgraph_nodes++;
+	}
+    }
+
+  timevar_pop (TV_IPA_LTO_GIMPLE_IO);
+
+  /* Start the appropriate timer depending on the mode that we are
+     operating in.  */
+  lto_timer = (flag_wpa) ? TV_WHOPR_WPA
+	      : (flag_ltrans) ? TV_WHOPR_LTRANS
+	      : TV_LTO;
+  timevar_push (lto_timer);
 
   current_function_decl = NULL;
   set_cfun (NULL);
@@ -1489,6 +1728,8 @@ materialize_cgraph (void)
 
   /* Fix up any calls to DECLs that have become not exception throwing.  */
   lto_fixup_nothrow_decls ();
+
+  timevar_pop (lto_timer);
 }
 
 
@@ -1508,6 +1749,9 @@ do_whole_program_analysis (void)
      actually read in all the function bodies.  It only materializes
      the decls and cgraph nodes so that analysis can be performed.  */
   materialize_cgraph ();
+
+  /* Reading in the cgraph uses different timers, start timing WPA now.  */
+  timevar_push (TV_WHOPR_WPA);
 
   /* FIXME lto. Hack. We should use the IPA passes.  There are a
      number of issues with this now. 1. There is no convenient way to
@@ -1530,24 +1774,25 @@ do_whole_program_analysis (void)
   /* We are about to launch the final LTRANS phase, stop the WPA timer.  */
   timevar_pop (TV_WHOPR_WPA);
 
-  /* Start the LTRANS launch timer.  This will measure only the time
-     that WPA waits for final optimization and code generation.  */
-  timevar_push (TV_WHOPR_WPA_LTRANS_EXEC);
-
   output_files = lto_wpa_write_files ();
+
+  /* Show the LTO report before launching LTRANS.  FIXME lto, this
+     should be done in lto_main, but if LTRANS fails we miss the
+     chance to print the report for WPA.  */
+  if (flag_lto_report)
+    print_lto_report ();
+
   lto_execute_ltrans (output_files);
 
   for (i = 0; output_files[i]; ++i)
     {
-      lto_maybe_unlink (output_files[i]);
+      if (output_files[i][0] != '*')
+	lto_maybe_unlink (output_files[i]);
+
       free (output_files[i]);
     }
+
   XDELETEVEC (output_files);
-
-  timevar_pop (TV_WHOPR_WPA_LTRANS_EXEC);
-
-  /* Restart the LTO timer.  */
-  timevar_push (TV_WHOPR_WPA);
 }
 
 
@@ -1575,14 +1820,9 @@ do_whole_program_analysis (void)
 void
 lto_main (int debug_p ATTRIBUTE_UNUSED)
 {
-  timevar_id_t lto_timer;
-
-  /* Start the appropriate timer depending on the mode that we are
-     operating in.  */
-  lto_timer = (flag_wpa) ? TV_WHOPR_WPA
-	      : (flag_ltrans) ? TV_WHOPR_LTRANS
-	      : TV_LTO;
-  timevar_push (lto_timer);
+  /* Initialize stats counters.  */
+  memset (&lto_stats, 0, sizeof (lto_stats));
+  bitmap_obstack_initialize (NULL);
 
   /* Read all the symbols and call graph from all the files in the
      command line.  */
@@ -1602,11 +1842,16 @@ lto_main (int debug_p ATTRIBUTE_UNUSED)
 	  /* Let the middle end know that we have read and merged all of
 	     the input files.  */ 
 	  cgraph_optimize ();
+
+	  /* FIXME lto, if the processes spawned by WPA fail, we miss
+	     the chance to print WPA's report, so WPA will call
+	     print_lto_report before launching LTRANS.  If LTRANS was
+	     launched directly by the driver we would not need to do
+	     this.  */
+	  if (flag_lto_report)
+	    print_lto_report ();
 	}
     }
-
-  /* Stop the LTO timer.  */
-  timevar_pop (lto_timer);
 }
 
 #include "gt-lto-lto.h"

@@ -1,0 +1,21 @@
+;; -*- lisp -*-
+;; file  gcc/testsuite/melt/tmatch-1.melt
+;; test the match operation
+
+#| run in buildir/gcc
+ ./cc1 -fmelt=translatefile -fmelt-dynlibdir=. \
+    -fmelt-compile-script=./built-melt-cc-script \
+    -fmelt-gensrcdir=. -fmelt-tempdir=/tmp -fmelt-init=@warmelt2 \
+    -fmelt-arg=..../tmatch-1.melt -fmelt-debug
+|#
+
+(defun tmatch_aa (x f g)
+  (match x
+	 ( ?(tuple_nth 0 ?(instance class_symbol :named_name ?n))
+	    (f n))
+	 ( ?(instance class_named :named_name ?y)
+	  (g y))
+	 ( ?_ 
+	  (return x))))
+
+;; eof tmatch-1.melt

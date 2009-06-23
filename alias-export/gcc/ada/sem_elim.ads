@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1997-2005, Free Software Foundation, Inc.         --
+--          Copyright (C) 1997-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -31,7 +30,7 @@ with Types; use Types;
 package Sem_Elim is
 
    procedure Initialize;
-   --  Initialize for new main souce program
+   --  Initialize for new main source program
 
    procedure Process_Eliminate_Pragma
      (Pragma_Node         : Node_Id;
@@ -53,9 +52,17 @@ package Sem_Elim is
    --  Checks if entity E is eliminated, and if so sets the Is_Eliminated
    --  flag on the given entity.
 
+   procedure Check_For_Eliminated_Subprogram (N : Node_Id; S : Entity_Id);
+   --  Check that the subprogram S (or its ultimate parent in the case of a
+   --  derived subprogram or renaming) has not been eliminated. An error will
+   --  be flagged if the subprogram has been eliminated, unless the node N
+   --  occurs within an eliminated subprogram or within a generic unit. The
+   --  error will be posted on N.
+
    procedure Eliminate_Error_Msg (N : Node_Id; E : Entity_Id);
-   --  Called by the back end on encouterning a call to an eliminated
-   --  subprogram. N is the node for the call, and E is the entity of
-   --  the subprogram being eliminated.
+   --  Called by the front-end and back-end on encountering a reference to an
+   --  eliminated subprogram. N is the node for the reference (such as occurs
+   --  in a call or attribute), and E is the entity of the subprogram that has
+   --  been eliminated.
 
 end Sem_Elim;

@@ -1,6 +1,6 @@
 /* Definitions of target machine for GNU compiler, for DEC Alpha.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2004, 2005, 2007 Free Software Foundation, Inc.
+   2000, 2001, 2002, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu)
 
 This file is part of GCC.
@@ -640,7 +640,7 @@ extern int alpha_memory_latency;
 #define MEMORY_MOVE_COST(MODE,CLASS,IN)  (2*alpha_memory_latency)
 
 /* Provide the cost of a branch.  Exact meaning under development.  */
-#define BRANCH_COST 5
+#define BRANCH_COST(speed_p, predictable_p) 5
 
 /* Stack layout; function entry, exit and calling.  */
 
@@ -1079,7 +1079,7 @@ do {									     \
    Without byte/word accesses, we want no more than four instructions;
    with, several single byte accesses are better.  */
 
-#define MOVE_RATIO  (TARGET_BWX ? 7 : 2)
+#define MOVE_RATIO(speed)  (TARGET_BWX ? 7 : 2)
 
 /* Largest number of bytes of an object that can be placed in a register.
    On the Alpha we have plenty of registers, so use TImode.  */

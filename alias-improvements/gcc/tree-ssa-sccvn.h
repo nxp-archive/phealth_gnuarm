@@ -1,5 +1,5 @@
 /* Tree SCC value numbering
-   Copyright (C) 2007 Free Software Foundation, Inc.
+   Copyright (C) 2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dberlin@dberlin.org>
 
    This file is part of GCC.
@@ -175,6 +175,7 @@ vn_nary_op_t vn_nary_op_insert_pieces (unsigned int, enum tree_code,
 				       tree, tree, unsigned int);
 void copy_reference_ops_from_ref (tree, VEC(vn_reference_op_s, heap) **);
 void copy_reference_ops_from_call (gimple, VEC(vn_reference_op_s, heap) **);
+tree get_ref_from_reference_ops (VEC(vn_reference_op_s, heap) *ops);
 tree vn_reference_lookup_pieces (tree,
 				 VEC (vn_reference_op_s, heap) *,
 				 vn_reference_t *, bool);

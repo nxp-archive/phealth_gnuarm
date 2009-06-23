@@ -1,9 +1,9 @@
 ;; Predicate definitions for CELL SPU
-;; Copyright (C) 2006 Free Software Foundation, Inc.
+;; Copyright (C) 2006, 2007 Free Software Foundation, Inc.
 ;;
 ;; This file is free software; you can redistribute it and/or modify it under
 ;; the terms of the GNU General Public License as published by the Free
-;; Software Foundation; either version 2 of the License, or (at your option) 
+;; Software Foundation; either version 3 of the License, or (at your option) 
 ;; any later version.
 
 ;; This file is distributed in the hope that it will be useful, but WITHOUT
@@ -12,9 +12,17 @@
 ;; for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with this file; see the file COPYING.  If not, write to the Free
-;; Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-;; 02110-1301, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
+
+;; Return 1 if operand is constant zero of its mode
+(define_predicate "const_zero_operand"
+  (and (match_code "const_int,const,const_double,const_vector")
+       (match_test "op == CONST0_RTX (mode)")))
+
+(define_predicate "const_one_operand"
+  (and (match_code "const_int,const,const_double,const_vector")
+       (match_test "op == CONST1_RTX (mode)")))
 
 (define_predicate "spu_reg_operand"
   (and (match_operand 0 "register_operand")
@@ -31,13 +39,13 @@
        (ior (not (match_code "subreg"))
             (match_test "valid_subreg (op)"))))
 
-(define_predicate "spu_mem_operand"
-  (and (match_operand 0 "memory_operand")
-       (match_test "reload_in_progress || reload_completed || aligned_mem_p (op)")))
-
 (define_predicate "spu_mov_operand"
-  (ior (match_operand 0 "spu_mem_operand")
+  (ior (match_operand 0 "memory_operand")
        (match_operand 0 "spu_nonmem_operand")))
+
+(define_predicate "spu_dest_operand"
+  (ior (match_operand 0 "memory_operand")
+       (match_operand 0 "spu_reg_operand")))
 
 (define_predicate "call_operand"
   (and (match_code "mem")
@@ -95,4 +103,20 @@
   (and (match_code "eq,ne")
        (ior (match_test "GET_MODE (XEXP (op, 0)) == HImode")
 	    (match_test "GET_MODE (XEXP (op, 0)) == SImode"))))
+
+(define_predicate "spu_inv_exp2_operand"
+  (and (match_code "const_double,const_vector")
+       (and (match_operand 0 "immediate_operand")
+	    (match_test "exp2_immediate_p (op, mode, -126, 0)"))))
+
+(define_predicate "spu_exp2_operand"
+  (and (match_code "const_double,const_vector")
+       (and (match_operand 0 "immediate_operand")
+	    (match_test "exp2_immediate_p (op, mode, 0, 127)"))))
+
+(define_predicate "shiftrt_operator"
+  (match_code "lshiftrt,ashiftrt"))
+
+(define_predicate "extend_operator"
+  (match_code "sign_extend,zero_extend"))
 

@@ -1,5 +1,5 @@
 /* Intrinsic translation
-   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
    and Steven Bosscher <s.bosscher@student.tudelft.nl>
@@ -488,11 +488,11 @@ gfc_conv_intrinsic_aint (gfc_se * se, gfc_expr * expr, enum rounding_mode op)
   mpfr_init (huge);
   n = gfc_validate_kind (BT_INTEGER, kind, false);
   mpfr_set_z (huge, gfc_integer_kinds[n].huge, GFC_RND_MODE);
-  tmp = gfc_conv_mpfr_to_tree (huge, kind);
+  tmp = gfc_conv_mpfr_to_tree (huge, kind, 0);
   cond = fold_build2 (LT_EXPR, boolean_type_node, arg[0], tmp);
 
   mpfr_neg (huge, huge, GFC_RND_MODE);
-  tmp = gfc_conv_mpfr_to_tree (huge, kind);
+  tmp = gfc_conv_mpfr_to_tree (huge, kind, 0);
   tmp = fold_build2 (GT_EXPR, boolean_type_node, arg[0], tmp);
   cond = fold_build2 (TRUTH_AND_EXPR, boolean_type_node, cond, tmp);
   itype = gfc_get_int_type (kind);
@@ -759,7 +759,7 @@ gfc_trans_same_strlen_check (const char* intr_name, locus* where,
   tree name;
 
   /* If bounds-checking is disabled, do nothing.  */
-  if (!flag_bounds_check)
+  if (!(gfc_option.rtcheck & GFC_RTCHECK_BOUNDS))
     return;
 
   /* Compare the two string lengths.  */
@@ -885,7 +885,7 @@ gfc_conv_intrinsic_bound (gfc_se * se, gfc_expr * expr, int upper)
     }
   else
     {
-      if (flag_bounds_check)
+      if (gfc_option.rtcheck & GFC_RTCHECK_BOUNDS)
         {
           bound = gfc_evaluate_now (bound, &se->pre);
           cond = fold_build2 (LT_EXPR, boolean_type_node,
@@ -1197,11 +1197,11 @@ gfc_conv_intrinsic_mod (gfc_se * se, gfc_expr * expr, int modulo)
 	  ikind = gfc_max_integer_kind;
 	}
       mpfr_set_z (huge, gfc_integer_kinds[n].huge, GFC_RND_MODE);
-      test = gfc_conv_mpfr_to_tree (huge, expr->ts.kind);
+      test = gfc_conv_mpfr_to_tree (huge, expr->ts.kind, 0);
       test2 = fold_build2 (LT_EXPR, boolean_type_node, tmp, test);
 
       mpfr_neg (huge, huge, GFC_RND_MODE);
-      test = gfc_conv_mpfr_to_tree (huge, expr->ts.kind);
+      test = gfc_conv_mpfr_to_tree (huge, expr->ts.kind, 0);
       test = fold_build2 (GT_EXPR, boolean_type_node, tmp, test);
       test2 = fold_build2 (TRUTH_AND_EXPR, boolean_type_node, test, test2);
 
@@ -2163,7 +2163,8 @@ gfc_conv_intrinsic_minmaxloc (gfc_se * se, gfc_expr * expr, int op)
   switch (arrayexpr->ts.type)
     {
     case BT_REAL:
-      tmp = gfc_conv_mpfr_to_tree (gfc_real_kinds[n].huge, arrayexpr->ts.kind);
+      tmp = gfc_conv_mpfr_to_tree (gfc_real_kinds[n].huge,
+				   arrayexpr->ts.kind, 0);
       break;
 
     case BT_INTEGER:
@@ -2342,7 +2343,7 @@ gfc_conv_intrinsic_minmaxval (gfc_se * se, gfc_expr * expr, int op)
   switch (expr->ts.type)
     {
     case BT_REAL:
-      tmp = gfc_conv_mpfr_to_tree (gfc_real_kinds[n].huge, expr->ts.kind);
+      tmp = gfc_conv_mpfr_to_tree (gfc_real_kinds[n].huge, expr->ts.kind, 0);
       break;
 
     case BT_INTEGER:
@@ -3129,32 +3130,32 @@ gfc_conv_intrinsic_fraction (gfc_se * se, gfc_expr * expr)
 
 
 /* NEAREST (s, dir) is translated into
-     tmp = copysign (INF, dir);
+     tmp = copysign (HUGE_VAL, dir);
      return nextafter (s, tmp);
  */
 static void
 gfc_conv_intrinsic_nearest (gfc_se * se, gfc_expr * expr)
 {
   tree args[2], type, tmp;
-  int nextafter, copysign, inf;
+  int nextafter, copysign, huge_val;
 
   switch (expr->ts.kind)
     {
       case 4:
 	nextafter = BUILT_IN_NEXTAFTERF;
 	copysign = BUILT_IN_COPYSIGNF;
-	inf = BUILT_IN_INFF;
+	huge_val = BUILT_IN_HUGE_VALF;
 	break;
       case 8:
 	nextafter = BUILT_IN_NEXTAFTER;
 	copysign = BUILT_IN_COPYSIGN;
-	inf = BUILT_IN_INF;
+	huge_val = BUILT_IN_HUGE_VAL;
 	break;
       case 10:
       case 16:
 	nextafter = BUILT_IN_NEXTAFTERL;
 	copysign = BUILT_IN_COPYSIGNL;
-	inf = BUILT_IN_INFL;
+	huge_val = BUILT_IN_HUGE_VALL;
 	break;
       default:
 	gcc_unreachable ();
@@ -3163,7 +3164,7 @@ gfc_conv_intrinsic_nearest (gfc_se * se, gfc_expr * expr)
   type = gfc_typenode_for_spec (&expr->ts);
   gfc_conv_intrinsic_function_args (se, expr, args, 2);
   tmp = build_call_expr (built_in_decls[copysign], 2,
-			 build_call_expr (built_in_decls[inf], 0),
+			 build_call_expr (built_in_decls[huge_val], 0),
 			 fold_convert (type, args[1]));
   se->expr = build_call_expr (built_in_decls[nextafter], 2,
 			      fold_convert (type, args[0]), tmp);
@@ -3199,7 +3200,7 @@ gfc_conv_intrinsic_spacing (gfc_se * se, gfc_expr * expr)
   k = gfc_validate_kind (BT_REAL, expr->ts.kind, false);
   prec = build_int_cst (NULL_TREE, gfc_real_kinds[k].digits);
   emin = build_int_cst (NULL_TREE, gfc_real_kinds[k].min_exponent - 1);
-  tiny = gfc_conv_mpfr_to_tree (gfc_real_kinds[k].tiny, expr->ts.kind);
+  tiny = gfc_conv_mpfr_to_tree (gfc_real_kinds[k].tiny, expr->ts.kind, 0);
 
   switch (expr->ts.kind)
     {

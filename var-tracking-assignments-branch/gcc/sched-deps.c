@@ -1,7 +1,7 @@
 /* Instruction scheduling pass.  This file computes dependencies between
    instructions.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com) Enhanced by,
    and currently maintained by, Jim Wilson (wilson@cygnus.com)
@@ -650,7 +650,8 @@ sd_lists_size (const_rtx insn, sd_list_types_def list_types)
       bool resolved_p;
 
       sd_next_list (insn, &list_types, &list, &resolved_p);
-      size += DEPS_LIST_N_LINKS (list);
+      if (list)
+	size += DEPS_LIST_N_LINKS (list);
     }
 
   return size;
@@ -2149,9 +2150,12 @@ sched_analyze_2 (struct deps *deps, rtx x, rtx insn)
       flush_pending_lists (deps, insn, true, false);
       break;
 
+    case UNSPEC_VOLATILE:
+      flush_pending_lists (deps, insn, true, true);
+      /* FALLTHRU */
+
     case ASM_OPERANDS:
     case ASM_INPUT:
-    case UNSPEC_VOLATILE:
       {
 	/* Traditional and volatile asm instructions must be considered to use
 	   and clobber all hard registers, all pseudo-registers and all of
@@ -2381,16 +2385,21 @@ sched_analyze_insn (struct deps *deps, rtx x, rtx insn)
   if (DEBUG_INSN_P (insn))
     {
       rtx prev = deps->last_debug_insn;
+      rtx u;
 
-      deps->last_debug_insn = insn;
+      if (!deps->readonly)
+	deps->last_debug_insn = insn;
 
       if (prev)
 	add_dependence (insn, prev, REG_DEP_ANTI);
 
       add_dependence_list (insn, deps->last_function_call, 1,
 			   REG_DEP_ANTI);
-      add_dependence_list (insn, deps->last_pending_memory_flush, 1,
-			   REG_DEP_ANTI);
+
+      for (u = deps->last_pending_memory_flush; u; u = XEXP (u, 1))
+	if (! JUMP_P (XEXP (u, 0))
+	    || !sel_sched_p ())
+	  add_dependence (insn, XEXP (u, 0), REG_DEP_ANTI);
 
       EXECUTE_IF_SET_IN_REG_SET (reg_pending_uses, 0, i, rsi)
 	{
@@ -2409,7 +2418,7 @@ sched_analyze_insn (struct deps *deps, rtx x, rtx insn)
 	 additional analysis can modify the generated code.  */
       prev = PREV_INSN (insn);
 
-      if (prev && INSN_P (prev) && !DEBUG_INSN_P (prev))
+      if (prev && NONDEBUG_INSN_P (prev))
 	add_dependence (insn, prev, REG_DEP_ANTI);
     }
   /* If the current insn is conditional, we can't free any

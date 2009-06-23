@@ -1,12 +1,12 @@
 // 2001-02-26 Benjamin Kosnik  <bkoz@redhat.com>
 
-// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2009
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
 // terms of the GNU General Public License as published by the
-// Free Software Foundation; either version 2, or (at your option)
+// Free Software Foundation; either version 3, or (at your option)
 // any later version.
 
 // This library is distributed in the hope that it will be useful,
@@ -15,9 +15,8 @@
 // GNU General Public License for more details.
 
 // You should have received a copy of the GNU General Public License along
-// with this library; see the file COPYING.  If not, write to the Free
-// Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
-// USA.
+// with this library; see the file COPYING3.  If not see
+// <http://www.gnu.org/licenses/>.
 
 // 19.1 Exception classes
 
@@ -26,7 +25,7 @@
 #include <cstring>
 #include <testsuite_hooks.h>
 
-// test copy ctors and assignment operators
+// test copy ctors, assignment operators, and persistence of member string data
 // libstdc++/1972
 // via Greg Bumgardner <bumgard@roguewave.com>
 void allocate_on_stack(void) 
@@ -36,6 +35,7 @@ void allocate_on_stack(void)
   for (size_t i = 0; i < num; i++) 
     array[i]=0;
 }
+
 void test04()
 {
   bool test __attribute__((unused)) = true;

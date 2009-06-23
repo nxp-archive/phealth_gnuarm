@@ -6,24 +6,17 @@
  *                                                                          *
  *                           C Implementation File                          *
  *                                                                          *
- *          Copyright (C) 1992-2008, Free Software Foundation, Inc.         *
+ *          Copyright (C) 1992-2009, Free Software Foundation, Inc.         *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
- * ware  Foundation;  either version 2,  or (at your option) any later ver- *
+ * ware  Foundation;  either version 3,  or (at your option) any later ver- *
  * sion.  GNAT is distributed in the hope that it will be useful, but WITH- *
  * OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY *
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License *
  * for  more details.  You should have  received  a copy of the GNU General *
- * Public License  distributed with GNAT;  see file COPYING.  If not, write *
- * to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, *
- * Boston, MA 02110-1301, USA.                                              *
- *                                                                          *
- * As a  special  exception,  if you  link  this file  with other  files to *
- * produce an executable,  this file does not by itself cause the resulting *
- * executable to be covered by the GNU General Public License. This except- *
- * ion does not  however invalidate  any other reasons  why the  executable *
- * file might be covered by the  GNU Public License.                        *
+ * Public License  distributed  with GNAT;  see file  COPYING3.  If not see *
+ * <http://www.gnu.org/licenses/>.                                          *
  *                                                                          *
  * GNAT was originally developed  by the GNAT team at  New York University. *
  * Extensive contributions were provided by Ada Core Technologies Inc.      *
@@ -302,8 +295,8 @@ gnat_handle_option (size_t scode, const char *arg, int value)
       gnat_argc++;
       break;
 
-    case OPT_gdwarf_:
-      gnat_dwarf_extensions ++;
+    case OPT_gdwarfplus:
+      gnat_dwarf_extensions = 1;
       break;
 
     default:
@@ -339,6 +332,9 @@ gnat_post_options (const char **pfilename ATTRIBUTE_UNUSED)
 {
   /* ??? The warning machinery is outsmarted by Ada.  */
   warn_unused_parameter = 0;
+
+  /* No psABI change warnings for Ada.  */
+  warn_psabi = 0;
 
   /* Force eliminate_unused_debug_types to 0 unless an explicit positive
      -f has been passed.  This forces the default to 0 for Ada, which might

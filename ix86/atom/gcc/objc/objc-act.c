@@ -1,6 +1,6 @@
 /* Implement classes and message passing for Objective C.
-   Copyright (C) 1992, 1993, 1994, 1995, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 1992, 1993, 1994, 1995, 1997, 1998, 1999, 2000, 2001,
+   2002, 2003, 2004, 2005, 2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Steve Naroff.
 
 This file is part of GCC.
@@ -78,6 +78,11 @@ along with GCC; see the file COPYING3.  If not see
 #define OBJC_VOID_AT_END	void_list_node
 
 static unsigned int should_call_super_dealloc = 0;
+
+/* When building Objective-C++, we need in_late_binary_op.  */
+#ifdef OBJCPLUS
+bool in_late_binary_op = false;
+#endif  /* OBJCPLUS */
 
 /* When building Objective-C++, we are not linking against the C front-end
    and so need to replicate the C tree-construction functions in some way.  */
@@ -238,7 +243,6 @@ static struct c_arg_info *objc_get_parm_info (int);
 
 /* Utilities for debugging and error diagnostics.  */
 
-static void warn_with_method (const char *, int, tree);
 static char *gen_type_name (tree);
 static char *gen_type_name_0 (tree);
 static char *gen_method_decl (tree);
@@ -3885,12 +3889,15 @@ objc_finish_try_stmt (void)
   /* If we're doing Darwin setjmp exceptions, build the big nasty.  */
   if (flag_objc_sjlj_exceptions)
     {
+      bool save = in_late_binary_op;
+      in_late_binary_op = true;
       if (!cur_try_context->finally_body)
 	{
 	  cur_try_context->finally_locus = input_location;
 	  cur_try_context->end_finally_locus = input_location;
 	}
       stmt = next_sjlj_build_try_catch_finally ();
+      in_late_binary_op = save;
     }
   else
     {
@@ -6095,22 +6102,37 @@ check_duplicates (hash hsh, int methods, int is_class)
 	    }
 
 	issue_warning:
-	  warning (0, "multiple %s named %<%c%s%> found",
-		   methods ? "methods" : "selectors",
-		   (is_class ? '+' : '-'),
-		   IDENTIFIER_POINTER (METHOD_SEL_NAME (meth)));
+	  if (methods)
+	    {
+	      bool type = TREE_CODE (meth) == INSTANCE_METHOD_DECL;
 
-	  warn_with_method (methods ? "using" : "found",
-			    ((TREE_CODE (meth) == INSTANCE_METHOD_DECL)
-			     ? '-'
-			     : '+'),
-			    meth);
+	      warning (0, "multiple methods named %<%c%s%> found",
+		       (is_class ? '+' : '-'),
+		       IDENTIFIER_POINTER (METHOD_SEL_NAME (meth)));
+	      inform (0, "%Jusing %<%c%s%>", meth,
+		      (type ? '-' : '+'),
+		      gen_method_decl (meth));
+	    }
+	  else
+	    {
+	      bool type = TREE_CODE (meth) == INSTANCE_METHOD_DECL;
+
+	      warning (0, "multiple selectors named %<%c%s%> found",
+		       (is_class ? '+' : '-'),
+		       IDENTIFIER_POINTER (METHOD_SEL_NAME (meth)));
+	      inform (0, "%Jfound %<%c%s%>", meth,
+		      (type ? '-' : '+'),
+		      gen_method_decl (meth));
+	    }
+
 	  for (loop = hsh->list; loop; loop = loop->next)
-	    warn_with_method ("also found",
-			      ((TREE_CODE (loop->value) == INSTANCE_METHOD_DECL)
-			       ? '-'
-			       : '+'),
-			      loop->value);
+	    {
+	      bool type = TREE_CODE (loop->value) == INSTANCE_METHOD_DECL;
+
+	      inform (0, "%Jalso found %<%c%s%>", loop->value, 
+		      (type ? '-' : '+'),
+		      gen_method_decl (loop->value));
+	    }
         }
     }
   return meth;
@@ -8419,14 +8441,6 @@ start_method_def (tree method)
   really_start_method (objc_method_context, parm_info);
 }
 
-static void
-warn_with_method (const char *message, int mtype, tree method)
-{
-  /* Add a readable method name to the warning.  */
-  warning (0, "%J%s %<%c%s%>", method,
-           message, mtype, gen_method_decl (method));
-}
-
 /* Return 1 if TYPE1 is equivalent to TYPE2
    for purposes of method overloading.  */
 
@@ -8669,10 +8683,14 @@ really_start_method (tree method,
 	{
 	  if (!comp_proto_with_proto (method, proto, 1))
 	    {
-	      char type = (TREE_CODE (method) == INSTANCE_METHOD_DECL ? '-' : '+');
+	      bool type = TREE_CODE (method) == INSTANCE_METHOD_DECL;
 
-	      warn_with_method ("conflicting types for", type, method);
-	      warn_with_method ("previous declaration of", type, proto);
+	      warning (0, "%Jconflicting types for %<%c%s%>", method,
+		       (type ? '-' : '+'),
+		       gen_method_decl (method));
+	      inform (0, "%Jprevious declaration of %<%c%s%>", proto,
+		      (type ? '-' : '+'),
+		      gen_method_decl (proto));
 	    }
 	}
       else

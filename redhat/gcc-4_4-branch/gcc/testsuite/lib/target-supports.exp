@@ -466,6 +466,11 @@ proc check_profiling_available { test_what } {
 	return 0
     }
 
+    # cygwin does not support -p.
+    if { [istarget *-*-cygwin*] && [lindex $test_what 1] == "-p" } {
+	return 0
+    }
+
     # uClibc does not have gcrt1.o.
     if { [check_effective_target_uclibc]
 	 && ([lindex $test_what 1] == "-p"
@@ -544,8 +549,6 @@ proc check_effective_target_pcc_bitfield_type_matters { } {
 }
 
 # Return 1 if thread local storage (TLS) is supported, 0 otherwise.
-#
-# This won't change for different subtargets so cache the result.
 
 proc check_effective_target_tls {} {
     return [check_no_compiler_messages tls assembly {
@@ -556,8 +559,6 @@ proc check_effective_target_tls {} {
 }
 
 # Return 1 if *native* thread local storage (TLS) is supported, 0 otherwise.
-#
-# This won't change for different subtargets so cache the result.
 
 proc check_effective_target_tls_native {} {
     # VxWorks uses emulated TLS machinery, but with non-standard helper
@@ -575,8 +576,6 @@ proc check_effective_target_tls_native {} {
 }
 
 # Return 1 if TLS executables can run correctly, 0 otherwise.
-#
-# This won't change for different subtargets so cache the result.
 
 proc check_effective_target_tls_runtime {} {
     return [check_runtime tls_runtime {
@@ -1451,6 +1450,19 @@ proc check_effective_target_mips_loongson { } {
     }]
 }
 
+# Return 1 if this is an ARM target that adheres to the ABI for the ARM
+# Architecture.
+
+proc check_effective_target_arm_eabi { } {
+    return [check_no_compiler_messages arm_eabi object {
+	#ifndef __ARM_EABI__
+	#error not EABI
+	#else
+	int dummy;
+	#endif
+    }]
+}
+
 # Return 1 if this is a PowerPC target with floating-point registers.
 
 proc check_effective_target_powerpc_fprs { } {
@@ -2275,7 +2287,8 @@ proc check_effective_target_vect_short_mult { } {
 	     || [istarget spu-*-*]
 	     || [istarget i?86-*-*]
 	     || [istarget x86_64-*-*] 
-             || [istarget powerpc*-*-*] } {
+             || [istarget powerpc*-*-*] 
+             || [check_effective_target_arm32] } {
 	   set et_vect_short_mult_saved 1
 	}
     }

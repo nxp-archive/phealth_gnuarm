@@ -1,5 +1,5 @@
 /* Precompiled header implementation for the C languages.
-   Copyright (C) 2000, 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2002, 2003, 2004, 2005, 2007, 2008, 2009 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -33,6 +33,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "langhooks.h"
 #include "hosthooks.h"
 #include "target.h"
+#include "opts.h"
 
 /* This is a list of flag variables that must match exactly, and their
    names for the error message.  The possible values for *flag_var must
@@ -44,7 +45,6 @@ static const struct c_pch_matching
   const char *flag_name;
 } pch_matching[] = {
   { &flag_exceptions, "-fexceptions" },
-  { &flag_unit_at_a_time, "-funit-at-a-time" }
 };
 
 enum {
@@ -92,10 +92,10 @@ static const char *
 get_ident (void)
 {
   static char result[IDENT_LENGTH];
-  static const char template[IDENT_LENGTH] = "gpch.013";
+  static const char templ[] = "gpch.013";
   static const char c_language_chars[] = "Co+O";
 
-  memcpy (result, template, IDENT_LENGTH);
+  memcpy (result, templ, IDENT_LENGTH);
   result[4] = c_language_chars[c_language];
 
   return result;
@@ -112,7 +112,7 @@ pch_init (void)
   FILE *f;
   struct c_pch_validity v;
   void *target_validity;
-  static const char partial_pch[IDENT_LENGTH] = "gpcWrite";
+  static const char partial_pch[] = "gpcWrite";
 
 #ifdef ASM_COMMENT_START
   if (flag_verbose_asm)
@@ -208,8 +208,10 @@ c_common_write_pch (void)
   if (fseek (asm_out_file, 0, SEEK_END) != 0)
     fatal_error ("can%'t seek in %s: %m", asm_file_name);
 
+  pickle_in_section ();
   gt_pch_save (pch_outfile);
   cpp_write_pch_state (parse_in, pch_outfile);
+  unpickle_in_section ();
 
   if (fseek (pch_outfile, 0, SEEK_SET) != 0
       || fwrite (get_ident (), IDENT_LENGTH, 1, pch_outfile) != 1)
@@ -242,8 +244,9 @@ c_common_valid_pch (cpp_reader *pfile, const char *name, int fd)
     fatal_error ("can%'t read %s: %m", name);
   else if (sizeread != IDENT_LENGTH + 16)
     {
-      cpp_error (pfile, CPP_DL_WARNING, "%s: too short to be a PCH file",
-		 name);
+      if (cpp_get_options (pfile)->warn_invalid_pch)
+	cpp_error (pfile, CPP_DL_WARNING, "%s: too short to be a PCH file",
+		   name);
       return 2;
     }
 
@@ -365,11 +368,14 @@ c_common_read_pch (cpp_reader *pfile, const char *name,
   FILE *f;
   struct c_pch_header h;
   struct save_macro_data *smd;
+  expanded_location saved_loc;
+  bool saved_trace_includes;
 
   f = fdopen (fd, "rb");
   if (f == NULL)
     {
       cpp_errno (pfile, CPP_DL_ERROR, "calling fdopen");
+      close (fd);
       return;
     }
 
@@ -378,6 +384,7 @@ c_common_read_pch (cpp_reader *pfile, const char *name,
   if (fread (&h, sizeof (h), 1, f) != 1)
     {
       cpp_errno (pfile, CPP_DL_ERROR, "reading");
+      fclose (f);
       return;
     }
 
@@ -406,14 +413,26 @@ c_common_read_pch (cpp_reader *pfile, const char *name,
 	cpp_errno (pfile, CPP_DL_ERROR, "seeking");
     }
 
+  /* Save the location and then restore it after reading the PCH.  */
+  saved_loc = expand_location (line_table->highest_line);
+  saved_trace_includes = line_table->trace_includes;
+
   cpp_prepare_state (pfile, &smd);
 
   gt_pch_restore (f);
+  unpickle_in_section ();
 
   if (cpp_read_state (pfile, name, f, smd) != 0)
-    return;
+    {
+      fclose (f);
+      return;
+    }
 
   fclose (f);
+
+  line_table->trace_includes = saved_trace_includes;
+  cpp_set_line_map (pfile, line_table);
+  linemap_add (line_table, LC_RENAME, 0, saved_loc.file, saved_loc.line);
 
   /* Give the front end a chance to take action after a PCH file has
      been loaded.  */
@@ -447,7 +466,7 @@ c_common_pch_pragma (cpp_reader *pfile, const char *name)
   if (!cpp_get_options (pfile)->preprocessed)
     {
       error ("pch_preprocess pragma should only be used with -fpreprocessed");
-      inform ("use #include instead");
+      inform (input_location, "use #include instead");
       return;
     }
 
@@ -458,7 +477,7 @@ c_common_pch_pragma (cpp_reader *pfile, const char *name)
   if (c_common_valid_pch (pfile, name, fd) != 1)
     {
       if (!cpp_get_options (pfile)->warn_invalid_pch)
-	inform ("use -Winvalid-pch for more information");
+	inform (input_location, "use -Winvalid-pch for more information");
       fatal_error ("%s: PCH file was invalid", name);
     }
 

@@ -43,11 +43,12 @@ seq_type;
 
 typedef struct code_stack
 {
-  struct gfc_code *head, *current, *tail;
+  struct gfc_code *head, *current;
   struct code_stack *prev;
 
   /* This bitmap keeps track of the targets valid for a branch from
-     inside this block.  */
+     inside this block except for END {IF|SELECT}s of enclosing
+     blocks.  */
   bitmap reachable_labels;
 }
 code_stack;
@@ -4289,15 +4290,17 @@ resolve_procedure:
 /* Checks to see that the correct symbol has been host associated.
    The only situation where this arises is that in which a twice
    contained function is parsed after the host association is made.
-   Therefore, on detecting this, the line is rematched, having got
-   rid of the existing references and actual_arg_list.  */
+   Therefore, on detecting this, change the symbol in the expression
+   and convert the array reference into an actual arglist if the old
+   symbol is a variable.  */
 static bool
 check_host_association (gfc_expr *e)
 {
   gfc_symbol *sym, *old_sym;
-  locus temp_locus;
-  gfc_expr *expr;
+  gfc_symtree *st;
   int n;
+  gfc_ref *ref;
+  gfc_actual_arglist *arg, *tail;
   bool retval = e->expr_type == EXPR_FUNCTION;
 
   /*  If the expression is the result of substitution in
@@ -4313,26 +4316,16 @@ check_host_association (gfc_expr *e)
   if (gfc_current_ns->parent
 	&& old_sym->ns != gfc_current_ns)
     {
+      /* Use the 'USE' name so that renamed module symbols are
+	 correctly handled.  */
       gfc_find_symbol (e->symtree->name, gfc_current_ns, 1, &sym);
+
       if (sym && old_sym != sym
 	      && sym->ts.type == old_sym->ts.type
 	      && sym->attr.flavor == FL_PROCEDURE
 	      && sym->attr.contained)
 	{
-	  temp_locus = gfc_current_locus;
-	  gfc_current_locus = e->where;
-
-	  gfc_buffer_error (1);
-
-	  gfc_free_ref_list (e->ref);
-	  e->ref = NULL;
-
-	  if (retval)
-	    {
-	      gfc_free_actual_arglist (e->value.function.actual);
-	      e->value.function.actual = NULL;
-	    }
-
+	  /* Clear the shape, since it might not be valid.  */
 	  if (e->shape != NULL)
 	    {
 	      for (n = 0; n < e->rank; n++)
@@ -4341,22 +4334,58 @@ check_host_association (gfc_expr *e)
 	      gfc_free (e->shape);
 	    }
 
-/* TODO - Replace this gfc_match_rvalue with a straight replacement of
-   actual arglists for function to function substitutions and with a
-   conversion of the reference list to an actual arglist in the case of
-   a variable to function replacement.  This should be quite easy since
-   only integers and vectors can be involved.  */	    
-	  gfc_match_rvalue (&expr);
-	  gfc_clear_error ();
-	  gfc_buffer_error (0);
+	  /* Give the symbol a symtree in the right place!  */
+	  gfc_get_sym_tree (sym->name, gfc_current_ns, &st);
+	  st->n.sym = sym;
 
-	  gcc_assert (expr && sym == expr->symtree->n.sym);
+	  if (old_sym->attr.flavor == FL_PROCEDURE)
+	    {
+	      /* Original was function so point to the new symbol, since
+		 the actual argument list is already attached to the
+		 expression. */
+	      e->value.function.esym = NULL;
+	      e->symtree = st;
+	    }
+	  else
+	    {
+	      /* Original was variable so convert array references into
+		 an actual arglist. This does not need any checking now
+		 since gfc_resolve_function will take care of it.  */
+	      e->value.function.actual = NULL;
+	      e->expr_type = EXPR_FUNCTION;
+	      e->symtree = st;
 
-	  *e = *expr;
-	  gfc_free (expr);
+	      /* Ambiguity will not arise if the array reference is not
+		 the last reference.  */
+	      for (ref = e->ref; ref; ref = ref->next)
+		if (ref->type == REF_ARRAY && ref->next == NULL)
+		  break;
+
+	      gcc_assert (ref->type == REF_ARRAY);
+
+	      /* Grab the start expressions from the array ref and
+		 copy them into actual arguments.  */
+	      for (n = 0; n < ref->u.ar.dimen; n++)
+		{
+		  arg = gfc_get_actual_arglist ();
+		  arg->expr = gfc_copy_expr (ref->u.ar.start[n]);
+		  if (e->value.function.actual == NULL)
+		    tail = e->value.function.actual = arg;
+	          else
+		    {
+		      tail->next = arg;
+		      tail = arg;
+		    }
+		}
+
+	      /* Dump the reference list and set the rank.  */
+	      gfc_free_ref_list (e->ref);
+	      e->ref = NULL;
+	      e->rank = sym->as ? sym->as->rank : 0;
+	    }
+
+	  gfc_resolve_expr (e);
 	  sym->refs++;
-
-	  gfc_current_locus = temp_locus;
 	}
     }
   /* This might have changed!  */
@@ -4522,6 +4551,30 @@ update_compcall_arglist (gfc_expr* e)
 }
 
 
+/* Check that the object a TBP is called on is valid, i.e. it must not be
+   of ABSTRACT type (as in subobject%abstract_parent%tbp()).  */
+
+static gfc_try
+check_typebound_baseobject (gfc_expr* e)
+{
+  gfc_expr* base;
+
+  base = extract_compcall_passed_object (e);
+  if (!base)
+    return FAILURE;
+
+  gcc_assert (base->ts.type == BT_DERIVED);
+  if (base->ts.derived->attr.abstract)
+    {
+      gfc_error ("Base object for type-bound procedure call at %L is of"
+		 " ABSTRACT type '%s'", &e->where, base->ts.derived->name);
+      return FAILURE;
+    }
+
+  return SUCCESS;
+}
+
+
 /* Resolve a call to a type-bound procedure, either function or subroutine,
    statically from the data in an EXPR_COMPCALL expression.  The adapted
    arglist and the target-procedure symtree are returned.  */
@@ -4639,6 +4692,9 @@ resolve_typebound_call (gfc_code* c)
       return FAILURE;
     }
 
+  if (check_typebound_baseobject (c->expr) == FAILURE)
+    return FAILURE;
+
   if (resolve_typebound_generic_call (c->expr) == FAILURE)
     return FAILURE;
 
@@ -4674,6 +4730,9 @@ resolve_compcall (gfc_expr* e)
 		 e->value.compcall.name, &e->where);
       return FAILURE;
     }
+
+  if (check_typebound_baseobject (e) == FAILURE)
+    return FAILURE;
 
   if (resolve_typebound_generic_call (e) == FAILURE)
     return FAILURE;
@@ -4889,6 +4948,26 @@ gfc_resolve_iterator (gfc_iterator *iter, bool real_ok)
   if (iter->step->ts.kind != iter->var->ts.kind
       || iter->step->ts.type != iter->var->ts.type)
     gfc_convert_type (iter->step, &iter->var->ts, 2);
+
+  if (iter->start->expr_type == EXPR_CONSTANT
+      && iter->end->expr_type == EXPR_CONSTANT
+      && iter->step->expr_type == EXPR_CONSTANT)
+    {
+      int sgn, cmp;
+      if (iter->start->ts.type == BT_INTEGER)
+	{
+	  sgn = mpz_cmp_ui (iter->step->value.integer, 0);
+	  cmp = mpz_cmp (iter->end->value.integer, iter->start->value.integer);
+	}
+      else
+	{
+	  sgn = mpfr_sgn (iter->step->value.real);
+	  cmp = mpfr_cmp (iter->end->value.real, iter->start->value.real);
+	}
+      if ((sgn > 0 && cmp < 0) || (sgn < 0 && cmp > 0))
+	gfc_warning ("DO loop at %L will be executed zero times",
+		     &iter->step->where);
+    }
 
   return SUCCESS;
 }
@@ -5930,11 +6009,10 @@ resolve_transfer (gfc_code *code)
 /*********** Toplevel code resolution subroutines ***********/
 
 /* Find the set of labels that are reachable from this block.  We also
-   record the last statement in each block so that we don't have to do
-   a linear search to find the END DO statements of the blocks.  */
+   record the last statement in each block.  */
      
 static void
-reachable_labels (gfc_code *block)
+find_reachable_labels (gfc_code *block)
 {
   gfc_code *c;
 
@@ -5943,14 +6021,13 @@ reachable_labels (gfc_code *block)
 
   cs_base->reachable_labels = bitmap_obstack_alloc (&labels_obstack);
 
-  /* Collect labels in this block.  */
+  /* Collect labels in this block.  We don't keep those corresponding
+     to END {IF|SELECT}, these are checked in resolve_branch by going
+     up through the code_stack.  */
   for (c = block; c; c = c->next)
     {
-      if (c->here)
+      if (c->here && c->op != EXEC_END_BLOCK)
 	bitmap_set_bit (cs_base->reachable_labels, c->here->value);
-
-      if (!c->next && cs_base->prev)
-	cs_base->prev->tail = c;
     }
 
   /* Merge with labels from parent block.  */
@@ -5962,7 +6039,7 @@ reachable_labels (gfc_code *block)
     }
 }
 
-/* Given a branch to a label and a namespace, if the branch is conforming.
+/* Given a branch to a label, see if the branch is conforming.
    The code node describes where the branch is located.  */
 
 static void
@@ -6001,46 +6078,30 @@ resolve_branch (gfc_st_label *label, gfc_code *code)
      branching statement.  The hard work has been done by setting up
      the bitmap reachable_labels.  */
 
-  if (!bitmap_bit_p (cs_base->reachable_labels, label->value))
-    {
-      /* The label is not in an enclosing block, so illegal.  This was
-	 allowed in Fortran 66, so we allow it as extension.  No
-	 further checks are necessary in this case.  */
-      gfc_notify_std (GFC_STD_LEGACY, "Label at %L is not in the same block "
-		      "as the GOTO statement at %L", &label->where,
-		      &code->loc);
-      return;
-    }
+  if (bitmap_bit_p (cs_base->reachable_labels, label->value))
+    return;
 
-  /* Step four: Make sure that the branching target is legal if
-     the statement is an END {SELECT,IF}.  */
+  /* Step four:  If we haven't found the label in the bitmap, it may
+    still be the label of the END of the enclosing block, in which
+    case we find it by going up the code_stack.  */
 
   for (stack = cs_base; stack; stack = stack->prev)
     if (stack->current->next && stack->current->next->here == label)
       break;
 
-  if (stack && stack->current->next->op == EXEC_NOP)
+  if (stack)
     {
-      gfc_notify_std (GFC_STD_F95_DEL, "Deleted feature: GOTO at %L jumps to "
-		      "END of construct at %L", &code->loc,
-		      &stack->current->next->loc);
-      return;  /* We know this is not an END DO.  */
+      gcc_assert (stack->current->next->op == EXEC_END_BLOCK);
+      return;
     }
 
-  /* Step five: Make sure that we're not jumping to the end of a DO
-     loop from within the loop.  */
-
-  for (stack = cs_base; stack; stack = stack->prev)
-    if ((stack->current->op == EXEC_DO
-	 || stack->current->op == EXEC_DO_WHILE)
-	&& stack->tail->here == label && stack->tail->op == EXEC_NOP)
-      {
-	gfc_notify_std (GFC_STD_F95_DEL, "Deleted feature: GOTO at %L jumps "
-			"to END of construct at %L", &code->loc,
-			&stack->tail->loc);
-	return;
-
-      }
+  /* The label is not in an enclosing block, so illegal.  This was
+     allowed in Fortran 66, so we allow it as extension.  No
+     further checks are necessary in this case.  */
+  gfc_notify_std (GFC_STD_LEGACY, "Label at %L is not in the same block "
+		  "as the GOTO statement at %L", &label->where,
+		  &code->loc);
+  return;
 }
 
 
@@ -6621,7 +6682,7 @@ resolve_code (gfc_code *code, gfc_namespace *ns)
   frame.head = code;
   cs_base = &frame;
 
-  reachable_labels (code);
+  find_reachable_labels (code);
 
   for (; code; code = code->next)
     {
@@ -6679,6 +6740,7 @@ resolve_code (gfc_code *code, gfc_namespace *ns)
       switch (code->op)
 	{
 	case EXEC_NOP:
+	case EXEC_END_BLOCK:
 	case EXEC_CYCLE:
 	case EXEC_PAUSE:
 	case EXEC_STOP:
@@ -7329,6 +7391,9 @@ build_default_init_expr (gfc_symbol *sym)
       mpfr_init (init_expr->value.real);
       switch (gfc_option.flag_init_real)
 	{
+	case GFC_INIT_REAL_SNAN:
+	  init_expr->is_snan = 1;
+	  /* Fall through.  */
 	case GFC_INIT_REAL_NAN:
 	  mpfr_set_nan (init_expr->value.real);
 	  break;
@@ -7357,6 +7422,9 @@ build_default_init_expr (gfc_symbol *sym)
       mpfr_init (init_expr->value.complex.i);
       switch (gfc_option.flag_init_real)
 	{
+	case GFC_INIT_REAL_SNAN:
+	  init_expr->is_snan = 1;
+	  /* Fall through.  */
 	case GFC_INIT_REAL_NAN:
 	  mpfr_set_nan (init_expr->value.complex.r);
 	  mpfr_set_nan (init_expr->value.complex.i);
@@ -8125,6 +8193,14 @@ check_typebound_override (gfc_symtree* proc, gfc_symtree* old)
       return FAILURE;
     }
 
+  /* It's an error to override a non-DEFERRED procedure with a DEFERRED one.  */
+  if (!old->typebound->deferred && proc->typebound->deferred)
+    {
+      gfc_error ("'%s' at %L must not be DEFERRED as it overrides a"
+		 " non-DEFERRED binding", proc->name, &where);
+      return FAILURE;
+    }
+
   /* If the overridden binding is PURE, the overriding must be, too.  */
   if (old_target->attr.pure && !proc_target->attr.pure)
     {
@@ -8467,11 +8543,11 @@ resolve_typebound_procedure (gfc_symtree* stree)
   gcc_assert (stree->typebound->access != ACCESS_UNKNOWN);
 
   /* It should be a module procedure or an external procedure with explicit
-     interface.  */
+     interface.  For DEFERRED bindings, abstract interfaces are ok as well.  */
   if ((!proc->attr.subroutine && !proc->attr.function)
       || (proc->attr.proc != PROC_MODULE
 	  && proc->attr.if_source != IFSRC_IFBODY)
-      || proc->attr.abstract)
+      || (proc->attr.abstract && !stree->typebound->deferred))
     {
       gfc_error ("'%s' must be a module procedure or an external procedure with"
 		 " an explicit interface at %L", proc->name, &where);
@@ -8626,6 +8702,67 @@ add_dt_to_dt_list (gfc_symbol *derived)
 }
 
 
+/* Ensure that a derived-type is really not abstract, meaning that every
+   inherited DEFERRED binding is overridden by a non-DEFERRED one.  */
+
+static gfc_try
+ensure_not_abstract_walker (gfc_symbol* sub, gfc_symtree* st)
+{
+  if (!st)
+    return SUCCESS;
+
+  if (ensure_not_abstract_walker (sub, st->left) == FAILURE)
+    return FAILURE;
+  if (ensure_not_abstract_walker (sub, st->right) == FAILURE)
+    return FAILURE;
+
+  if (st->typebound && st->typebound->deferred)
+    {
+      gfc_symtree* overriding;
+      overriding = gfc_find_typebound_proc (sub, NULL, st->name, true);
+      gcc_assert (overriding && overriding->typebound);
+      if (overriding->typebound->deferred)
+	{
+	  gfc_error ("Derived-type '%s' declared at %L must be ABSTRACT because"
+		     " '%s' is DEFERRED and not overridden",
+		     sub->name, &sub->declared_at, st->name);
+	  return FAILURE;
+	}
+    }
+
+  return SUCCESS;
+}
+
+static gfc_try
+ensure_not_abstract (gfc_symbol* sub, gfc_symbol* ancestor)
+{
+  /* The algorithm used here is to recursively travel up the ancestry of sub
+     and for each ancestor-type, check all bindings.  If any of them is
+     DEFERRED, look it up starting from sub and see if the found (overriding)
+     binding is not DEFERRED.
+     This is not the most efficient way to do this, but it should be ok and is
+     clearer than something sophisticated.  */
+
+  gcc_assert (ancestor && ancestor->attr.abstract && !sub->attr.abstract);
+
+  /* Walk bindings of this ancestor.  */
+  if (ancestor->f2k_derived)
+    {
+      gfc_try t;
+      t = ensure_not_abstract_walker (sub, ancestor->f2k_derived->sym_root);
+      if (t == FAILURE)
+	return FAILURE;
+    }
+
+  /* Find next ancestor type and recurse on it.  */
+  ancestor = gfc_get_derived_super_type (ancestor);
+  if (ancestor)
+    return ensure_not_abstract (sub, ancestor);
+
+  return SUCCESS;
+}
+
+
 /* Resolve the components of a derived type.  */
 
 static gfc_try
@@ -8751,6 +8888,12 @@ resolve_fl_derived (gfc_symbol *sym)
 
   /* Resolve the finalizer procedures.  */
   if (gfc_resolve_finalizers (sym) == FAILURE)
+    return FAILURE;
+
+  /* If this is a non-ABSTRACT type extending an ABSTRACT one, ensure that
+     all DEFERRED bindings are overridden.  */
+  if (super_type && super_type->attr.abstract && !sym->attr.abstract
+      && ensure_not_abstract (sym, super_type) == FAILURE)
     return FAILURE;
 
   /* Add derived type to the derived type list.  */

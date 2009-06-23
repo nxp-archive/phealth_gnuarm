@@ -1,13 +1,13 @@
 /* Definitions of target machine for GNU compiler. NEC V850 series
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
+   2007, 2008  Free Software Foundation, Inc.
    Contributed by Jeff Law (law@cygnus.com).
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
+   the Free Software Foundation; either version 3, or (at your option)
    any later version.
 
    GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to
-   the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-   Boston, MA 02110-1301, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_V850_H
 #define GCC_V850_H
@@ -319,6 +318,11 @@ enum reg_class
 
 #define N_REG_CLASSES (int) LIM_REG_CLASSES
 
+#define IRA_COVER_CLASSES		\
+{					\
+  GENERAL_REGS, LIM_REG_CLASSES		\
+}
+
 /* Give names of register classes as strings for dump file.  */
 
 #define REG_CLASS_NAMES \
@@ -502,12 +506,6 @@ enum reg_class
 /* Register in which static-chain is passed to a function.  */
 #define STATIC_CHAIN_REGNUM 20
 
-/* Value should be nonzero if functions must have frame pointers.
-   Zero means the frame pointer need not be set up (and parms
-   may be accessed via the stack pointer) in functions that seem suitable.
-   This is computed in `reload', in reload1.c.  */
-#define FRAME_POINTER_REQUIRED 0
-
 /* If defined, this macro specifies a table of register pairs used to
    eliminate unneeded registers that point into the stack frame.  If
    it is not defined, the only elimination attempted by the compiler
@@ -558,7 +556,7 @@ enum reg_class
 #define INITIAL_ELIMINATION_OFFSET(FROM, TO, OFFSET)			\
 {									\
   if ((FROM) == FRAME_POINTER_REGNUM)					\
-    (OFFSET) = get_frame_size () + current_function_outgoing_args_size;	\
+    (OFFSET) = get_frame_size () + crtl->outgoing_args_size;	\
   else if ((FROM) == ARG_POINTER_REGNUM)				\
    (OFFSET) = compute_frame_size (get_frame_size (), (long *)0);	\
   else									\
@@ -626,7 +624,7 @@ struct cum_arg { int nbytes; int anonymous_args; };
 
 /* Define this if the above stack space is to be considered part of the
    space allocated by the caller.  */
-#define OUTGOING_REG_PARM_STACK_SPACE 1
+#define OUTGOING_REG_PARM_STACK_SPACE(FNTYPE) 1
 
 /* 1 if N is a possible register number for function argument passing.  */
 
@@ -825,11 +823,6 @@ do {									\
 } while (0)
 
 
-/* Go to LABEL if ADDR (a legitimate address expression)
-   has an effect that depends on the machine mode it is used for.  */
-
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)  {}
-
 /* Nonzero if the constant value X is a legitimate general operand.
    It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.  */
 
@@ -861,7 +854,7 @@ do {									\
 
 /* According expr.c, a value of around 6 should minimize code size, and
    for the V850 series, that's our primary concern.  */
-#define MOVE_RATIO 6
+#define MOVE_RATIO(speed) 6
 
 /* Indirect calls are expensive, never turn a direct call
    into an indirect call.  */

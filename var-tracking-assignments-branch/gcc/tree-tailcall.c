@@ -1,5 +1,6 @@
 /* Tail call optimization on trees.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -135,15 +136,11 @@ suitable_for_tail_opt_p (void)
   if (cfun->stdarg)
     return false;
 
-  /* No local variable nor structure field should be call-used.  We
-     ignore any kind of memory tag, as these are not real variables.  */
-
+  /* No local variable nor structure field should be call-used.  */
   FOR_EACH_REFERENCED_VAR (var, rvi)
     {
       if (!is_global_var (var)
-	  && !MTAG_P (var)
-	  && (gimple_aliases_computed_p (cfun)? is_call_used (var)
-	      : TREE_ADDRESSABLE (var)))
+	  && is_call_used (var))
 	return false;
     }
 
@@ -398,7 +395,7 @@ find_tail_calls (basic_block bb, struct tailcall **ret)
       stmt = gsi_stmt (gsi);
 
       /* Ignore labels.  */
-      if (gimple_code (stmt) == GIMPLE_LABEL || IS_DEBUG_STMT (stmt))
+      if (gimple_code (stmt) == GIMPLE_LABEL || is_gimple_debug (stmt))
 	continue;
 
       /* Check for a call.  */
@@ -409,11 +406,9 @@ find_tail_calls (basic_block bb, struct tailcall **ret)
 	  break;
 	}
 
-      /* If the statement has virtual or volatile operands, fail.  */
-      if (!ZERO_SSA_OPERANDS (stmt, (SSA_OP_VUSE | SSA_OP_VIRTUAL_DEFS))
-	  || gimple_has_volatile_ops (stmt)
-	  || (!gimple_aliases_computed_p (cfun)
-	      && gimple_references_memory_p (stmt)))
+      /* If the statement references memory or volatile operands, fail.  */
+      if (gimple_references_memory_p (stmt)
+	  || gimple_has_volatile_ops (stmt))
 	return;
     }
 
@@ -506,7 +501,7 @@ find_tail_calls (basic_block bb, struct tailcall **ret)
       if (gimple_code (stmt) == GIMPLE_RETURN)
 	break;
 
-      if (IS_DEBUG_STMT (stmt))
+      if (is_gimple_debug (stmt))
 	continue;
 
       if (gimple_code (stmt) != GIMPLE_ASSIGN)
@@ -916,8 +911,10 @@ tree_optimize_tail_calls_1 (bool opt_tailcalls)
 
       if (!phis_constructed)
 	{
-	  /* Ensure that there is only one predecessor of the block.  */
-	  if (!single_pred_p (first))
+	  /* Ensure that there is only one predecessor of the block
+	     or if there are existing degenerate PHI nodes.  */
+	  if (!single_pred_p (first)
+	      || !gimple_seq_empty_p (phi_nodes (first)))
 	    first = split_edge (single_succ_edge (ENTRY_BLOCK_PTR));
 
 	  /* Copy the args if needed.  */
@@ -1005,7 +1002,7 @@ struct gimple_opt_pass pass_tail_recursion =
   NULL,					/* sub */
   NULL,					/* next */
   0,					/* static_pass_number */
-  0,					/* tv_id */
+  TV_NONE,				/* tv_id */
   PROP_cfg | PROP_ssa,			/* properties_required */
   0,					/* properties_provided */
   0,					/* properties_destroyed */
@@ -1024,8 +1021,8 @@ struct gimple_opt_pass pass_tail_calls =
   NULL,					/* sub */
   NULL,					/* next */
   0,					/* static_pass_number */
-  0,					/* tv_id */
-  PROP_cfg | PROP_ssa | PROP_alias,	/* properties_required */
+  TV_NONE,				/* tv_id */
+  PROP_cfg | PROP_ssa,			/* properties_required */
   0,					/* properties_provided */
   0,					/* properties_destroyed */
   0,					/* todo_flags_start */

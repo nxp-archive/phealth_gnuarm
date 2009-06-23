@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -29,9 +28,6 @@
 --  a separate package so that they can more easily be customized. Calls
 --  to these subprograms are only made if Opt.Style_Check is set True.
 --  Styleg does not depends on the GNAT tree (Atree, Sinfo, ...).
-
---  For the compiler, there is also a child package Styleg.C that depends
---  on the GNAT tree.
 
 with Types; use Types;
 
@@ -133,6 +129,13 @@ package Styleg is
    --  procedure is called only if THEN appears at the start of a line with
    --  Token_Ptr pointing to the THEN keyword.
 
+   procedure Check_Separate_Stmt_Lines;
+   pragma Inline (Check_Separate_Stmt_Lines);
+   --  Called after scanning THEN (not preceded by AND) or ELSE (not preceded
+   --  by OR). Used to check that no tokens follow on the same line (which
+   --  would interfere with coverage testing). Handles case of THEN ABORT as
+   --  an exception, as well as PRAGMA after ELSE.
+
    procedure Check_Unary_Plus_Or_Minus;
    --  Called after scanning a unary plus or minus to check spacing
 
@@ -166,10 +169,5 @@ package Styleg is
    --  lower case letters. On entry Token_Ptr points to the keyword token.
    --  This is not used for keywords appearing as attribute designators,
    --  where instead Check_Attribute_Name (True) is called.
-
-   function RM_Column_Check return Boolean;
-   pragma Inline (RM_Column_Check);
-   --  Determines whether style checking is active and the RM column check
-   --  mode is set requiring checking of RM format layout.
 
 end Styleg;

@@ -1,5 +1,5 @@
 /* Basile's static analysis (should have a better name) basilys.c
-   Copyright (C) 2008 Free Software Foundation, Inc.
+   Copyright (C) 2008, 2009 Free Software Foundation, Inc.
    Contributed by Basile Starynkevitch <basile@starynkevitch.net>
    Indented with GNU indent 
 
@@ -20,7 +20,7 @@ along with GCC; see the file COPYING3.   If not see
 <http://www.gnu.org/licenses/>.   
   */
 
-/* for debugging -fbasilys-debug is useful */
+/* for debugging -fmelt-debug is useful */
 
 
 #include "config.h"
@@ -39,7 +39,6 @@ along with GCC; see the file COPYING3.   If not see
 #include "tree-inline.h"
 #include "basic-block.h"
 #include "timevar.h"
-#include "errors.h"
 #include "ggc.h"
 #include "cgraph.h"
 #include "diagnostic.h"
@@ -50,14 +49,20 @@ along with GCC; see the file COPYING3.   If not see
 #include "real.h"
 #include "prefix.h"
 #include "md5.h"
+#include "plugin.h"
+
+/* executable_checksum is declared in c-common.h which we can't
+   include here.. */
+extern const unsigned char executable_checksum[16];
 
 #include "cppdefault.h"
 
 
-#include "compiler-probe.h"
-
 
 #include <dirent.h>
+
+#include <dlfcn.h>
+
 
 #if HAVE_PARMAPOLY
 #include <ppl_c.h>
@@ -65,11 +70,6 @@ along with GCC; see the file COPYING3.   If not see
 #error required parma polyedral library PPL
 #endif /*HAVE_PARMAPOLY */
 
-#if HAVE_LIBTOOLDYNL
-#include <ltdl.h>
-#else
-#error required libtool dynamic loader library LTDL
-#endif /*HAVE_LIBTOOLDYNL */
 
 /* basilysgc_sort_multiple needs setjmp */
 #include <setjmp.h>
@@ -81,7 +81,7 @@ along with GCC; see the file COPYING3.   If not see
 
 
 #define MINOR_SIZE_KILOWORD PARAM_VALUE(PARAM_BASILYS_MINOR_ZONE)
-#define FULL_FREQ PARAM_VALUE(PARAM_BASILYS_FULL_FREQ)
+#define FULL_THRESHOLD PARAM_VALUE(PARAM_BASILYS_FULL_THRESHOLD)
 
 #ifndef MELT_PRIVATE_INCLUDE_DIR
 #error MELT_PRIVATE_INCLUDE_DIR is not defined thru compile flags
@@ -91,27 +91,27 @@ along with GCC; see the file COPYING3.   If not see
 #error MELT_SOURCE_DIR is not defined thru compile flags
 #endif
 
-#ifndef MELT_GENERATED_DIR
-#error MELT_GENERATED_DIR is not defined thru compile flags
-#endif
-
-#ifndef MELT_DYNLIB_DIR
-#error MELT_DYNLIB_DIR is not defined thru compile flags
+#ifndef MELT_MODULE_DIR
+#error MELT_MODULE_DIR is not defined thru compile flags
 #endif
 
 #ifndef MELT_COMPILE_SCRIPT
 #error MELT_COMPILE_SCRIPT  is not defined thru compile flags
 #endif
 
-#if BASILYS_HAS_OBJ_TAB_FIELDS
-#error BASILYS_HAS_OBJ_TAB_FIELDS is no more supported
+#ifndef MELT_DEFAULT_MODLIS
+#error MELT_DEFAULT_MODLIS is not defined thru compile flags
 #endif
+
+/* we use the plugin registration facilities, so this is the plugin
+   name in use */
+#define MELT_PLUGIN_NAME "__MELT"
+
 
 /* *INDENT-OFF* */
 static const char melt_private_include_dir[] = MELT_PRIVATE_INCLUDE_DIR;
 static const char melt_source_dir[] = MELT_SOURCE_DIR;
-static const char melt_generated_dir[] = MELT_GENERATED_DIR;
-static const char melt_dynlib_dir[] = MELT_DYNLIB_DIR;
+static const char melt_module_dir[] = MELT_MODULE_DIR;
 static const char melt_compile_script[] = MELT_COMPILE_SCRIPT;
 
 basilys_ptr_t basilys_globarr[BGLOB__LASTGLOB];
@@ -148,7 +148,6 @@ bool basilys_prohibit_garbcoll;
 long basilys_dbgcounter;
 long basilys_debugskipcount;
 
-void (*basilys_extra_scanrout_p)(void);
 
 int basilys_last_global_ix = BGLOB__LASTGLOB;
 
@@ -158,7 +157,7 @@ int basilys_last_global_ix = BGLOB__LASTGLOB;
 static GTY(()) VEC(basilys_ptr_t,gc) *bscanvec;
 
 
-struct basilocalsptr_st GTY(()) {
+struct GTY(())  basilocalsptr_st {
   unsigned char lenix;			/* length is prime, this is the index of length */
   int nbent;
   basilys_ptr_t  GTY((length("basilys_primtab[%h.lenix]"))) ptrtab[FLEXIBLE_DIM];
@@ -166,36 +165,27 @@ struct basilocalsptr_st GTY(()) {
 
 static GTY(()) struct basilocalsptr_st* blocaltab; 
 
-static lt_dlhandle proghandle;
+static void* proghandle;
 
 
 /* *INDENT-ON* */
 
 /* to code case ALL_OBMAG_SPECIAL_CASES: */
-#define ALL_OBMAG_SPECIAL_CASES	       	\
+#define ALL_OBMAG_SPECIAL_CASES			\
          OBMAG_SPEC_FILE:			\
-    case OBMAG_SPEC_MPFR:			\
     case OBMAG_SPECPPL_COEFFICIENT:   		\
     case OBMAG_SPECPPL_LINEAR_EXPRESSION:	\
     case OBMAG_SPECPPL_CONSTRAINT:		\
     case OBMAG_SPECPPL_CONSTRAINT_SYSTEM:	\
     case OBMAG_SPECPPL_GENERATOR:		\
-    case OBMAG_SPECPPL_GENERATOR_SYSTEM
+    case OBMAG_SPECPPL_GENERATOR_SYSTEM:	\
+    case OBMAG_SPECPPL_POLYHEDRON:		\
+    case OBMAG_SPEC_MPFR
 
 /* Obstack used for reading names */
 static struct obstack bname_obstack;
 
 
-/* random data for generating hashcodes */
-static struct drand48_data randata;
-
-long
-basilys_lrand (void)
-{
-  long lh = 0;
-  lrand48_r (&randata, &lh);
-  return lh;
-}
 
 
 static inline void
@@ -247,6 +237,11 @@ delete_special (struct basilysspecial_st *sp)
       if (sp->val.sp_generator_system)
 	ppl_delete_Generator_System (sp->val.sp_generator_system);
       sp->val.sp_generator_system = NULL;
+      break;
+    case OBMAG_SPECPPL_POLYHEDRON:
+      if (sp->val.sp_polyhedron)
+	ppl_delete_Polyhedron (sp->val.sp_polyhedron);
+      sp->val.sp_polyhedron = NULL;
       break;
     default:
       break;
@@ -375,6 +370,7 @@ check_pointer_at (const char msg[], long count, basilys_ptr_t * pptr,
     case OBMAG_INT:
     case OBMAG_MIXINT:
     case OBMAG_MIXLOC:
+    case OBMAG_MIXBIGINT:
     case OBMAG_REAL:
     case OBMAG_STRING:
     case OBMAG_STRBUF:
@@ -506,39 +502,41 @@ basilys_cbreak_at (const char *msg, const char *fil, int lin)
 
 
 /***
- * the extra marking routine is passed to ggc_collect_extra_marking
- * from the full basilys garbage collection
+ * the marking routine is registered thru PLUGIN_GGC_MARKING
+ * it makes GGC play nice with MELT.
  **/
 static void
-basilys_extra_marking (void *xtradata)
+basilys_marking_callback (void *gcc_data ATTRIBUTE_UNUSED,
+			  void* user_data ATTRIBUTE_UNUSED)
 {
   int ix = 0;
   basilys_module_info_t *mi = 0;
   struct callframe_basilys_st *cf = 0;
-  gcc_assert (xtradata == basilys_topframe);
   /* first, scan all the modules and mark their frame if it is non null */
-  for (ix = 0; VEC_iterate (basilys_module_info_t, modinfvec, ix, mi); ix++)
-    {
-      if (!mi->iniframp || !*mi->iniframp || !mi->marker_rout) 
-	continue;
-      (mi->marker_rout) (*mi->iniframp);
-    };
+  if (modinfvec) 
+    for (ix = 0; VEC_iterate (basilys_module_info_t, modinfvec, ix, mi); ix++)
+      {
+        if ( !mi->marker_rout || !mi->iniframp || !*mi->iniframp) 
+	  continue;
+        (mi->marker_rout) (*mi->iniframp);
+      };
   /* then scan all the MELT call frames */
-  for (cf = (struct callframe_basilys_st*) xtradata; cf; cf = cf->prev) {
+  for (cf = (struct callframe_basilys_st*) basilys_topframe; cf; cf = cf->prev) {
     if (cf->clos) {
       basilysroutfun_t*funp = 0;
       gcc_assert(cf->clos->rout);
-      funp = *((basilysroutfun_t**) cf->clos->rout->routaddr);
+      funp = cf->clos->rout->routfunad;
       gcc_assert(funp);
       /* call the function specially with the MARKGCC special parameter descriptor */
       funp(cf->clos, (basilys_ptr_t)cf, BASILYSPAR_MARKGGC, 
 	   (union basilysparam_un*)0, (char*)0, (union basilysparam_un*)0);
       continue;
     }
-    /* if no closure, mark the local pointers */
-    for (ix= 0; ix<(int) cf->nbvar; ix++) 
-      if (cf->varptr[ix]) 
-	gt_ggc_mx_basilys_un((basilys_ptr_t)(cf->varptr[ix]));
+    else 
+      /* if no closure, mark the local pointers */
+      for (ix= 0; ix<(int) cf->nbvar; ix++) 
+	if (cf->varptr[ix]) 
+	  gt_ggc_mx_basilys_un((basilys_ptr_t)(cf->varptr[ix]));
   }
 }
 
@@ -597,8 +595,6 @@ basilys_garbcoll (size_t wanted, bool needfull)
   blocaltab->lenix = primix;
   for (ix = 0; ix < BGLOB__LASTGLOB; ix++)
     FORWARDED (basilys_globarr[ix]);
-  if (basilys_extra_scanrout_p)
-    (*basilys_extra_scanrout_p) ();
   for (cfram = basilys_topframe; cfram != NULL; cfram = cfram->prev)
     {
       int varix;
@@ -623,7 +619,7 @@ basilys_garbcoll (size_t wanted, bool needfull)
 	scanning (*storp);
     }
   memset (basilys_touched_cache, 0, sizeof (basilys_touched_cache));
-  /* sort of Chesney loop */
+  /* sort of Cheney loop; http://en.wikipedia.org/wiki/Cheney%27s_algorithm */
   while (!VEC_empty (basilys_ptr_t, bscanvec))
     {
       basilys_ptr_t p = VEC_pop (basilys_ptr_t, bscanvec);
@@ -631,7 +627,7 @@ basilys_garbcoll (size_t wanted, bool needfull)
 	continue;
 #if ENABLE_CHECKING
       if (debughack_file)
-	fprintf (debughack_file, "chesney scan %p\n", (void *) p);
+	fprintf (debughack_file, "cheney scan %p\n", (void *) p);
 #endif
       scanning (p);
     }
@@ -662,7 +658,7 @@ basilys_garbcoll (size_t wanted, bool needfull)
   basilys_storalz = NULL;
   basilys_kilowords_sincefull += wanted / (1024 * sizeof (void *));
   if (basilys_kilowords_sincefull >
-      (unsigned long) MINOR_SIZE_KILOWORD * FULL_FREQ)
+      (unsigned long) MINOR_SIZE_KILOWORD * FULL_THRESHOLD)
     needfull = TRUE;
   basilys_startalz = basilys_curalz =
     (char *) xcalloc (sizeof (void *), wanted / sizeof (void *));
@@ -677,9 +673,9 @@ basilys_garbcoll (size_t wanted, bool needfull)
       /* clear marks on the old spec list */
       for (specp = basilys_oldspeclist; specp; specp = specp->nextspec)
 	specp->mark = 0;
-      /* force major collection with extra marking */
+      /* force major collection, with our callback */
       ggc_force_collect = true;
-      ggc_collect_extra_marking (basilys_extra_marking, basilys_topframe);
+      ggc_collect ();
       ggc_force_collect = wasforced;
       /* delete the unmarked spec */
       prevspecptr = &basilys_oldspeclist;
@@ -833,7 +829,7 @@ forwarded_copy (basilys_ptr_t p)
 	strncpy (dst->routdescr, src->routdescr, BASILYS_ROUTDESCR_LEN);
 	dst->routdescr[BASILYS_ROUTDESCR_LEN - 1] = 0;
 	dst->nbval = src->nbval;
-	memcpy (dst->routaddr, src->routaddr, sizeof (dst->routaddr));
+	dst->routfunad = src->routfunad;
 	for (ix = (int) nbv; ix >= 0; ix--)
 	  dst->tabval[ix] = src->tabval[ix];
 	dst->routdata = src->routdata;
@@ -891,6 +887,20 @@ forwarded_copy (basilys_ptr_t p)
 	struct basilysmixloc_st *dst = (struct basilysmixloc_st *)
 	  ggc_alloc_cleared (sizeof (struct basilysmixloc_st));
 	*dst = *src;
+	n = (basilys_ptr_t) dst;
+	break;
+      }
+    case OBMAG_MIXBIGINT:
+      {
+	struct basilysmixbigint_st *src = (struct basilysmixbigint_st *) p;
+	unsigned blen = src->biglen;
+	struct basilysmixbigint_st *dst = (struct basilysmixbigint_st *)
+	  ggc_alloc_cleared (sizeof (struct basilysmixbigint_st)
+			     + blen * sizeof(src->tabig[0]));
+	dst->discr = src->discr;
+	dst->ptrval = src->ptrval;
+	dst->negative = src->negative;
+	dst->biglen = blen;
 	n = (basilys_ptr_t) dst;
 	break;
       }
@@ -1505,6 +1515,12 @@ scanning (basilys_ptr_t p)
 	FORWARDED (src->ptrval);
 	break;
       }
+    case OBMAG_MIXBIGINT:
+      {
+	struct basilysmixbigint_st *src = (struct basilysmixbigint_st *) p;
+	FORWARDED (src->ptrval);
+	break;
+      }
     case OBMAG_STRBUF:
       {
 	struct basilysstrbuf_st *src = (struct basilysstrbuf_st *) p;
@@ -1622,7 +1638,7 @@ unsafe_index_mapobject (struct entryobjectsbasilys_st *tab,
 	       && curat->obj_class == attr->obj_class)
 	{
 	  samehashcnt++;
-	  if (flag_basilys_debug
+	  if (flag_melt_debug
 	      || (samehashcnt < 16 || samehashcnt % 16 == 0))
 	    {
 	      basilys_checkmsg ("similar gotten & found attr", curat == attr);
@@ -1667,7 +1683,7 @@ unsafe_index_mapobject (struct entryobjectsbasilys_st *tab,
 	       && curat->obj_class == attr->obj_class)
 	{
 	  samehashcnt++;
-	  if (flag_basilys_debug
+	  if (flag_melt_debug
 	      || (samehashcnt < 16 || samehashcnt % 16 == 0))
 	    {
 	      basilys_checkmsg ("similar gotten & found attr", curat == attr);
@@ -1790,6 +1806,55 @@ end:
 }
 
 
+basilys_ptr_t
+basilysgc_new_mixbigint_mpz (basilysobject_ptr_t discr_p,
+			     basilys_ptr_t val_p, mpz_t mp)
+{
+  unsigned numb = 0, blen = 0;
+  size_t wcnt = 0;
+  BASILYS_ENTERFRAME (3, NULL);
+#define newbig  curfram__.varptr[0]
+#define discrv  curfram__.varptr[1]
+#define valv    curfram__.varptr[2]
+#define object_discrv ((basilysobject_ptr_t)(discrv))
+#define mix_newbig ((struct basilysmixbigint_st*)(newbig))
+  newbig = NULL;
+  discrv = (void *) discr_p;
+  if (!discrv)
+    discrv = BASILYSGOB (DISCR_MIXBIGINT);
+  valv = val_p;
+  if (basilys_magic_discr ((basilys_ptr_t) (discrv)) != OBMAG_OBJECT)
+    goto end;
+  if (object_discrv->object_magic != OBMAG_MIXBIGINT)
+    goto end;
+  if (!mp) 
+    goto end; 
+  numb = 8*sizeof(mix_newbig->tabig[0]);
+  blen = (mpz_sizeinbase (mp, 2) + numb-1) / numb;
+  newbig = basilysgc_allocate (sizeof (struct basilysmixbigint_st),
+			       blen*sizeof(mix_newbig->tabig[0]));
+  mix_newbig->discr = object_discrv;
+  mix_newbig->ptrval = (basilys_ptr_t) valv;
+  mix_newbig->negative = (mpz_sgn (mp)<0);
+  mix_newbig->biglen = blen;
+  mpz_export (mix_newbig->tabig, &wcnt, 
+	      /*most significant word first */ 1, 
+	      sizeof(mix_newbig->tabig[0]), 
+	      /*native endian*/ 0, 
+	      /* no nails bits */ 0, 
+	      mp);
+  gcc_assert(wcnt <= blen);
+end:
+  BASILYS_EXITFRAME ();
+  return (basilys_ptr_t) newbig;
+#undef newbig
+#undef valv
+#undef discrv
+#undef mix_newbig
+#undef object_discrv
+}
+
+
 /* allocate a new routine object of given DISCR and of length LEN,
    with a DESCR-iptive string a a PROC-edure */
 basilysroutine_ptr_t
@@ -1797,11 +1862,6 @@ basilysgc_new_routine (basilysobject_ptr_t discr_p,
 		       unsigned len, const char *descr,
 		       basilysroutfun_t * proc)
 {
-  union
-  {
-    long fad[1 + sizeof (basilysroutfun_t *) / sizeof (long)];
-    basilysroutfun_t *fproc;
-  } un;
   BASILYS_ENTERFRAME (2, NULL);
 #define newroutv curfram__.varptr[0]
 #define discrv  curfram__.varptr[1]
@@ -1818,9 +1878,7 @@ basilysgc_new_routine (basilysobject_ptr_t discr_p,
 			len * sizeof (void *));
   rou_newroutv->discr = (basilysobject_ptr_t) discrv;
   rou_newroutv->nbval = len;
-  memset (&un, 0, sizeof (un));
-  un.fproc = proc;
-  memcpy (rou_newroutv->routaddr, un.fad, sizeof (rou_newroutv->routaddr));
+  rou_newroutv->routfunad = proc;
   strncpy (rou_newroutv->routdescr, descr, BASILYS_ROUTDESCR_LEN - 1);
   rou_newroutv->routdescr[BASILYS_ROUTDESCR_LEN - 1] = (char) 0;
 end:
@@ -1930,118 +1988,154 @@ end:
 #undef buf_newbufv
 }
 
+/* we need to be able to compute the length of the last line of a
+   FILE* filled by MELT output primitives; very often this FILE* will
+   be stdout or stderr; and we don't care that much if the computed
+   length of the last [i.e. current] line is wrong. So we keep an
+   array of positions in FILE*, indexed by their fileno, which we
+   suppose is small */
+#define MELTMAXFILE 512
+static long lasteol[MELTMAXFILE];
 
 void
-basilysgc_add_strbuf_raw (struct basilysstrbuf_st *strbuf_p, const char *str)
+basilysgc_add_out_raw_len (basilys_ptr_t outbuf_p, const char *str, int slen)
 {
 #ifdef ENABLE_CHECKING
   static long addcount;
 #endif
-  int slen = 0, blen = 0;
+  int blen = 0;
   BASILYS_ENTERFRAME (2, NULL);
-#define strbufv  curfram__.varptr[0]
-#define buf_strbufv  ((struct basilysstrbuf_st*)(strbufv))
-  strbufv = strbuf_p;
+#define outbufv  curfram__.varptr[0]
+#define buf_outbufv  ((struct basilysstrbuf_st*)(outbufv))
+#define spec_outbufv  ((struct basilysspecial_st*)(outbufv))
+  outbufv = outbuf_p;
   if (!str)
     goto end;
-  if (basilys_magic_discr ((basilys_ptr_t) (strbufv)) != OBMAG_STRBUF)
+  if (slen<0)
+    slen = strlen (str);
+  if (slen<=0) 
     goto end;
-  gcc_assert (!basilys_is_young (str));
-  slen = strlen (str);
-  blen = basilys_primtab[buf_strbufv->buflenix];
-  gcc_assert (blen > 0);
+  switch (basilys_magic_discr ((basilys_ptr_t) (outbufv))) {
+  case OBMAG_SPEC_FILE:
+    {
+      FILE* f = spec_outbufv->val.sp_file;
+      if (f) {
+	int fno = fileno(f);
+	char* eol = 0;
+	long fp = ftell(f);
+	(void) fwrite(str, (size_t)slen, (size_t)1, f);
+	if (fno < MELTMAXFILE && fno >= 0 && (eol = strchr(str, '\n')) && eol-str < slen)
+	  lasteol[fno] = fp + (eol-str);
+      }
+    }
+    break;
+  case OBMAG_STRBUF:
+    gcc_assert (!basilys_is_young (str));
+    blen = basilys_primtab[buf_outbufv->buflenix];
+    gcc_assert (blen > 0);
 #ifdef ENABLE_CHECKING
-  addcount++;
+    addcount++;
 #endif
-  gcc_assert (buf_strbufv->bufstart <= buf_strbufv->bufend
-	      && buf_strbufv->bufend < (unsigned) blen);
-  if ((int) buf_strbufv->bufend + slen + 2 < blen)
-    {				/* simple case, just copy at end */
-      strcpy (buf_strbufv->bufzn + buf_strbufv->bufend, str);
-      buf_strbufv->bufend += slen;
-      buf_strbufv->bufzn[buf_strbufv->bufend] = 0;
-    }
-  else
-    if ((int) buf_strbufv->bufstart > (int) 0
-	&& (int) buf_strbufv->bufend -
-	(int) buf_strbufv->bufstart + (int) slen + 2 < (int) blen)
-    {				/* should move the buffer to fit */
-      int siz = buf_strbufv->bufend - buf_strbufv->bufstart;
-      gcc_assert (siz > 0);
-      memmove (buf_strbufv->bufzn,
-	       buf_strbufv->bufzn + buf_strbufv->bufstart, siz);
-      buf_strbufv->bufstart = 0;
-      strcpy (buf_strbufv->bufzn + siz, str);
-      buf_strbufv->bufend = siz + slen;
-      buf_strbufv->bufzn[buf_strbufv->bufend] = 0;
-    }
-  else
-    {				/* should grow the buffer to fit */
-      int siz = buf_strbufv->bufend - buf_strbufv->bufstart;
-      int newsiz = (siz + slen + 50 + siz / 8) | 0x1f;
-      int newix = 0, newblen = 0;
-      char *newb = NULL;
-      int oldblen = basilys_primtab[buf_strbufv->buflenix];
-      for (newix = buf_strbufv->buflenix + 1;
-	   (newblen = basilys_primtab[newix]) != 0
-	   && newblen < newsiz; newix++);
-      gcc_assert (newblen >= newsiz);
-      gcc_assert (siz >= 0);
-      if (newblen > BASILYS_MAXLEN)
-	fatal_error ("strbuf overflow to %d bytes", newblen);
-      /* the newly grown buffer is allocated in young memory if the
-         previous was young, or in old memory if it was already old;
-         but we have to deal with the rare case when the allocation
-         triggers a GC which migrate the strbuf from young to old */
-      if (basilys_is_young (buf_strbufv->bufzn))
-	{
-	  /* bug to avoid: the strbuf was young, the allocation of
-	     newb triggers a GC, and then the strbuf becomes old. we
-	     cannot put newb inside it (this violate the GC invariant
-	     of no unfollowed -on store list- old to young
-	     pointers). So we reserve the required length to make sure
-	     that the following newb allocation does not trigger a
-	     GC */
-	  basilysgc_reserve (newblen + 10 * sizeof (void *));
-	  /* does the above reservation triggered a GC which moved buf_strbufv to old? */
-	  if (!basilys_is_young (buf_strbufv->bufzn))
-	    goto strbuf_in_old_memory;
-	  gcc_assert (basilys_is_young (buf_strbufv));
-	  newb = (char *) basilys_allocatereserved (newblen + 1, 0);
-	  gcc_assert (basilys_is_young (buf_strbufv));
-	  memcpy (newb, buf_strbufv->bufzn + buf_strbufv->bufstart, siz);
-	  strcpy (newb + siz, str);
-	  memset (buf_strbufv->bufzn, 0, oldblen);
-	  buf_strbufv->bufzn = newb;
+    gcc_assert (buf_outbufv->bufstart <= buf_outbufv->bufend
+		&& buf_outbufv->bufend < (unsigned) blen);
+    if ((int) buf_outbufv->bufend + slen + 2 < blen)
+      {				/* simple case, just copy at end */
+	strcpy (buf_outbufv->bufzn + buf_outbufv->bufend, str);
+	buf_outbufv->bufend += slen;
+	buf_outbufv->bufzn[buf_outbufv->bufend] = 0;
+      }
+    else
+      if ((int) buf_outbufv->bufstart > (int) 0
+	  && (int) buf_outbufv->bufend -
+	  (int) buf_outbufv->bufstart + (int) slen + 2 < (int) blen)
+	{				/* should move the buffer to fit */
+	  int siz = buf_outbufv->bufend - buf_outbufv->bufstart;
+	  gcc_assert (siz > 0);
+	  memmove (buf_outbufv->bufzn,
+		   buf_outbufv->bufzn + buf_outbufv->bufstart, siz);
+	  buf_outbufv->bufstart = 0;
+	  strcpy (buf_outbufv->bufzn + siz, str);
+	  buf_outbufv->bufend = siz + slen;
+	  buf_outbufv->bufzn[buf_outbufv->bufend] = 0;
 	}
       else
-	{
-	  /* we may come here if the strbuf was young but became old
-	     by the basilysgc_reserve call above */
-	strbuf_in_old_memory:
-	  gcc_assert (!basilys_is_young (buf_strbufv));
-	  newb = (char *) ggc_alloc_cleared (newblen + 1);
-	  memcpy (newb, buf_strbufv->bufzn + buf_strbufv->bufstart, siz);
-	  strcpy (newb + siz, str);
-	  memset (buf_strbufv->bufzn, 0, oldblen);
-	  ggc_free (buf_strbufv->bufzn);
-	  buf_strbufv->bufzn = newb;
+	{				/* should grow the buffer to fit */
+	  int siz = buf_outbufv->bufend - buf_outbufv->bufstart;
+	  int newsiz = (siz + slen + 50 + siz / 8) | 0x1f;
+	  int newix = 0, newblen = 0;
+	  char *newb = NULL;
+	  int oldblen = basilys_primtab[buf_outbufv->buflenix];
+	  for (newix = buf_outbufv->buflenix + 1;
+	       (newblen = basilys_primtab[newix]) != 0
+		 && newblen < newsiz; newix++);
+	  gcc_assert (newblen >= newsiz);
+	  gcc_assert (siz >= 0);
+	  if (newblen > BASILYS_MAXLEN)
+	    fatal_error ("strbuf overflow to %d bytes", newblen);
+	  /* the newly grown buffer is allocated in young memory if the
+	     previous was young, or in old memory if it was already old;
+	     but we have to deal with the rare case when the allocation
+	     triggers a GC which migrate the strbuf from young to old */
+	  if (basilys_is_young (buf_outbufv->bufzn))
+	    {
+	      /* bug to avoid: the strbuf was young, the allocation of
+		 newb triggers a GC, and then the strbuf becomes old. we
+		 cannot put newb inside it (this violate the GC invariant
+		 of no unfollowed -on store list- old to young
+		 pointers). So we reserve the required length to make sure
+		 that the following newb allocation does not trigger a
+		 GC */
+	      basilysgc_reserve (newblen + 10 * sizeof (void *));
+	      /* does the above reservation triggered a GC which moved buf_outbufv to old? */
+	      if (!basilys_is_young (buf_outbufv->bufzn))
+		goto strbuf_in_old_memory;
+	      gcc_assert (basilys_is_young (buf_outbufv));
+	      newb = (char *) basilys_allocatereserved (newblen + 1, 0);
+	      gcc_assert (basilys_is_young (buf_outbufv));
+	      memcpy (newb, buf_outbufv->bufzn + buf_outbufv->bufstart, siz);
+	      strcpy (newb + siz, str);
+	      memset (buf_outbufv->bufzn, 0, oldblen);
+	      buf_outbufv->bufzn = newb;
+	    }
+	  else
+	    {
+	      /* we may come here if the strbuf was young but became old
+		 by the basilysgc_reserve call above */
+	    strbuf_in_old_memory:
+	      gcc_assert (!basilys_is_young (buf_outbufv));
+	      newb = (char *) ggc_alloc_cleared (newblen + 1);
+	      memcpy (newb, buf_outbufv->bufzn + buf_outbufv->bufstart, siz);
+	      strcpy (newb + siz, str);
+	      memset (buf_outbufv->bufzn, 0, oldblen);
+	      ggc_free (buf_outbufv->bufzn);
+	      buf_outbufv->bufzn = newb;
+	    }
+	  buf_outbufv->buflenix = newix;
+	  buf_outbufv->bufstart = 0;
+	  buf_outbufv->bufend = siz + slen;
+	  buf_outbufv->bufzn[buf_outbufv->bufend] = 0;
+	  /* touch the buffer so that it will be scanned if not young */
+	  basilysgc_touch (outbufv);
 	}
-      buf_strbufv->buflenix = newix;
-      buf_strbufv->bufstart = 0;
-      buf_strbufv->bufend = siz + slen;
-      buf_strbufv->bufzn[buf_strbufv->bufend] = 0;
-      /* touch the buffer so that it will be scanned if not young */
-      basilysgc_touch (strbufv);
-    }
-end:
+    break;
+  default: 
+    goto end;
+  }
+ end:
   BASILYS_EXITFRAME ();
-#undef strbufv
-#undef buf_strbufv
+#undef outbufv
+#undef buf_outbufv
+#undef fil_outbufv
 }
 
 void
-basilysgc_add_strbuf (struct basilysstrbuf_st *strbuf_p, const char *str)
+basilysgc_add_out_raw (basilys_ptr_t out_p, const char *str)
+{
+  basilysgc_add_out_raw_len(out_p, str, -1);
+}
+
+void
+basilysgc_add_out (basilys_ptr_t out_p, const char *str)
 {
   char sbuf[80];
   char *cstr = NULL;
@@ -2054,18 +2148,18 @@ basilysgc_add_strbuf (struct basilysstrbuf_st *strbuf_p, const char *str)
     {
       memset (sbuf, 0, sizeof (sbuf));
       strcpy (sbuf, str);
-      basilysgc_add_strbuf_raw (strbuf_p, sbuf);
+      basilysgc_add_out_raw (out_p, sbuf);
     }
   else
     {
       cstr = xstrdup (str);
-      basilysgc_add_strbuf_raw (strbuf_p, cstr);
+      basilysgc_add_out_raw (out_p, cstr);
       free (cstr);
     }
 }
 
 void
-basilysgc_add_strbuf_cstr (struct basilysstrbuf_st *strbuf_p, const char *str)
+basilysgc_add_out_cstr (basilys_ptr_t outbuf_p, const char *str)
 {
   int slen = str ? strlen (str) : 0;
   const char *ps = NULL;
@@ -2107,14 +2201,13 @@ basilysgc_add_strbuf_cstr (struct basilysstrbuf_st *strbuf_p, const char *str)
 	    }
 	}
     };
-  basilysgc_add_strbuf_raw (strbuf_p, cstr);
+  basilysgc_add_out_raw (outbuf_p, cstr);
   free (cstr);
 }
 
 
 void
-basilysgc_add_strbuf_ccomment (struct basilysstrbuf_st
-			       *strbuf_p, const char *str)
+basilysgc_add_out_ccomment (basilys_ptr_t outbuf_p, const char *str)
 {
   int slen = str ? strlen (str) : 0;
   const char *ps = NULL;
@@ -2143,13 +2236,12 @@ basilysgc_add_strbuf_ccomment (struct basilysstrbuf_st
       else
 	*(pd++) = *ps;
     };
-  basilysgc_add_strbuf_raw (strbuf_p, cstr);
+  basilysgc_add_out_raw (outbuf_p, cstr);
   free (cstr);
 }
 
 void
-basilysgc_add_strbuf_cident (struct basilysstrbuf_st
-			     *strbuf_p, const char *str)
+basilysgc_add_out_cident (basilys_ptr_t outbuf_p, const char *str)
 {
   int slen = str ? strlen (str) : 0;
   char *dupstr = 0;
@@ -2176,14 +2268,13 @@ basilysgc_add_strbuf_cident (struct basilysstrbuf_st
 	  *pd = (char) 0;
 	pd[1] = (char) 0;
       }
-  basilysgc_add_strbuf_raw (strbuf_p, dupstr);
+  basilysgc_add_out_raw (outbuf_p, dupstr);
   if (dupstr && dupstr != tinybuf)
     free (dupstr);
 }
 
 void
-basilysgc_add_strbuf_cidentprefix (struct basilysstrbuf_st
-				   *strbuf_p, const char *str, int preflen)
+basilysgc_add_out_cidentprefix (basilys_ptr_t outbuf_p, const char *str, int preflen)
 {
   const char *ps = 0;
   char *pd = 0;
@@ -2196,6 +2287,7 @@ basilysgc_add_strbuf_cidentprefix (struct basilysstrbuf_st
     }
   else
     return;
+  /* we don't care to trim the C identifier in generated stuff */
   if (preflen >= (int) sizeof (tinybuf) - 1)
     preflen = sizeof (tinybuf) - 2;
   if (preflen <= 0)
@@ -2208,15 +2300,15 @@ basilysgc_add_strbuf_cidentprefix (struct basilysstrbuf_st
       else if (pd > tinybuf && pd[-1] != '_')
 	*(pd++) = '_';
     }
-  basilysgc_add_strbuf_raw (strbuf_p, tinybuf);
+  basilysgc_add_out_raw (outbuf_p, tinybuf);
 }
 
 
 void
-basilysgc_add_strbuf_hex (struct basilysstrbuf_st *strbuf_p, unsigned long l)
+basilysgc_add_out_hex (basilys_ptr_t outbuf_p, unsigned long l)
 {
   if (l == 0UL)
-    basilysgc_add_strbuf_raw (strbuf_p, "0");
+    basilysgc_add_out_raw (outbuf_p, "0");
   else
     {
       int ix = 0, j = 0;
@@ -2232,16 +2324,16 @@ basilysgc_add_strbuf_hex (struct basilysstrbuf_st *strbuf_p, unsigned long l)
       ix--;
       for (j = 0; j < (int) sizeof (thebuf) - 1 && ix >= 0; j++, ix--)
 	thebuf[j] = revbuf[ix];
-      basilysgc_add_strbuf_raw (strbuf_p, thebuf);
+      basilysgc_add_out_raw (outbuf_p, thebuf);
     }
 }
 
 
 void
-basilysgc_add_strbuf_dec (struct basilysstrbuf_st *strbuf_p, long l)
+basilysgc_add_out_dec (basilys_ptr_t outbuf_p, long l)
 {
-  if (l == 0UL)
-    basilysgc_add_strbuf_raw (strbuf_p, "0");
+  if (l == 0L)
+    basilysgc_add_out_raw (outbuf_p, "0");
   else
     {
       int ix = 0, j = 0, neg = 0;
@@ -2267,13 +2359,13 @@ basilysgc_add_strbuf_dec (struct basilysstrbuf_st *strbuf_p, long l)
 	};
       for (; j < (int) sizeof (thebuf) - 1 && ix >= 0; j++, ix--)
 	thebuf[j] = revbuf[ix];
-      basilysgc_add_strbuf_raw (strbuf_p, thebuf);
+      basilysgc_add_out_raw (outbuf_p, thebuf);
     }
 }
 
 
 void
-basilysgc_strbuf_printf (struct basilysstrbuf_st *strbuf_p,
+basilysgc_out_printf (basilys_ptr_t outbuf_p,
 			 const char *fmt, ...)
 {
   char *cstr = NULL;
@@ -2286,59 +2378,65 @@ basilysgc_strbuf_printf (struct basilysstrbuf_st *strbuf_p,
   va_end (ap);
   if (l < (int) sizeof (tinybuf) - 3)
     {
-      basilysgc_add_strbuf_raw (strbuf_p, tinybuf);
+      basilysgc_add_strbuf_raw (outbuf_p, tinybuf);
       return;
     }
   va_start (ap, fmt);
   vasprintf (&cstr, fmt, ap);
   va_end (ap);
-  basilysgc_add_strbuf_raw (strbuf_p, cstr);
+  basilysgc_add_out_raw (outbuf_p, cstr);
   free (cstr);
 }
 
 
-/* add safely into STRBUF either a space or an indented newline if the current line is bigger than the threshold */
+/* add safely into OUTBUF either a space or an indented newline if the current line is bigger than the threshold */
 void
-basilysgc_strbuf_add_indent (struct basilysstrbuf_st
-			     *strbuf_p, int depth, int linethresh)
+basilysgc_out_add_indent (basilys_ptr_t outbuf_p, int depth, int linethresh)
 {
   int llln = 0;			/* last line length */
   BASILYS_ENTERFRAME (2, NULL);
   /* we need a frame, because we have more than one call to
-     basilysgc_add_strbuf_raw */
-#define strbv   curfram__.varptr[0]
-#define strbufv ((struct basilysstrbuf_st*)(strbv))
-  strbv = strbuf_p;
-  if (!strbufv
-      || basilys_magic_discr ((basilys_ptr_t) (strbufv)) != OBMAG_STRBUF)
+     basilysgc_add_outbuf_raw */
+#define outbv   curfram__.varptr[0]
+#define outbufv ((struct basilysstrbuf_st*)(outbv))
+  outbv = outbuf_p;
+  if (!outbv)
     goto end;
   if (linethresh > 0 && linethresh < 40)
     linethresh = 40;
   /* compute the last line length llln */
-  {
-    char *bs = 0, *be = 0, *nl = 0;
-    bs = strbufv->bufzn + strbufv->bufstart;
-    be = strbufv->bufzn + strbufv->bufend;
-    for (nl = be - 1; nl > bs && *nl && *nl != '\n'; nl--);
-    llln = be - nl;
-    gcc_assert (llln >= 0);
+  if (basilys_magic_discr((basilys_ptr_t) outbv) == OBMAG_STRBUF) 
+    {
+      char *bs = 0, *be = 0, *nl = 0;
+      bs = outbufv->bufzn + outbufv->bufstart;
+      be = outbufv->bufzn + outbufv->bufend;
+      for (nl = be - 1; nl > bs && *nl && *nl != '\n'; nl--);
+      llln = be - nl;
+      gcc_assert (llln >= 0);
   }
+  else if (basilys_magic_discr((basilys_ptr_t) outbv) == OBMAG_SPEC_FILE) 
+    {
+      FILE *f = spec_outbufv->val.sp_file;
+      int fn = f?fileno(f):-1;
+      if (f && fn>=0 && fn<=MELTMAXFILE)
+	llln = ftell(f) - lasteol[fn];
+    }
   if (linethresh > 0 && llln < linethresh)
-    basilysgc_add_strbuf_raw (strbufv, " ");
+    basilysgc_add_out_raw ((basilys_ptr_t) outbv, " ");
   else
     {
       int nbsp = depth;
       static const char spaces32[] = "                                ";
-      basilysgc_add_strbuf_raw (strbufv, "\n");
+      basilysgc_add_out_raw ((basilys_ptr_t) outbv, "\n");
       if (nbsp < 0)
 	nbsp = 0;
       if (nbsp > 0 && nbsp % 32 != 0)
-	basilysgc_add_strbuf_raw (strbufv, spaces32 + (32 - nbsp % 32));
+	basilysgc_add_out_raw ((basilys_ptr_t) outbv, spaces32 + (32 - nbsp % 32));
     }
 end:
   BASILYS_EXITFRAME ();
-#undef strbufv
-#undef strbv
+#undef outbufv
+#undef outbv
 }
 
 
@@ -2447,6 +2545,48 @@ end:
 #undef object_discrv
 }
 
+/* make a subsequence of a given multiple OLDMUL_P from STARTIX to
+   ENDIX; if either index is negative, take it from last.  return null
+   if arguments are incorrect, or a fresh subsequence of same
+   discriminant as source otherwise */
+basilys_ptr_t
+basilysgc_new_subseq_multiple (basilys_ptr_t oldmul_p, int startix, int endix)
+{
+  int oldlen=0, newlen=0, i=0;
+  BASILYS_ENTERFRAME(3, NULL);
+#define oldmulv   curfram__.varptr[0]
+#define newmulv   curfram__.varptr[1]
+#define mult_oldmulv   ((struct basilysmultiple_st*)(oldmulv))
+#define mult_newmulv   ((struct basilysmultiple_st*)(newmulv))
+  oldmulv = oldmul_p;
+  newmulv = NULL;
+  if (basilys_magic_discr ((basilys_ptr_t) (oldmulv)) != OBMAG_MULTIPLE)
+    goto end;
+  oldlen = mult_oldmulv->nbval;
+  if (startix < 0)
+    startix += oldlen;
+  if (endix < 0)
+    endix += oldlen;
+  if (startix < 0 || startix >= oldlen)
+    goto end;
+  if (endix < 0 || endix >= oldlen || endix < startix)
+    goto end;
+  newlen = endix - startix;
+  newmulv =
+    basilysgc_allocate (sizeof (struct basilysmultiple_st),
+			sizeof (void *) * newlen);
+  mult_newmulv->discr = mult_oldmulv->discr;
+  mult_newmulv->nbval = newlen;
+  for (i=0; i<newlen; i++)
+    mult_newmulv->tabval[i] = mult_oldmulv->tabval[startix+i];
+ end:
+  BASILYS_EXITFRAME ();
+  return (basilys_ptr_t) newmulv;
+#undef oldmulv
+#undef newmulv
+#undef mult_oldmulv
+#undef mult_newmulv
+}
 
 void
 basilysgc_multiple_put_nth (basilys_ptr_t mul_p, int n, basilys_ptr_t val_p)
@@ -3889,7 +4029,7 @@ basilysgc_remove_mapstrings (struct basilysmapstrings_st *
       || oldat == HTAB_DELETED_ENTRY)
     goto end;
   if (!basilys_is_young (oldat))
-    ggc_free ((char *) oldat);
+    ggc_free (CONST_CAST(char *, oldat));
   map_mapstringv->entab[ix].e_at = (char *) HTAB_DELETED_ENTRY;
   valuv = map_mapstringv->entab[ix].e_va;
   map_mapstringv->entab[ix].e_va = NULL;
@@ -4324,9 +4464,8 @@ basilys_is_subclass_of (basilysobject_ptr_t subclass_p,
 
 
 basilys_ptr_t
-basilysgc_new_string (basilysobject_ptr_t discr_p, const char *str)
+basilysgc_new_string_raw_len (basilysobject_ptr_t discr_p, const char *str, int slen)
 {
-  int slen = 0;
   BASILYS_ENTERFRAME (2, NULL);
 #define discrv     curfram__.varptr[0]
 #define strv       curfram__.varptr[1]
@@ -4335,7 +4474,8 @@ basilysgc_new_string (basilysobject_ptr_t discr_p, const char *str)
   strv = 0;
   if (!str)
     goto end;
-  slen = strlen (str);
+  if (slen<0)
+    slen = strlen (str);
   discrv = discr_p;
   if (basilys_magic_discr ((basilys_ptr_t) discrv) != OBMAG_OBJECT)
     goto end;
@@ -4343,7 +4483,7 @@ basilysgc_new_string (basilysobject_ptr_t discr_p, const char *str)
     goto end;
   strv = basilysgc_allocate (sizeof (struct basilysstring_st), slen + 1);
   str_strv->discr = obj_discrv;
-  strcpy (str_strv->val, str);
+  memcpy (str_strv->val, str, slen);
 end:
   BASILYS_EXITFRAME ();
   return (basilys_ptr_t) strv;
@@ -4351,6 +4491,12 @@ end:
 #undef strv
 #undef obj_discrv
 #undef str_strv
+}
+
+basilys_ptr_t
+basilysgc_new_string (basilysobject_ptr_t discr_p, const char *str)
+{
+  return basilysgc_new_string_raw_len(discr_p, str, -1);
 }
 
 basilys_ptr_t
@@ -4447,6 +4593,56 @@ end:
 }
 
 
+basilys_ptr_t
+basilysgc_new_string_tempname_suffixed (basilysobject_ptr_t
+					discr_p, const char *namstr, const char *suffstr)
+{
+  int slen = 0;
+  char suffix[16];
+  const char *basestr = xstrdup(lbasename(namstr));
+  const char* tempnampath = 0;
+  char *dot = 0;
+  BASILYS_ENTERFRAME (2, NULL);
+#define discrv     curfram__.varptr[0]
+#define strv       curfram__.varptr[1]
+#define obj_discrv  ((struct basilysobject_st*)(discrv))
+#define str_strv  ((struct basilysstring_st*)(strv))
+  memset(suffix, 0, sizeof(suffix));
+  if (suffstr) strncpy(suffix, suffstr, sizeof(suffix)-1);
+  if (basestr)
+    dot = strrchr(basestr, '.');
+  if (dot)
+    *dot=0;
+  tempnampath = melt_tempdir_path (basestr, suffix);
+  dbgprintf ("new_string_tempbasename basestr='%s' tempnampath='%s'", basestr, tempnampath);
+  free(CONST_CAST(char*,basestr));
+  basestr = 0;
+  strv = 0;
+  if (!tempnampath)
+    goto end;
+  discrv = discr_p;
+  if (basilys_magic_discr ((basilys_ptr_t) discrv) != OBMAG_OBJECT)
+    goto end;
+  if (obj_discrv->object_magic != OBMAG_STRING)
+    goto end;
+  slen = strlen (tempnampath);
+  strv =
+    basilysgc_allocate (sizeof (struct basilysstring_st),
+			slen + 1);
+  str_strv->discr = obj_discrv;
+  strcpy (str_strv->val, tempnampath);
+end:
+  if (tempnampath)
+    free (CONST_CAST (char*,tempnampath));
+  BASILYS_EXITFRAME ();
+  return (basilys_ptr_t) strv;
+#undef discrv
+#undef strv
+#undef obj_discrv
+#undef str_strv
+}
+
+
 
 
 #if ENABLE_CHECKING
@@ -4463,12 +4659,7 @@ basilys_apply (basilysclosure_ptr_t clos_p,
 	       const char *xresdescr_, union basilysparam_un *xrestab_)
 {
   basilys_ptr_t res = NULL;
-  union
-  {
-    long funad[BASILYS_ROUTADDR_LEN];
-    basilysroutfun_t *pfun;
-  }
-  ufun;
+  basilysroutfun_t*routfun = 0;
 #if ENABLE_CHECKING
   applcount_basilys++;
   appldepth_basilys++;
@@ -4478,17 +4669,12 @@ basilys_apply (basilysclosure_ptr_t clos_p,
       fatal_error ("too deep (%d) basilys applications", appldepth_basilys);
     }
 #endif
-  memset (&ufun, 0, sizeof (ufun));
   if (basilys_magic_discr ((basilys_ptr_t) clos_p) != OBMAG_CLOSURE)
     goto end;
   if (basilys_magic_discr ((basilys_ptr_t) (clos_p->rout)) !=
-      OBMAG_ROUTINE || !clos_p->rout->routaddr)
+      OBMAG_ROUTINE || !(routfun = clos_p->rout->routfunad))
     goto end;
-  memcpy (&ufun.funad, clos_p->rout->routaddr,
-	  sizeof (clos_p->rout->routaddr));
-  gcc_assert (ufun.pfun);
-  res =
-    (*ufun.pfun) (clos_p, arg1_p, xargdescr_, xargtab_, xresdescr_, xrestab_);
+  res = (*routfun) (clos_p, arg1_p, xargdescr_, xargtab_, xresdescr_, xrestab_);
  end:
 #if ENABLE_CHECKING
   appldepth_basilys--;
@@ -4639,55 +4825,52 @@ end:
 }
 
 /* our temporary directory */
-static char *tempdir_basilys;
+/* maybe it should not be static, or have a bigger length */
+static char tempdir_basilys[1024];
 static bool made_tempdir_basilys;
 /* returns malloc-ed path inside a temporary directory, with a given basename  */
 char *
-basilys_tempdir_path (const char *basnam)
+melt_tempdir_path (const char *srcnam, const char* suffix)
 {
   int loopcnt = 0;
-  char *cdir = 0;
+  const char *basnam = 0;
   extern char *choose_tmpdir (void);	/* from libiberty/choose-temp.c */
+  basnam = lbasename (CONST_CAST (char*,srcnam));
+  debugeprintf ("melt_tempdir_path srcnam %s basnam %s suffix %s", srcnam, basnam, suffix);
   gcc_assert (basnam && (ISALNUM (basnam[0]) || basnam[0] == '_'));
-  if (basilys_tempdir_string && basilys_tempdir_string[0])
+  if (melt_tempdir_string && melt_tempdir_string[0])
     {
-      if (access (basilys_tempdir_string, F_OK))
+      if (access (melt_tempdir_string, F_OK))
 	{
-	  if (mkdir (basilys_tempdir_string, 0600))
+	  if (mkdir (melt_tempdir_string, 0700))
 	    fatal_error ("failed to mkdir basilys_tempdir %s - %m",
-			 basilys_tempdir_string);
+			 melt_tempdir_string);
 	  made_tempdir_basilys = true;
 	}
-      return concat (basilys_tempdir_string, "/", basnam, NULL);
+      return concat (melt_tempdir_string, "/", basnam, suffix, NULL);
     }
-  if (!tempdir_basilys)
+  if (!tempdir_basilys[0])
     {
-      char tbuf[80];
       /* usually this loop runs only once */
       for (loopcnt = 0; loopcnt < 1000; loopcnt++)
 	{
 	  int n = basilys_lrand () & 0xfffffff;
-	  memset (tbuf, 0, sizeof (tbuf));
-	  if (cdir)
-	    {
-	      free (cdir);
-	      cdir = NULL;
-	    };
-	  snprintf (tbuf, sizeof (tbuf) - 1, "Meltmpd%d-%d", (int) getpid (),
+	  memset(tempdir_basilys, 0, sizeof(tempdir_basilys));
+	  snprintf (tempdir_basilys, sizeof(tempdir_basilys)-1, 
+		     "%s/GccMeltmpd%d-%d", choose_tmpdir (), (int) getpid (),
 		    n);
-	  cdir = concat (choose_tmpdir (), "/", tbuf, NULL);
-	  if (!mkdir (cdir, 0600))
+	  if (!mkdir (tempdir_basilys, 0700))
 	    {
-	      tempdir_basilys = cdir;
 	      made_tempdir_basilys = true;
 	      break;
 	    }
+	  tempdir_basilys[0] = '\0';
 	}
-      if (!tempdir_basilys)
+      if (!tempdir_basilys[0])
 	fatal_error ("failed to create temporary directory for MELT in %s",
 		     choose_tmpdir ());
     };
-  return concat (tempdir_basilys, "/", basnam, NULL);
+  return concat (tempdir_basilys, "/", basnam, suffix, NULL);
 }
 
 
@@ -4725,26 +4908,31 @@ compile_to_dyl (const char *srcfile, const char *dlfile)
      source file path)
 
    */
-  char *ourmeltcompilescript = NULL;
+  const char *ourmeltcompilescript = NULL;
   struct pex_time ptime;
-  char *argv[4];
+  const char *argv[4];
+  char pwdbuf[500];
+  memset(pwdbuf, 0, sizeof(pwdbuf));
+  getcwd(pwdbuf, sizeof(pwdbuf)-1);
   memset (&ptime, 0, sizeof (ptime));
   /* compute the ourmeltcompilscript */
-  ourmeltcompilescript = (char *) basilys_compile_script_string;
+  debugeprintf ("compile_to_dyl melt_compile_script_string %s", melt_compile_script_string);
+  ourmeltcompilescript = CONST_CAST (char *, melt_compile_script_string);
   if (!ourmeltcompilescript || !ourmeltcompilescript[0])
     ourmeltcompilescript = melt_compile_script;
-  debugeprintf ("compile_to_dyl melt ourmeltcompilescript=%s",
-		ourmeltcompilescript);
+  debugeprintf ("compile_to_dyl melt ourmeltcompilescript=%s pwd %s",
+		ourmeltcompilescript, pwdbuf);
   debugeprintf ("compile_to_dyl srcfile %s dlfile %s", srcfile, dlfile);
   fflush (stdout);
   fflush (stderr);
   pex = pex_init (PEX_RECORD_TIMES, ourmeltcompilescript, NULL);
-  argv[0] = (char *) ourmeltcompilescript;
-  argv[1] = (char *) srcfile;
-  argv[2] = (char *) dlfile;
-  argv[3] = (char *) 0;
+  argv[0] = ourmeltcompilescript;
+  argv[1] = srcfile;
+  argv[2] = dlfile;
+  argv[3] = NULL;
   errmsg =
-    pex_run (pex, PEX_LAST | PEX_SEARCH, ourmeltcompilescript, (char **) argv,
+    pex_run (pex, PEX_LAST | PEX_SEARCH, ourmeltcompilescript, 
+	     CONST_CAST (char**, argv),
 	     NULL, NULL, &err);
   if (errmsg)
     fatal_error
@@ -4764,67 +4952,105 @@ compile_to_dyl (const char *srcfile, const char *dlfile)
 
 
 
+/* following code and comment is taken from the gcc/plugin.c file of
+   the plugins branch */
+
+/* We need a union to cast dlsym return value to a function pointer
+   as ISO C forbids assignment between function pointer and 'void *'.
+   Use explicit union instead of __extension__(<union_cast>) for
+   portability.  */
+#define PTR_UNION_TYPE(TOTYPE) union { void *_q; TOTYPE _nq; }
+#define PTR_UNION_AS_VOID_PTR(NAME) (NAME._q)
+#define PTR_UNION_AS_CAST_PTR(NAME) (NAME._nq)
+
+
 
 
 /* load a dynamic library using the filepath DYPATH; if MD5SRC is
    given, check that the basilys_md5 inside is indeed MD5SRC, fill the
    info of the modulinfo stack and return the positive index,
    otherwise return 0 */
-     static int
-       load_checked_dynamic_module_index (const char *dypath, char *md5src)
+static int
+load_checked_dynamic_module_index (const char *dypath, char *md5src)
 {
   int ix = 0;
   char *dynmd5 = NULL;
-  void *dlh = 0;
+  char *dynchecksum = NULL;
+  void *dlh = NULL;
   char *dyncomptimstamp = NULL;
   typedef basilys_ptr_t startroutine_t (basilys_ptr_t);
   typedef void markroutine_t (void *);
-  startroutine_t *startrout = 0;
-  markroutine_t *markrout = 0;
-  void **iniframeptr = 0;
+  PTR_UNION_TYPE(startroutine_t*) startrout_uf = {0};
+  PTR_UNION_TYPE(markroutine_t*) markrout_uf = {0};
+  PTR_UNION_TYPE(void **) iniframe_up = {0};
   int i = 0, c = 0;
   char hbuf[4];
-  dlh = (void *) lt_dlopenext (dypath);
-  debugeprintf ("dlh=%p dypath=%s", dlh, dypath);
-  if (!dlh)
-    return 0;
+  debugeprintf ("load_check_dynamic_module_index dypath=%s md5src=%s", dypath, md5src);
+  dlh = (void *) dlopen (dypath, RTLD_NOW);
+  debugeprintf ("load_check_dynamic_module_index dlh=%p dypath=%s", dlh, dypath);
+  if (!dlh) 
+    {
+      debugeprintf("load_check_dynamic_module_index dlerror %s", dlerror());
+      return 0;
+    };
   /* we always check that a basilys_md5 exists within the dynamically
      loaded stuff; otherwise it was not generated from MELT/basilys */
-  dynmd5 = (char *) lt_dlsym ((lt_dlhandle) dlh, "melt_md5");
+  dynmd5 = (char *) dlsym ((void *) dlh, "melt_md5");
   if (!dynmd5)
-    dynmd5 = (char *) lt_dlsym ((lt_dlhandle) dlh, "basilys_md5");
+    dynmd5 = (char *) dlsym ((void *) dlh, "basilys_md5");
   debugeprintf ("dynmd5=%s", dynmd5);
-  if (!dynmd5)
-    goto bad;
+  if (!dynmd5) 
+    {
+      warning (0, "missing md5 signature in MELT module %s", dypath);
+      goto bad;
+  }
   dyncomptimstamp =
-    (char *) lt_dlsym ((lt_dlhandle) dlh, "melt_compiled_timestamp");
+    (char *) dlsym ((void *) dlh, "melt_compiled_timestamp");
   if (!dyncomptimstamp)
     dyncomptimstamp =
-      (char *) lt_dlsym ((lt_dlhandle) dlh, "basilys_compiled_timestamp");
+      (char *) dlsym ((void *) dlh, "basilys_compiled_timestamp");
   debugeprintf ("dyncomptimstamp=%s", dyncomptimstamp);
-  if (!dyncomptimstamp)
-    goto bad;
-  startrout =
-    (startroutine_t *) lt_dlsym ((lt_dlhandle) dlh, "start_module_melt");
-  if (!startrout)
-    startrout =
-      (startroutine_t *) lt_dlsym ((lt_dlhandle) dlh, "start_module_basilys");
-  if (!startrout)
-    goto bad;
-  markrout =
-    (markroutine_t *) lt_dlsym ((lt_dlhandle) dlh, "mark_module_melt");
-  if (!markrout)
-    markrout =
-      (markroutine_t *) lt_dlsym ((lt_dlhandle) dlh, "mark_module_basilys");
-  if (!markrout)
-    goto bad;
-  iniframeptr = (void **) lt_dlsym ((lt_dlhandle) dlh, "initial_frame_melt");
-  if (!iniframeptr)
-    iniframeptr =
-      (void **) lt_dlsym ((lt_dlhandle) dlh, "initial_frame_basilys");
-  if (!iniframeptr)
-    goto bad;
-  if (md5src)
+  if (!dyncomptimstamp) 
+    {
+      warning (0, "missing timestamp in MELT module %s", dypath);
+      goto bad;
+    };
+  /* check the checksum of the generating compiler with current */
+  dynchecksum  =
+    (char *) dlsym ((void *) dlh, "genchecksum_melt");
+  if (dynchecksum && memcmp(dynchecksum, executable_checksum, 16))
+    warning(0, "loaded MELT plugin %s with a checksum mismatch!", dypath);
+  PTR_UNION_AS_VOID_PTR(startrout_uf) =
+    dlsym ((void *) dlh, "start_module_melt");
+  if (!PTR_UNION_AS_VOID_PTR(startrout_uf))
+    PTR_UNION_AS_VOID_PTR(startrout_uf) 
+      = dlsym ((void *) dlh, "start_module_basilys");
+  if (!PTR_UNION_AS_VOID_PTR(startrout_uf)) 
+    {
+      warning (0, "missing start_module routine in MELT module %s", dypath);
+      goto bad;
+    };
+  PTR_UNION_AS_VOID_PTR(markrout_uf) =
+    dlsym ((void *) dlh, "mark_module_melt");
+  if (!PTR_UNION_AS_VOID_PTR(markrout_uf))
+   PTR_UNION_AS_VOID_PTR(markrout_uf) =
+     dlsym ((void *) dlh, "mark_module_basilys");
+  if (!PTR_UNION_AS_VOID_PTR(markrout_uf))
+    {
+      warning (0, "missing mark_module routine in MELT module %s", dypath);
+      goto bad;
+    };
+  PTR_UNION_AS_VOID_PTR(iniframe_up) 
+    = dlsym ((void *) dlh, "initial_frame_melt");
+  if (!PTR_UNION_AS_VOID_PTR(iniframe_up) )
+    PTR_UNION_AS_VOID_PTR(iniframe_up) =
+      dlsym ((void *) dlh, "initial_frame_basilys");
+  if (!PTR_UNION_AS_VOID_PTR(iniframe_up))
+    {
+      warning (0, "missing initial_frame routine in MELT module %s", dypath);
+      goto bad;
+    }
+  if (md5src && dynmd5)
     {
       for (i = 0; i < 16; i++)
 	{
@@ -4835,18 +5061,24 @@ compile_to_dyl (const char *srcfile, const char *dlfile)
 	      hbuf[2] = (char) 0;
 	      c = (int) strtol (hbuf, (char **) 0, 16);
 	      if (c != (int) (md5src[i] & 0xff))
-		goto bad;
+		{
+		  warning (0, "md5 source mismatch in MELT module %s", dypath);
+		  goto bad;
+		}
 	    }
 	  else
-	    goto bad;
+	    {
+	      warning (0, "md5 source invalid in MELT module %s", dypath);
+	      goto bad;
+	    }
 	}
     }
   {
     basilys_module_info_t minf = { 0, 0, 0, 0 };
     minf.dlh = dlh;
-    minf.iniframp = iniframeptr;
-    minf.marker_rout = markrout;
-    minf.start_rout = startrout;
+    minf.iniframp = PTR_UNION_AS_CAST_PTR (iniframe_up);
+    minf.marker_rout = PTR_UNION_AS_CAST_PTR (markrout_uf);
+    minf.start_rout = PTR_UNION_AS_CAST_PTR (startrout_uf);
     ix = VEC_length (basilys_module_info_t, modinfvec);
     VEC_safe_push (basilys_module_info_t, heap, modinfvec, &minf);
   }
@@ -4856,8 +5088,8 @@ compile_to_dyl (const char *srcfile, const char *dlfile)
   return ix;
 bad:
   debugeprintf ("load_checked_dynamic_module_index failed dlerror:%s",
-		lt_dlerror ());
-  lt_dlclose ((lt_dlhandle) dlh);
+		dlerror ());
+  dlclose ((void *) dlh);
   return 0;
 }
 
@@ -4868,94 +5100,199 @@ basilys_dlsym_all (const char *nam)
   basilys_module_info_t *mi = 0;
   for (ix = 0; VEC_iterate (basilys_module_info_t, modinfvec, ix, mi); ix++)
     {
-      void *p = (void *) lt_dlsym ((lt_dlhandle) mi->dlh, nam);
+      void *p = (void *) dlsym ((void *) mi->dlh, nam);
       if (p)
 	return p;
     };
-  return (void *) lt_dlsym (proghandle, nam);
+  return (void *) dlsym (proghandle, nam);
 }
 
+
+
+/* lookup inside a colon-separated PATH for a file of given base and
+   suffix; return the malloc-ed full file path if found */
+static char*
+lookup_path(const char*path, const char* base, const char* suffix)
+{
+  const char* pc = NULL;
+  const char* col = NULL;
+  char* dir = NULL;
+  char* filnam = NULL;
+  size_t dirnamlen = 0;  
+  debugeprintf ("start lookup_path path=%s base=%s suffix=%s", path, base, suffix);
+  if (!path || !base) 
+    return NULL;
+  pc = path;
+  do {
+    col = strchr(pc, ':');
+    if (!col) 
+      col = pc + strlen(pc);
+    dirnamlen = col - pc;
+    dir = xstrndup(pc, dirnamlen);
+    if (dir && *dir)
+      {
+	filnam = concat(dir, "/", base, suffix, NULL);
+	free (dir);
+	dir = NULL;
+      }
+    else 
+      filnam = concat("./", base, suffix, NULL);
+    if (!access (filnam, R_OK))
+      {
+	debugeprintf("lookup_path found filnam %s", filnam);
+	return filnam;
+      }
+    free (filnam);
+    filnam = NULL;
+    if (*col == ':') 
+      pc=col+1;
+    else
+      break;
+  } while (pc && *pc);
+  debugeprintf("lookup_path not found base %s suffix %s", base, suffix);
+  return NULL;
+}
 
 /* compile (as a dynamically loadable module) some (usually generated)
    C code (or a dynamically loaded stuff) and dynamically load it; the
    C code should contain a function named start_module_basilys; that
-   function is called with the given modata and returns the module */
+   function is called with the given modata and returns the module;
+   the modulnam should contain only letter, digits or one of +-_ */
 basilys_ptr_t
-basilysgc_compile_dyn (basilys_ptr_t modata_p, const char *modfile)
+basilysgc_load_melt_module (basilys_ptr_t modata_p, const char *modulnam)
 {
   char *srcpath = NULL;
+  char *dynpath = NULL;
   FILE *srcfi = NULL;
-  int modfilelen = 0;
-  int isasrc = 0;
   int dlix = 0;
+  int specialsuffix = 0; /* set for .d or .n suffix */
   int srcpathlen = 0;
   char md5srctab[16];
   char *md5src = NULL;
-  char *plainstuffpath = NULL;
   char *tmpath = NULL;
+  char *dupmodulnam = NULL;
+  char *envpath = NULL;
   basilys_module_info_t *moduptr = 0;
   basilys_ptr_t (*startroutp) (basilys_ptr_t);	/* start routine */
+  int modulnamlen = 0;
   BASILYS_ENTERFRAME (3, NULL);
 #define modulv curfram__.varptr[0]
 #define mdatav curfram__.varptr[1]
   mdatav = modata_p;
-  modfilelen = strlen (modfile);
-  /* is the module file is a *.c file - otherwise it is supposed to be
-     a dynamically loadable stuff ie *.so shared object or *.la
-     libtool or *.sl or *.dylib etc..  */
-  isasrc = modfilelen > 2 && modfile[modfilelen - 2] == '.'
-    && modfile[modfilelen - 1] == 'c';
-  debugeprintf ("basilysgc_compile modfile=%s - %s", modfile,
-		isasrc ? "C source" : "dynloadable");
-  if (isasrc)
+  if (!modulnam || !modulnam[0]) {
+    error ("cannot load MELT module, no MELT module name given");
+    goto end;
+  }
+  if (!ISALNUM(modulnam[0]) && modulnam[0] != '_')
+    error ("bad MELT module name %s to load", modulnam);
+  /* always check the module name */
+  {
+    const char* p = 0;
+    for (p=modulnam; *p; p++)
+      {
+	/* special hack for names like warmelt-first-0.d or
+	   warmelt-foo-1.n */
+	if (p[0] == '.' && ISALNUM(p[1]) && !p[2])
+	  {
+	    specialsuffix = 1;
+	    break;
+	  };
+	if (!ISALNUM(*p) && *p != '+' && *p != '-' && *p != '_')
+	  {
+	    error ("invalid MELT module name %s to load", modulnam);
+	    goto end;
+	  }
+      }
+  }
+  /* duplicate the module name for safety, i.e. because it was in MELT
+     heap or whatever ... */
+  dupmodulnam = xstrdup(modulnam);
+  if (specialsuffix) {
+    modulnamlen = strlen(modulnam);
+    gcc_assert (modulnamlen>2);
+    gcc_assert (dupmodulnam[modulnamlen-2] == '.');
+    dupmodulnam[modulnamlen-2] = '\0';
+  }
+  /***** first find the source path if possible ******/
+  /* look first in the temporary directory */
+  tmpath = melt_tempdir_path (dupmodulnam, ".c");
+  debugeprintf ("basilysgc_load_melt_module trying in tempdir %s", tmpath);
+  if (tmpath && !access (tmpath, R_OK))
     {
-      /* absolute paths are taken as such */
-      if (IS_ABSOLUTE_PATH (modfile))
-	{
-	  srcpath = xstrdup (modfile);
-	  goto foundsrcpath;
-	}
-      /* relative path to some existing file are taken as such */
-      else if (!access (modfile, R_OK))
-	{
-	  srcpath = xstrdup (modfile);
-	  goto foundsrcpath;
-	}
-      /* check for module file in our tempdir */
-      tmpath = basilys_tempdir_path (modfile);
-      if (!access (tmpath, R_OK))
-	{
-	  srcpath = tmpath;
-	  goto foundsrcpath;
-	}
-      free (tmpath);
-      tmpath = NULL;
-      if (basilys_gensrcdir_string && basilys_gensrcdir_string[0])
-	{
-	  /* check for modfile in the gensrcdir */
-	  tmpath = concat (basilys_gensrcdir_string, "/", modfile, NULL);
-	  if (!access (tmpath, R_OK))
-	    {
-	      srcpath = tmpath;
-	      goto foundsrcpath;
-	    }
-	  free (tmpath);
-	  tmpath = NULL;
-	}
-      /* check for modfile in melt_source_dir */
-      tmpath = concat (melt_source_dir, "/", modfile, NULL);
-      if (!access (tmpath, R_OK))
-	{
-	  srcpath = tmpath;
-	  goto foundsrcpath;
-	}
-      free (tmpath);
-      tmpath = NULL;
-    foundsrcpath:
-      srcpathlen = srcpath ? strlen (srcpath) : 0;
-      plainstuffpath = NULL;
+      debugeprintf ("basilysgc_load_melt_module found source in tempdir %s", tmpath);
+      srcpath = tmpath;
+      goto foundsrcpath;
+    }
+  free(tmpath);
+  tmpath = NULL;
+  /* look in the source path if given */
+  if (melt_srcpath_string && melt_srcpath_string[0]) {
+    debugeprintf("basilysgc_load_melt_module trying in MELT srcpath %s", melt_srcpath_string);
+    tmpath = lookup_path (melt_srcpath_string, dupmodulnam, ".c");
+    debugeprintf("basilysgc_load_melt_module got in MELT srcpath %s", tmpath);
+    if (tmpath) {
+      srcpath = tmpath;
+      goto foundsrcpath;
+    }
+  }
+  else 
+    envpath = getenv("GCCMELT_SOURCE_PATH");
+  /* look into the GCCMELT_SOURCE_PATH environment variable if no
+     source path was given */
+  if (envpath && *envpath) 
+    {
+      debugeprintf("basilysgc_load_melt_module trying in GCCMELT_SOURCE_PATH %s",
+		   envpath);
+      tmpath = lookup_path (envpath, dupmodulnam, ".c");
+      debugeprintf("basilysgc_load_melt_module got in  GCCMELT_SOURCE_PATH %s", tmpath);
+      if (tmpath) {
+	srcpath = tmpath;
+	goto foundsrcpath;
+      }
+    }
+  /* perhaps use make_relative_prefix  for the melt source directory ... */
+  /* look into the melt source dir */
+  tmpath = concat (melt_source_dir, "/", dupmodulnam, ".c", NULL);
+  debugeprintf ("basilysgc_load_melt_module trying in meltsrcdir %s", tmpath);
+  if (tmpath && !access (tmpath, R_OK))
+    {
+      debugeprintf ("basilysgc_load_melt_module found source in meltsrcdir %s", tmpath);
+      srcpath = tmpath;
+      goto foundsrcpath;
+    }
+  free (tmpath);
+  tmpath = NULL;
+  /* we didn't found the source */
+  debugeprintf ("basilysgc_load_melt_module cannot find source for mudule %s", dupmodulnam);
+  warning (0, "Didn't find MELT module %s 's C source code; perhaps need -fmelt-srcpath=...", dupmodulnam);
+  inform (UNKNOWN_LOCATION, "MELT temporary source path tried %s for C source code", 
+	  melt_tempdir_path (dupmodulnam, ".c"));
+  {
+    /* explain only once the path we searched the C source code in */
+    static int nbexplain;
+    if (nbexplain <= 0) 
+      {
+	if (melt_srcpath_string && melt_srcpath_string[0])
+	  inform (UNKNOWN_LOCATION, "MELT given source path is %s",
+		  melt_srcpath_string);
+	if (envpath && envpath[0])
+	  inform (UNKNOWN_LOCATION, "MELT environment GCCMELT_SOURCE_PATH is %s", 
+		  envpath);
+	inform (UNKNOWN_LOCATION, "MELT builtin source directory is %s", 
+		melt_source_dir);
+      };
+    nbexplain++;
+  }
+  if (srcpath) 
+    {
+    foundsrcpath:  /* we found the source file */
+      srcpathlen = strlen (srcpath);
+      debugeprintf ("basilysgc_load_melt_module found srcpathlen %d srcpath %s", srcpathlen, srcpath);
+      /* compute the md5 hash of the source code */
       srcfi = fopen (srcpath, "r");
       if (!srcfi)
+	/* this really should not happen, we checked with access before
+	   that the source file existed! */
 	fatal_error ("cannot open generated source file %s for MELT : %m",
 		     srcpath);
       memset (md5srctab, 0, sizeof (md5srctab));
@@ -4966,118 +5303,122 @@ basilysgc_compile_dyn (basilys_ptr_t modata_p, const char *modfile)
       md5src = md5srctab;
       fclose (srcfi);
       srcfi = NULL;
-      gcc_assert (modfilelen > 2 && modfile[modfilelen - 2] == '.'
-		  && modfile[modfilelen - 1] == 'c');
-      plainstuffpath = xstrdup (modfile);
-      plainstuffpath[modfilelen - 2] = (char) 0;
     }
-  else
-    {				/* modfile is not a generated C srcfile */
-      plainstuffpath = xstrdup (modfile);
+  /* if it had a special suffix, restore it */
+  if (specialsuffix)
+    {
+      gcc_assert (modulnamlen>2);
+      dupmodulnam[modulnamlen-2] = '.';
+      debugeprintf ("basilysgc_load_melt_module restored dupmodulnam %s", 
+		    dupmodulnam);
     }
   /**
-     we have to scan several dynlib directories to find the module;
+     We have to scan several dynlib directories to find the module;
      when we find a module, we dynamically load it to check that it
-     has the right md5 sum (i.e. that its basilys_md5 is correct); if
-     no dynlib is found, we have to compile the generated C source.
+     has the right md5 sum (i.e. that its melt_md5 is correct); if no
+     dynlib is found, we have to compile the generated C source.  We
+     should really scan the module path incrementally, i.e. testing
+     the foo.so file in every element of the path. We don't do that yet.
   **/
-  /* check the plain stuff path directly */
-  BASILYS_LOCATION_HERE
-    ("basilysgc_compile_dyn before load_checked_dylib plain");
-  dlix = load_checked_dynamic_module_index (plainstuffpath, md5src);
-  debugeprintf ("dlix=%d plainstuffpath=%s", dlix, plainstuffpath);
-  if (dlix > 0)
-    goto dylibfound;
-  /* absolute paths should be found */
-  if (IS_ABSOLUTE_PATH (plainstuffpath))
-    fatal_error ("failed to load melt dynlib %s (%s)", plainstuffpath,
-		 lt_dlerror ());
   /* if a dynlib directory is given, check it */
-  if (basilys_dynlibdir_string && basilys_dynlibdir_string[0])
+  if (melt_dynmodpath_string && melt_dynmodpath_string[0])
     {
-      tmpath = concat (basilys_dynlibdir_string, "/", plainstuffpath, NULL);
+      tmpath = lookup_path (melt_dynmodpath_string, dupmodulnam, ".so");
       BASILYS_LOCATION_HERE
-	("basilysgc_compile_dyn before load_checked_dylib pathed");
+	("basilysgc_load_melt_module before load_checked_dylib pathed");
       dlix = load_checked_dynamic_module_index (tmpath, md5src);
-      debugeprintf ("basilysgc_compile_dyn dlix=%d dynlib tmpath=%s", dlix,
+      debugeprintf ("basilysgc_load_melt_module dlix=%d dynlib tmpath=%s", dlix,
 		    tmpath);
       if (dlix > 0)
 	{
-	  free (plainstuffpath);
-	  plainstuffpath = tmpath;
+	  dynpath = tmpath;
 	  goto dylibfound;
 	};
       free (tmpath);
+      tmpath = NULL;
     }
-  /* check in the builtin melt dynamic lib directory */
-  tmpath = concat (melt_dynlib_dir, "/", plainstuffpath, NULL);
+  /* check in the builtin melt module directory */
+  tmpath = concat (melt_module_dir, "/", dupmodulnam, NULL);
   BASILYS_LOCATION_HERE
-    ("basilysgc_compile_dyn before load_checked_dylib builtin");
+    ("basilysgc_load_melt_module before load_checked_dylib builtin");
   dlix = load_checked_dynamic_module_index (tmpath, md5src);
-  debugeprintf ("basilysgc_compile_dyn dlix=%d meltdynlib tmpath=%s", dlix,
+  debugeprintf ("basilysgc_load_melt_module dlix=%d meltdynlib tmpath=%s", dlix,
 		tmpath);
   if (dlix > 0)
     {
-      free (plainstuffpath);
-      plainstuffpath = tmpath;
+      dynpath = tmpath;
       goto dylibfound;
     };
   free (tmpath);
+  tmpath = NULL;
   /* check in the temporary directory */
-  tmpath = basilys_tempdir_path (plainstuffpath);
+  tmpath = melt_tempdir_path (dupmodulnam, ".so");
+  debugeprintf ("basilysgc_load_melt_module trying %s", tmpath);
   BASILYS_LOCATION_HERE
-    ("basilysgc_compile_dyn before load_checked_dylib tmpath");
+    ("basilysgc_load_melt_module before load_checked_dylib tmpath");
   dlix = tmpath ? load_checked_dynamic_module_index (tmpath, md5src) : 0;
-  debugeprintf ("basilysgc_compile_dyn dlix=%d tempdir tmpath=%s", dlix,
+  debugeprintf ("basilysgc_load_melt_module dlix=%d tempdir tmpath=%s", dlix,
 		tmpath);
   if (dlix > 0)
     {
-      free (plainstuffpath);
-      plainstuffpath = tmpath;
+      dynpath = tmpath;
       goto dylibfound;
     };
   free (tmpath);
+  tmpath = NULL;
+  debugeprintf ("basilysgc_load_melt_module md5src %p", (void*)md5src);
   /* if we really have the source, we can afford to check in the current directory */
   if (md5src)
     {
-      tmpath = concat ("./", plainstuffpath, NULL);
+      tmpath = concat ("./", dupmodulnam, ".so", NULL);
+      debugeprintf ("basilysgc_load_melt_module tmpath %s", tmpath);
       BASILYS_LOCATION_HERE
-	("basilysgc_compile_dyn before load_checked_dylib src");
+	("basilysgc_load_melt_module before load_checked_dylib src");
       dlix = load_checked_dynamic_module_index (tmpath, md5src);
-      debugeprintf ("basilysgc_compile_dyn dlix=%d curdir tmpath=%s", dlix,
+      debugeprintf ("basilysgc_load_melt_module dlix=%d curdir tmpath=%s", dlix,
 		    tmpath);
       if (dlix > 0)
 	{
-	  free (plainstuffpath);
-	  plainstuffpath = tmpath;
+	  dynpath = tmpath;
 	  goto dylibfound;
 	};
       free (tmpath);
     }
+  debugeprintf ("basilysgc_load_melt_module srcpath %s dynpath %s", srcpath, dynpath);
   /* if we have the srcpath but did'nt found the stuff, try to compile it using the temporary directory */
-  if (srcpath && !strchr (plainstuffpath, '/'))
+  if (srcpath)
     {
-      tmpath = basilys_tempdir_path (plainstuffpath);
+      tmpath = melt_tempdir_path (dupmodulnam, NULL);
+      debugeprintf ("basilysgc_load_melt_module before compiling tmpath %s", tmpath);
       compile_to_dyl (srcpath, tmpath);
       debugeprintf ("basilysgc_compile srcpath=%s compiled to tmpath=%s",
 		    srcpath, tmpath);
       BASILYS_LOCATION_HERE
-	("basilysgc_compile_dyn before load_checked_dylib compiled tmpath");
-      debugeprintf ("basilysgc_compile_dyn dlix=%d tempdirpath tmpath=%s",
-		    dlix, tmpath);
+	("basilysgc_load_melt_module before load_checked_dylib compiled tmpath");
       dlix = load_checked_dynamic_module_index (tmpath, md5src);
+      debugeprintf ("basilysgc_load_melt_module dlix=%d tempdirpath tmpath=%s",
+		    dlix, tmpath);
       if (dlix > 0)
 	{
-	  free (plainstuffpath);
-	  plainstuffpath = tmpath;
+	  dynpath = tmpath;
 	  goto dylibfound;
 	};
     }
   debugeprintf ("failed here dlix=%d", dlix);
   /* catch all situation, failed to find the dynamic stuff */
-  fatal_error ("failed to find dynamic stuff for basilys generated %s (%s)",
-	       modfile, lt_dlerror ());
-dylibfound:
+  /* give info to user */
+  error("failed to find dynamic stuff for MELT module %s (%s)",
+	dupmodulnam, dlerror ());
+  inform (UNKNOWN_LOCATION, 
+	  "not found dynamic stuff using tempdir %s", 
+	  melt_tempdir_path (dupmodulnam, NULL));
+  if (srcpath)
+    inform (UNKNOWN_LOCATION, 
+	    "not found dynamic stuff using srcpath %s", 
+	    srcpath);
+  fatal_error ("unable to continue since failed to load MELT module %s", 
+	       dupmodulnam);
+ dylibfound:
   debugeprintf ("dylibfound dlix=%d", dlix);
   gcc_assert (dlix > 0
 	      && dlix < (int) VEC_length (basilys_module_info_t, modinfvec));
@@ -5085,28 +5426,71 @@ dylibfound:
   debugeprintf ("dylibfound moduptr=%p", (void *) moduptr);
   gcc_assert (moduptr != 0);
   startroutp = moduptr->start_rout;
-  debugeprintf
-    ("basilysgc_compile before calling startrout @%p", (void *) startroutp);
   gcc_assert (moduptr->iniframp != 0 && *moduptr->iniframp == (void *) 0);
 #if ENABLE_CHECKING
   {
     static char locbuf[80];
     memset (locbuf, 0, sizeof (locbuf));
     snprintf (locbuf, sizeof (locbuf) - 1,
-	      "%s:%d:basilysgc_compile_dyn before calling module %s",
-	      basename (__FILE__), __LINE__, modfile);
+	      "%s:%d:basilysgc_load_melt_module before calling module %s",
+	      basename (__FILE__), __LINE__, dupmodulnam);
     curfram__.flocs = locbuf;
   }
 #endif
   modulv = (*startroutp) ((basilys_ptr_t) mdatav);
   gcc_assert (moduptr->iniframp != 0 && *moduptr->iniframp == (void *) 0);
-  BASILYS_LOCATION_HERE ("basilysgc_compile_dyn after calling module");
-  debugeprintf ("basilysgc_compile_dyn returns modulv %p", (void *) modulv);
-  /* we never free  plainstuffpath and we never release the shared library! */
+  BASILYS_LOCATION_HERE ("basilysgc_load_melt_module after calling module");
+ end:
+  debugeprintf ("basilysgc_load_melt_module returns modulv %p", (void *) modulv);
+  /* we never free dynpath -since it is stored in moduptr- and we
+     never release the shared library with a dlclose or something! */
   BASILYS_EXITFRAME ();
+  free(dupmodulnam);
   return (basilys_ptr_t) modulv;
 #undef mdatav
 #undef modulv
+}
+
+
+/* generate a loadable module from a MELT generated C source file; the
+   out is the dynloaded module without any *.so suffix */
+void
+basilysgc_generate_melt_module (basilys_ptr_t src_p, basilys_ptr_t out_p)
+{
+  char*srcdup = NULL;
+  char* outdup = NULL;
+  char* outso = NULL;
+  BASILYS_ENTERFRAME (2, NULL);
+#define srcv   curfram__.varptr[0]
+#define outv      curfram__.varptr[1]
+  srcv = src_p;
+  outv = out_p;
+  if (basilys_magic_discr((basilys_ptr_t) srcv) != OBMAG_STRING 
+      || basilys_magic_discr((basilys_ptr_t) outv) != OBMAG_STRING)
+    goto end;
+  srcdup = xstrdup(basilys_string_str((basilys_ptr_t) srcv));
+  outdup = xstrdup(basilys_string_str((basilys_ptr_t) outv));
+  outso = concat(outdup, ".so", NULL);
+  (void) remove (outso);
+  debugeprintf("basilysgc_generate_melt_module start srcdup %s outdup %s",
+	       srcdup, outdup);
+  if (access(srcdup, R_OK)) 
+    {
+      error("no MELT generated source file %s", srcdup);
+      goto end;
+    }
+  compile_to_dyl (srcdup, outdup);
+  debugeprintf ("basilysgc_generate_module did srcdup %s outdup %s",
+	       srcdup, outdup);
+  if (!access(outso, R_OK))
+    inform (UNKNOWN_LOCATION, "MELT generated module %s", outso);
+ end:
+  free (srcdup);
+  free (outdup);
+  free (outso);
+  BASILYS_EXITFRAME ();
+#undef srcv
+#undef outv
 }
 
 
@@ -5116,6 +5500,7 @@ basilys_ptr_t
 basilysgc_load_modulelist (basilys_ptr_t modata_p, const char *modlistbase)
 {
   char *modlistpath = 0;
+  char* envpath = 0;
   FILE *filmod = 0;
   /* @@@ ugly, we should have a getline function */
   char linbuf[1024];
@@ -5123,44 +5508,63 @@ basilysgc_load_modulelist (basilys_ptr_t modata_p, const char *modlistbase)
   memset (linbuf, 0, sizeof (linbuf));
 #define mdatav curfram__.varptr[0]
   mdatav = modata_p;
+  debugeprintf ("basilysgc_load_modulelist start modlistbase %s", modlistbase);
   /* first check directly for the file */
   modlistpath = concat (modlistbase, MODLIS_SUFFIX, NULL);
   if (IS_ABSOLUTE_PATH (modlistpath) || !access (modlistpath, R_OK))
     goto loadit;
   free (modlistpath);
   modlistpath = 0;
-  /* check for module list in melt_source_dir */
+  /* check for module list in given melt source path */
+  if (melt_srcpath_string && melt_srcpath_string[0]) 
+    {
+      modlistpath = lookup_path(melt_srcpath_string, modlistbase, MODLIS_SUFFIX);
+      if (modlistpath)
+	goto loadit;
+    }
+  else
+    envpath = getenv("GCCMELT_SOURCE_PATH");
+  /* check for module list in $GCCMELT_SOURCE_PATH */
+  if (envpath && envpath[0]) 
+    {
+      modlistpath = lookup_path(envpath, modlistbase, MODLIS_SUFFIX);
+      if (modlistpath)
+	goto loadit;
+    }
+  envpath = NULL;
+  /* check for module list in builtin melt_source_dir */
   modlistpath = concat (melt_source_dir,
 			"/", modlistbase, MODLIS_SUFFIX, NULL);
   if (!access (modlistpath, R_OK))
     goto loadit;
   free (modlistpath);
   modlistpath = 0;
-  /* check for module list in dynamic library dir */
-  if (basilys_dynlibdir_string && basilys_dynlibdir_string[0])
+  /* check for module list in module path */
+  if (melt_dynmodpath_string && melt_dynmodpath_string[0])
     {
-      modlistpath = concat (basilys_dynlibdir_string,
-			    "/", modlistbase, MODLIS_SUFFIX, NULL);
-      if (!access (modlistpath, R_OK))
+      modlistpath = lookup_path (melt_dynmodpath_string, modlistbase, MODLIS_SUFFIX);
+      if (modlistpath)
 	goto loadit;
     }
-  free (modlistpath);
-  modlistpath = 0;
-  /* check for module list in gensrcdir */
-  if (basilys_gensrcdir_string && basilys_gensrcdir_string[0])
+  else
+    envpath = getenv("GCCMELT_MODULE_PATH");
+  /* check for module list in $GCCMELT_MODULE_PATH */
+  if (envpath && envpath[0]) 
     {
-      /* check for modfile in the gensrcdir */
-      modlistpath =
-	concat (basilys_gensrcdir_string, "/", modlistbase, MODLIS_SUFFIX,
-		NULL);
-      if (!access (modlistpath, R_OK))
+      modlistpath = lookup_path(envpath, modlistbase, MODLIS_SUFFIX);
+      if (modlistpath)
 	goto loadit;
     }
+  envpath = NULL;
+  /* check for module list in melt_module_dir */
+  modlistpath = concat (melt_module_dir,
+			"/", modlistbase, MODLIS_SUFFIX, NULL);
+  if (!access (modlistpath, R_OK))
+    goto loadit;
   free (modlistpath);
   modlistpath = 0;
   /* check in the temporary directory */
-  modlistpath = basilys_tempdir_path (modlistbase);
-  modlistpath = reconcat (modlistpath, MODLIS_SUFFIX, NULL);
+  modlistpath = melt_tempdir_path (modlistbase, MODLIS_SUFFIX);
   if (!access (modlistpath, R_OK))
     goto loadit;
   free (modlistpath);
@@ -5170,6 +5574,7 @@ basilysgc_load_modulelist (basilys_ptr_t modata_p, const char *modlistbase)
   if (!modlistpath)
     goto end;
 loadit:
+  debugeprintf ("basilysgc_load_modulelist loadit modlistpath %s", modlistpath);
   filmod = fopen (modlistpath, "r");
   dbgprintf ("reading module list '%s'", modlistpath);
   if (!filmod)
@@ -5198,7 +5603,7 @@ loadit:
       if (*pc == '#' || *pc == (char) 0)
 	continue;
       dbgprintf ("in module list %s loading module '%s'", modlistbase, pc);
-      mdatav = basilysgc_compile_dyn ((basilys_ptr_t) mdatav, pc);
+      mdatav = basilysgc_load_melt_module ((basilys_ptr_t) mdatav, pc);
     }
 end:
   BASILYS_EXITFRAME ();
@@ -5310,6 +5715,8 @@ readagain:
       rd->rsrcloc =
 	linemap_line_start (line_table, rd->rlineno, strlen (linbuf) + 1);
       rd->rcol = 0;
+      if (comh == COMMENT_NO) 
+	return rdcurc();
       goto readagain;
     }
   else if (c == ';' && comh == COMMENT_SKIP)
@@ -5430,6 +5837,7 @@ readsimplelong (struct reading_st *rd)
       NUMNAM (OBMAG_SPECPPL_CONSTRAINT_SYSTEM);
       NUMNAM (OBMAG_SPECPPL_GENERATOR);
       NUMNAM (OBMAG_SPECPPL_GENERATOR_SYSTEM);
+      NUMNAM (OBMAG_SPECPPL_POLYHEDRON);
       /** the fields' ranks of basilys.h have been removed in rev126278 */
 #undef NUMNAM
       if (r < 0)
@@ -5972,6 +6380,158 @@ readstring (struct reading_st *rd)
 #undef str_strv
 }
 
+/**
+   macrostring so #{if ($A>0) printf("%s", $B);}# is parsed as would
+   be parsed the s-expr ("if (" A ">0) printf(\"%s\", " B ");")
+
+   read a macrostring sequence starting with #{ and ending with }#
+   perhaps spanning several lines in the source no escape characters
+   are handled (in particular no backslash escapes) except the dollar
+   sign $ and then ending }# 
+
+   A $ followed by alphabetical caracters (or as in C by underscores
+   or digits, provided the first is not a digit) is handled as a
+   symbol. If it is immediately followed by an hash # the # is
+   skipped
+
+**/
+static basilys_ptr_t
+readmacrostringsequence (struct reading_st *rd) 
+{
+#if ENABLE_CHECKING
+  static long _herecallcount;
+  long callcount = ++_herecallcount;
+#endif
+  int lineno = rd->rlineno;
+  location_t loc = 0;
+  BASILYS_ENTERFRAME (6, NULL);
+#define readv    curfram__.varptr[0]
+#define strv     curfram__.varptr[1]
+#define symbv    curfram__.varptr[2]
+#define seqv     curfram__.varptr[3]
+#define sbufv    curfram__.varptr[4]
+  LINEMAP_POSITION_FOR_COLUMN (loc, line_table, rd->rcol);
+  seqv = basilysgc_new_list (BASILYSGOB (DISCR_LIST));
+  sbufv = basilysgc_new_strbuf(BASILYSGOB(DISCR_STRBUF), (char*)0);
+  for(;;) {
+    if (!rdcurc()) {
+      /* reached end of line */
+      skipspace_getc(rd, COMMENT_NO);
+      continue;
+    }
+    if (rdeof()) 
+      READ_ERROR("reached end of file in macrostring sequence started line %d", lineno);
+    debugeprintf ("macrostring startloop rdcur:%s", &rdcurc());
+    debugeprintf ("macrostring startloop sbuf@%pL%d:%s", sbufv, 
+		 basilys_strbuf_usedlength((basilys_ptr_t)sbufv),
+		 basilys_strbuf_str((basilys_ptr_t) sbufv));
+    if (rdcurc()=='}' && rdfollowc(1)=='#') {
+      rdnext(); 
+      rdnext();
+      if (sbufv && basilys_strbuf_usedlength((basilys_ptr_t)sbufv)>0) {
+	strv = basilysgc_new_stringdup (BASILYSGOB(DISCR_STRING),
+					basilys_strbuf_str((basilys_ptr_t) sbufv));
+	debugeprintf ("macrostring end appending str:%s", basilys_string_str((basilys_ptr_t)strv));
+	basilysgc_append_list((basilys_ptr_t) seqv, (basilys_ptr_t) strv);
+	sbufv = NULL;
+	strv = NULL;
+      }
+      break;
+    }
+    else if (rdcurc()=='$') {
+      /* $ followed by letters or underscore makes a symbol */
+      if (ISALPHA(rdfollowc(1)) || rdfollowc(1)=='_') {
+	int lnam = 1;
+	char tinybuf[64];
+	/* if there is any sbuf, make a string of it and add the
+	   string into the sequence */
+	if (sbufv && basilys_strbuf_usedlength((basilys_ptr_t)sbufv)>0) {
+	  strv = basilysgc_new_stringdup(BASILYSGOB(DISCR_STRING),
+					 basilys_strbuf_str((basilys_ptr_t) sbufv));
+	  basilysgc_append_list((basilys_ptr_t) seqv, (basilys_ptr_t) strv);
+	  debugeprintf ("macrostring var appending str:%s", basilys_string_str((basilys_ptr_t)strv));
+	  sbufv = NULL;
+	  strv = NULL;
+	}
+	while (ISALNUM(rdfollowc(lnam)) || rdfollowc(lnam) == '_') 
+	  lnam++;
+	if (lnam< (int)sizeof(tinybuf)-2) {
+	  memset(tinybuf, 0, sizeof(tinybuf));
+	  memcpy(tinybuf, &rdfollowc(1), lnam-1);
+	  tinybuf[lnam] = (char)0;
+	  debugeprintf ("macrostring tinysymb lnam.%d <%s>", lnam, tinybuf);
+	  symbv = basilysgc_named_symbol(tinybuf, BASILYS_CREATE);
+	}
+	else {
+	  char *nambuf = (char*) xcalloc(lnam+2, 1);
+	  memcpy(nambuf, &rdfollowc(1), lnam-1);
+	  nambuf[lnam] = (char)0;
+	  symbv = basilysgc_named_symbol(nambuf, BASILYS_CREATE);
+	  debugeprintf ("macrostring bigsymb <%s>", tinybuf);
+	  free(nambuf);
+	}
+	rd->rcol += lnam;
+	/* skip the hash # if just after the symbol */
+	if (rdcurc() == '#') 
+	  rdnext();
+	/* append the symbol */
+	basilysgc_append_list((basilys_ptr_t) seqv, (basilys_ptr_t) symbv);
+	symbv = NULL;
+      }
+      /* $. is silently skipped */
+      else if (rdfollowc(1) == '.') {
+	rdnext(); 
+	rdnext();
+      }
+      /* $$ is handled as a single dollar $ */
+      else if (rdfollowc(1) == '$') {
+	if (!sbufv)
+	  sbufv = basilysgc_new_strbuf(BASILYSGOB(DISCR_STRBUF), (char*)0);
+	basilysgc_add_strbuf_raw_len((basilys_ptr_t)sbufv, "$", 1);
+	rdnext();
+	rdnext();
+      }
+      /* $# is handled as a single hash # */
+      else if (rdfollowc(1) == '#') {
+	if (!sbufv)
+	  sbufv = basilysgc_new_strbuf(BASILYSGOB(DISCR_STRBUF), (char*)0);
+	basilysgc_add_strbuf_raw_len((basilys_ptr_t)sbufv, "#", 1);
+	rdnext();
+	rdnext();
+      }
+      /* any other dollar something is an error */
+      else READ_ERROR("unexpected dollar escape in macrostring %.4s started line %d",
+		      &rdcurc(), lineno);
+    }
+    else if ( ISALNUM(rdcurc()) || ISSPACE(rdcurc()) ) { 
+      /* handle efficiently the common case of alphanum and spaces */
+      int nbc = 0;
+      if (!sbufv)
+	sbufv = basilysgc_new_strbuf(BASILYSGOB(DISCR_STRBUF), (char*)0);
+      while (ISALNUM(rdfollowc(nbc)) || ISSPACE(rdfollowc(nbc))) 
+	nbc++;
+      basilysgc_add_strbuf_raw_len((basilys_ptr_t)sbufv, &rdcurc(), nbc);
+      rd->rcol += nbc;
+    }
+    else { /* the current char is not a dollar $ */
+      if (!sbufv)
+	sbufv = basilysgc_new_strbuf(BASILYSGOB(DISCR_STRBUF), (char*)0);
+      basilysgc_add_strbuf_raw_len((basilys_ptr_t)sbufv, &rdcurc(), 1);
+      rdnext();
+    }
+  }
+  debugmsgval("readmacrostringsequence seqv", seqv, callcount);
+  readv = makesexpr (rd, lineno, (basilys_ptr_t) seqv, loc);
+  debugmsgval("readmacrostringsequence readv", readv, callcount);
+  BASILYS_EXITFRAME ();
+  return (basilys_ptr_t) readv;
+#undef readv
+#undef strv
+#undef symbv
+#undef seqv
+#undef sbufv
+}
+
 
 static basilys_ptr_t
 readhashescape (struct reading_st *rd)
@@ -6118,6 +6678,14 @@ readhashescape (struct reading_st *rd)
       else
 	readv = readval (rd, &gotcomp);
     }
+  /* #{ is a macrostringsequence; it is terminated by }# and each
+      occurrence of $ followed by alphanum char is considered as a
+      MELT symbol, the other caracters are considered as string
+      chunks; the entire read is a sequence */
+  else if (c == '{') {
+      rdnext ();
+      readv = readmacrostringsequence(rd);
+  }
   else
     READ_ERROR ("MELT: invalid escape %.20s", &rdcurc ());
   BASILYS_EXITFRAME ();
@@ -6345,7 +6913,7 @@ basilys_error_str (basilys_ptr_t mixloc_p, const char *msg,
     }
   if (loc)
     {
-      char *cstr = basilys_string_str ((basilys_ptr_t) strv);
+      const char *cstr = basilys_string_str ((basilys_ptr_t) strv);
       if (cstr)
 	error_at (loc, "Basilys Error[#%ld]: %s - %s", basilys_dbgcounter,
 		  msg, cstr);
@@ -6354,8 +6922,8 @@ basilys_error_str (basilys_ptr_t mixloc_p, const char *msg,
     }
   else
     {
-      char *cfilnam = basilys_string_str ((basilys_ptr_t) finamv);
-      char *cstr = basilys_string_str ((basilys_ptr_t) strv);
+      const char *cfilnam = basilys_string_str ((basilys_ptr_t) finamv);
+      const char *cstr = basilys_string_str ((basilys_ptr_t) strv);
       if (cfilnam)
 	{
 	  if (cstr)
@@ -6417,18 +6985,18 @@ basilys_warning_str (int opt, basilys_ptr_t mixloc_p, const char *msg,
     }
   if (loc)
     {
-      char *cstr = basilys_string_str ((basilys_ptr_t) strv);
+      const char *cstr = basilys_string_str ((basilys_ptr_t) strv);
       if (cstr)
-	warning (opt, "%H.Basilys Warning[#%ld]: %s - %s", &loc,
-		 basilys_dbgcounter, msg, cstr);
+	warning_at (loc, opt, "Basilys Warning[#%ld]: %s - %s",
+		    basilys_dbgcounter, msg, cstr);
       else
-	warning (opt, "%H.Basilys Warning[#%ld]: %s", &loc,
-		 basilys_dbgcounter, msg);
+	warning_at (loc, opt, "Basilys Warning[#%ld]: %s", 
+		    basilys_dbgcounter, msg);
     }
   else
     {
-      char *cfilnam = basilys_string_str ((basilys_ptr_t) finamv);
-      char *cstr = basilys_string_str ((basilys_ptr_t) strv);
+      const char *cfilnam = basilys_string_str ((basilys_ptr_t) finamv);
+      const char *cstr = basilys_string_str ((basilys_ptr_t) strv);
       if (cfilnam)
 	{
 	  if (cstr)
@@ -6492,7 +7060,7 @@ basilys_inform_str (basilys_ptr_t mixloc_p, const char *msg,
     }
   if (loc)
     {
-      char *cstr = basilys_string_str ((basilys_ptr_t) strv);
+      const char *cstr = basilys_string_str ((basilys_ptr_t) strv);
       if (cstr)
 	inform (loc, "Basilys Inform[#%ld]: %s - %s", basilys_dbgcounter,
 		msg, cstr);
@@ -6501,8 +7069,8 @@ basilys_inform_str (basilys_ptr_t mixloc_p, const char *msg,
     }
   else
     {
-      char *cfilnam = basilys_string_str ((basilys_ptr_t) finamv);
-      char *cstr = basilys_string_str ((basilys_ptr_t) strv);
+      const char *cfilnam = basilys_string_str ((basilys_ptr_t) finamv);
+      const char *cstr = basilys_string_str ((basilys_ptr_t) strv);
       if (cfilnam)
 	{
 	  if (cstr)
@@ -6593,7 +7161,6 @@ basilysgc_read_from_rawstring (const char *rawstr, const char *locnam,
   struct reading_st rds;
   char *rbuf = 0;
   struct reading_st *rd = 0;
-  int strmagic = 0;
   BASILYS_ENTERFRAME (4, NULL);
 #define genv      curfram__.varptr[0]
 #define valv      curfram__.varptr[1]
@@ -6704,6 +7271,8 @@ end:
 #undef genv
 #undef locnamv
 #undef seqv
+#undef strv
+#undef valv
 }
 
 static void
@@ -6720,13 +7289,13 @@ do_initial_command (basilys_ptr_t modata_p)
 #define resv      curfram__.varptr[7]
   modatav = modata_p;
   debugeprintf ("do_initial_command mode_string %s modatav %p",
-		basilys_mode_string, (void *) modatav);
+		melt_mode_string, (void *) modatav);
   if (basilys_magic_discr
       ((BASILYSG (INITIAL_SYSTEM_DATA))) != OBMAG_OBJECT
       || BASILYSGOB (INITIAL_SYSTEM_DATA)->obj_len <
       FSYSDAT_CMD_FUNDICT + 1
       || !BASILYSGOB (INITIAL_SYSTEM_DATA)->obj_vartab
-      || !basilys_mode_string || !basilys_mode_string[0])
+      || !melt_mode_string || !melt_mode_string[0])
     goto end;
   dictv = BASILYSGOB (INITIAL_SYSTEM_DATA)->obj_vartab[FSYSDAT_CMD_FUNDICT];
   debugeprintf ("do_initial_command dictv=%p", dictv);
@@ -6735,43 +7304,43 @@ do_initial_command (basilys_ptr_t modata_p)
     goto end;
   closv =
     basilys_get_mapstrings ((struct basilysmapstrings_st *) dictv,
-			    basilys_mode_string);
+			    melt_mode_string);
   debugeprintf ("do_initial_command closv=%p", closv);
   if (basilys_magic_discr ((basilys_ptr_t) closv) != OBMAG_CLOSURE)
     {
-      error ("no closure for basilys command %s", basilys_mode_string);
+      error ("no closure for basilys command %s", melt_mode_string);
       goto end;
     };
   debugeprintf ("do_initial_command argument_string %s",
-		basilys_argument_string);
+		melt_argument_string);
   debugeprintf ("do_initial_command arglist_string %s",
-		basilys_arglist_string);
+		melt_arglist_string);
   debugeprintf ("do_initial_command secondargument_string %s",
-		basilys_secondargument_string);
-  if (basilys_argument_string && basilys_argument_string[0]
-      && basilys_arglist_string && basilys_arglist_string[0])
+		melt_secondargument_string);
+  if (melt_argument_string && melt_argument_string[0]
+      && melt_arglist_string && melt_arglist_string[0])
     {
       error
-	("cannot have both -fbasilys-arg=%s & -fbasilys-arglist=%s given as program arguments",
-	 basilys_argument_string, basilys_arglist_string);
+	("cannot have both -fmelt-arg=%s & -fmelt-arglist=%s given as program arguments",
+	 melt_argument_string, melt_arglist_string);
       goto end;
     }
   {
     union basilysparam_un pararg[3];
     memset (pararg, 0, sizeof (pararg));
-    if (basilys_argument_string && basilys_argument_string[0])
+    if (melt_argument_string && melt_argument_string[0])
       {
 	cstrv =
 	  basilysgc_new_string (BASILYSGOB (DISCR_STRING),
-				basilys_argument_string);
+				melt_argument_string);
 	pararg[0].bp_aptr = (basilys_ptr_t *) & cstrv;
       }
-    else if (basilys_arglist_string && basilys_arglist_string[0])
+    else if (melt_arglist_string && melt_arglist_string[0])
       {
 	char *comma = 0;
 	char *pc = 0;
 	arglv = basilysgc_new_list (BASILYSGOB (DISCR_LIST));
-	for (pc = (char *) basilys_arglist_string; pc;
+	for (pc = CONST_CAST(char *, melt_arglist_string); pc;
 	     pc = comma ? (comma + 1) : 0)
 	  {
 	    comma = strchr (pc, ',');
@@ -6785,17 +7354,17 @@ do_initial_command (basilys_ptr_t modata_p)
 	  }
 	pararg[0].bp_aptr = (basilys_ptr_t *) & arglv;
       };
-    if (basilys_secondargument_string && basilys_secondargument_string[0])
+    if (melt_secondargument_string && melt_secondargument_string[0])
       {
 	csecstrv =
 	  basilysgc_new_string (BASILYSGOB (DISCR_STRING),
-				basilys_secondargument_string);
+				melt_secondargument_string);
 	pararg[1].bp_aptr = (basilys_ptr_t *) & csecstrv;
       }
     else
       {
 	debugeprintf ("do_initial_command no second argument %p",
-		      basilys_secondargument_string);
+		      melt_secondargument_string);
 	csecstrv = NULL;
 	pararg[1].bp_aptr = (basilys_ptr_t *) 0;
       }
@@ -6812,7 +7381,7 @@ do_initial_command (basilys_ptr_t modata_p)
     exit_after_options = (resv == NULL);
   }
 end:
-  debugeprintf ("do_initial_command end %s", basilys_argument_string);
+  debugeprintf ("do_initial_command end %s", melt_argument_string);
   BASILYS_EXITFRAME ();
 #undef dictv
 #undef closv
@@ -6821,6 +7390,7 @@ end:
 #undef modatav
 #undef arglv
 #undef curargv
+#undef resv
 }
 
 
@@ -6839,11 +7409,15 @@ load_basilys_modules_and_do_command (void)
   BASILYS_ENTERFRAME (2, NULL);
 #define modatv curfram__.varptr[0]
   debugeprintf ("load_initial_basilys_modules start init=%s command=%s",
-		basilys_init_string, basilys_mode_string);
-  if (!basilys_init_string || !basilys_init_string[0])
-    fatal_error ("no initial basilys modules given");
-  dupmodpath = xstrdup (basilys_init_string);
-  if (flag_basilys_debug)
+		melt_init_string, melt_mode_string);
+  /* if there is no -fmelt-init use the default list of modules */
+  if (!melt_init_string || !melt_init_string[0])
+  {
+    melt_init_string = "@" MELT_DEFAULT_MODLIS;
+    debugeprintf("melt_init_string set to default %s", melt_init_string);
+  }
+  dupmodpath = xstrdup (melt_init_string);
+  if (flag_melt_debug)
     {
       fflush (stderr);
 #define modatv curfram__.varptr[0]
@@ -6851,7 +7425,7 @@ load_basilys_modules_and_do_command (void)
       fflush (stderr);
     }
 #if ENABLE_CHECKING
-  if (flag_basilys_debug)
+  if (flag_melt_debug)
     {
       char *tracenam = getenv ("BASILYSTRACE");
       if (tracenam)
@@ -6904,7 +7478,7 @@ load_basilys_modules_and_do_command (void)
 	}
       else
 	{
-	  modatv = basilysgc_compile_dyn ((basilys_ptr_t) modatv, curmod);
+	  modatv = basilysgc_load_melt_module ((basilys_ptr_t) modatv, curmod);
 	  debugeprintf
 	    ("load_initial_basilys_modules curmod %s loaded modatv %p",
 	     curmod, (void *) modatv);
@@ -6915,25 +7489,25 @@ load_basilys_modules_and_do_command (void)
    * then we do the command if needed 
    **/
   /* the command exit is builtin */
-  if (basilys_mode_string && !strcmp (basilys_mode_string, "exit"))
+  if (melt_mode_string && !strcmp (melt_mode_string, "exit"))
     exit_after_options = true;
   /* other commands */
   else if (basilys_magic_discr
 	   ((BASILYSG (INITIAL_SYSTEM_DATA))) == OBMAG_OBJECT
 	   && BASILYSGOB (INITIAL_SYSTEM_DATA)->obj_len >=
-	   FSYSDAT_CMD_FUNDICT && basilys_mode_string
-	   && basilys_mode_string[0])
+	   FSYSDAT_CMD_FUNDICT && melt_mode_string
+	   && melt_mode_string[0])
     {
       debugeprintf
 	("load_basilys_modules_and_do_command sets exit_after_options for command %s",
-	 basilys_mode_string);
+	 melt_mode_string);
       BASILYS_LOCATION_HERE
 	("load_initial_basilys_modules before do_initial_command");
       do_initial_command ((basilys_ptr_t) modatv);
       debugeprintf
 	("load_basilys_modules_and_do_command after do_initial_command  command_string %s",
-	 basilys_mode_string);
-      if (dump_file == stderr && flag_basilys_debug)
+	 melt_mode_string);
+      if (dump_file == stderr && flag_melt_debug)
 	{
 	  debugeprintf
 	    ("load_basilys_modules_and_do_command dump_file cleared was %p",
@@ -6942,9 +7516,9 @@ load_basilys_modules_and_do_command (void)
 	  dump_file = 0;
 	}
     }
-  else if (basilys_mode_string)
+  else if (melt_mode_string)
     fatal_error ("basilys with command string %s without command dispatcher",
-		 basilys_mode_string);
+		 melt_mode_string);
   debugeprintf
     ("load_basilys_modules_and_do_command ended with %ld GarbColl, %ld fullGc",
      basilys_nb_garbcoll, basilys_nb_full_garbcoll);
@@ -6959,14 +7533,55 @@ load_basilys_modules_and_do_command (void)
   free (dupmodpath);
   debugeprintf
     ("load_basilys_modules_and_do_command done modules %s command %s",
-     basilys_init_string, basilys_mode_string);
+     melt_init_string, melt_mode_string);
   BASILYS_EXITFRAME ();
 #undef modatv
 }
 
 
+static void basilys_ppl_error_handler(enum ppl_enum_error_code err, const char* descr);
+
+
+
+/* handle a "melt" attribute
+ */
+static tree
+handle_melt_attribute(tree *node, tree name,
+		      tree args,
+		      int flag ATTRIBUTE_UNUSED,
+		      bool *no_add_attrs ATTRIBUTE_UNUSED)
+{
+  tree decl = *node;
+  tree id = 0;
+  const char* attrstr = 0;
+  id = TREE_VALUE (args);
+  if (TREE_CODE (id) != STRING_CST)
+    {
+      error ("melt attribute argument not a string");
+      return NULL_TREE;
+    }
+  attrstr = TREE_STRING_POINTER (id);
+  basilys_handle_melt_attribute (decl, name, attrstr, input_location);
+  return NULL_TREE;
+}
+
+static struct attribute_spec 
+melt_attr_spec =
+  { "melt",                   1, 1, true, false, false,
+    handle_melt_attribute };
+
+
+/* the plugin callback to register melt attributes */
+static void 
+melt_attribute_callback(void *gcc_data ATTRIBUTE_UNUSED,
+			void* user_data ATTRIBUTE_UNUSED) 
+{
+  register_attribute(&melt_attr_spec);
+}
+
 /****
- * Initialize basilys. Called from toplevel.c before pass management.
+ * Initialize basilys.  Called from toplevel.c before pass management.
+ * Should become the MELT plugin initializer.
  ****/
 void
 basilys_initialize (void)
@@ -6981,12 +7596,12 @@ basilys_initialize (void)
   /* don't use the index 0 so push a null */
   VEC_safe_push (basilys_module_info_t, heap, modinfvec,
 		 (basilys_module_info_t *) 0);
-  proghandle = lt_dlopen (NULL);
+  proghandle = dlopen (NULL, RTLD_NOW);
   if (!proghandle)
     fatal_error ("basilys failed to get whole program handle - %s",
-		 lt_dlerror ());
-  if (count_basilys_debugskip_string != (char *) 0)
-    basilys_debugskipcount = atol (count_basilys_debugskip_string);
+		 dlerror ());
+  if (count_melt_debugskip_string != (char *) 0)
+    basilys_debugskipcount = atol (count_melt_debugskip_string);
   seed = 0;
   randomseed = get_random_seed (false);
   gcc_assert (randomseed != (char *) 0);
@@ -6999,7 +7614,7 @@ basilys_initialize (void)
   obstack_init (&bname_obstack);
   for (pc = randomseed; *pc; pc++)
     seed ^= (seed << 6) + (*pc);
-  srand48_r ((long) seed, &randata);
+  srand48 (seed);
   gcc_assert (!basilys_curalz);
   {
     size_t wantedwords = MINOR_SIZE_KILOWORD * 4096;
@@ -7017,20 +7632,27 @@ basilys_initialize (void)
     debugeprintf ("basilys_initialize alloczon %p - %p (%ld Kw)",
 		  basilys_startalz, basilys_endalz, (long) wantedwords >> 10);
   }
+  /* we are using register_callback here, even if MELT is not yet a
+     plugin; we hope that MELT would become a plugin. */
+  register_callback (MELT_PLUGIN_NAME, PLUGIN_GGC_MARKING, 
+		     basilys_marking_callback,
+		     NULL);
+  register_callback (MELT_PLUGIN_NAME, PLUGIN_ATTRIBUTES,
+		     melt_attribute_callback,
+		     NULL);
   debugeprintf ("basilys_initialize cpp_PREFIX=%s", cpp_PREFIX);
   debugeprintf ("basilys_initialize cpp_EXEC_PREFIX=%s", cpp_EXEC_PREFIX);
   debugeprintf ("basilys_initialize gcc_exec_prefix=%s", gcc_exec_prefix);
   debugeprintf ("basilys_initialize melt_private_include_dir=%s",
 		melt_private_include_dir);
   debugeprintf ("basilys_initialize melt_source_dir=%s", melt_source_dir);
-  debugeprintf ("basilys_initialize melt_generated_dir=%s",
-		melt_generated_dir);
-  debugeprintf ("basilys_initialize melt_dynlib_dir=%s", melt_dynlib_dir);
-  if (!basilys_init_string)
-    fatal_error ("no initial basilys modules specified thru -fbasilys-init");
+  debugeprintf ("basilys_initialize melt_module_dir=%s", melt_module_dir);
+  debugeprintf ("basilys_initialize melt_init_string=%s", melt_init_string);
+  if (ppl_set_error_handler(basilys_ppl_error_handler))
+    fatal_error ("failed to set PPL handler");
   load_basilys_modules_and_do_command ();
   debugeprintf ("basilys_initialize ended init=%s command=%s",
-		basilys_init_string, basilys_mode_string);
+		melt_init_string, melt_mode_string);
 }
 
 
@@ -7064,7 +7686,7 @@ basilys_dynobjstruct_fieldoffset_at (const char *fldnam, const char *fil,
   ptr = basilys_dlsym_all (nam);
   if (!ptr)
     fatal_error ("basilys failed to find field offset %s - %s (%s:%d)", nam,
-		 lt_dlerror (), fil, lin);
+		 dlerror (), fil, lin);
   free (nam);
   return (int *) ptr;
 }
@@ -7080,7 +7702,7 @@ basilys_dynobjstruct_classlength_at (const char *clanam, const char *fil,
   ptr = basilys_dlsym_all (nam);
   if (!ptr)
     fatal_error ("basilys failed to find class length %s - %s (%s:%d)", nam,
-		 lt_dlerror (), fil, lin);
+		 dlerror (), fil, lin);
   free (nam);
   return (int *) ptr;
 }
@@ -7105,7 +7727,7 @@ basilys_finalize (void)
       gdbm_close (gdbm_basilys);
       gdbm_basilys = NULL;
     }
-  if (tempdir_basilys)
+  if (tempdir_basilys[0])
     {
       DIR *tdir = opendir (tempdir_basilys);
       VEC (char_p, heap) * dirvec = 0;
@@ -7124,13 +7746,15 @@ basilys_finalize (void)
       while (!VEC_empty (char_p, dirvec))
 	{
 	  char *tfilnam = VEC_pop (char_p, dirvec);
+	  debugeprintf ("basilys_finalize remove file %s", tfilnam);
 	  remove (tfilnam);
 	  free (tfilnam);
 	};
       VEC_free (char_p, heap, dirvec);
     }
-  if (made_tempdir_basilys)
+  if (made_tempdir_basilys && tempdir_basilys[0])
     {
+      errno = 0;
       if (rmdir (tempdir_basilys))
 	/* @@@ I don't know if it should be a warning or a fatal error -
 	   we are finalizing! */
@@ -7561,6 +8185,30 @@ basilys_dbgeprint (void *p)
   fflush (stderr);
 }
 
+
+void basilysgc_debugmsgval(void* val_p, const char*msg, long count)
+{ 
+  BASILYS_ENTERFRAME(2,NULL);
+#define valv   curfram__.varptr[0]
+#define dbgfv  curfram__.varptr[1]
+  valv = val_p;
+  dbgfv = 
+    basilys_object_nth_field ((basilys_ptr_t)
+			      BASILYSGOB (INITIAL_SYSTEM_DATA),
+			      FSYSDAT_DEBUGMSG);
+  {
+    union basilysparam_un argtab[2];
+    memset(argtab, 0, sizeof(argtab));
+    argtab[0].bp_cstring = msg;
+    argtab[1].bp_long = count;
+    (void) basilys_apply ((basilysclosure_ptr_t) dbgfv, (basilys_ptr_t)valv, 
+			  BPARSTR_CSTRING BPARSTR_LONG, argtab, "", NULL);
+  }
+  BASILYS_EXITFRAME();
+#undef valv
+#undef dbgfv
+}
+
 void
 basilys_dbgbacktrace (int depth)
 {
@@ -7633,30 +8281,30 @@ basilys_dbgshortbacktrace (const char *msg, int maxdepth)
 static void
 fatal_gdbm (char *msg)
 {
-  fatal_error ("fatal basilys GDBM (%s) error : %s", basilys_gdbmstate_string,
+  fatal_error ("fatal basilys GDBM (%s) error : %s", melt_gdbmstate_string,
 	       msg);
 }
 
 static inline GDBM_FILE
-get_basilys_gdbm (void)
+get_melt_gdbm (void)
 {
   if (gdbm_basilys)
     return gdbm_basilys;
-  if (!basilys_gdbmstate_string || !basilys_gdbmstate_string[0])
+  if (!melt_gdbmstate_string || !melt_gdbmstate_string[0])
     return NULL;
   gdbm_basilys =
-    gdbm_open ((char *) basilys_gdbmstate_string, 8192, GDBM_WRCREAT, 0600,
+    gdbm_open (CONST_CAST(char*, melt_gdbmstate_string), 8192, GDBM_WRCREAT, 0600,
 	       fatal_gdbm);
   if (!gdbm_basilys)
     fatal_error ("failed to lazily open basilys GDBM (%s) - %m",
-		 basilys_gdbmstate_string);
+		 melt_gdbmstate_string);
   return gdbm_basilys;
 }
 
 bool
 basilys_has_gdbmstate (void)
 {
-  return get_basilys_gdbm () != NULL;
+  return get_melt_gdbm () != NULL;
 }
 
 basilys_ptr_t
@@ -7664,12 +8312,12 @@ basilysgc_fetch_gdbmstate_constr (const char *key)
 {
   datum keydata = { 0, 0 };
   datum valdata = { 0, 0 };
-  GDBM_FILE dbf = get_basilys_gdbm ();
+  GDBM_FILE dbf = get_melt_gdbm ();
   BASILYS_ENTERFRAME (1, NULL);
 #define restrv curfram__.varptr[0]
   if (!dbf || !key || !key[0])
     goto end;
-  keydata.dptr = (char *) key;
+  keydata.dptr = CONST_CAST (char *, key);
   keydata.dsize = strlen (key);
   valdata = gdbm_fetch (dbf, keydata);
   if (valdata.dptr != NULL && valdata.dsize >= 0)
@@ -7691,7 +8339,7 @@ basilysgc_fetch_gdbmstate (basilys_ptr_t key_p)
   datum keydata = { 0, 0 };
   datum valdata = { 0, 0 };
   int keymagic = 0;
-  GDBM_FILE dbf = get_basilys_gdbm ();
+  GDBM_FILE dbf = get_melt_gdbm ();
   BASILYS_ENTERFRAME (3, NULL);
 #define restrv curfram__.varptr[0]
 #define keyv   curfram__.varptr[1]
@@ -7702,13 +8350,13 @@ basilysgc_fetch_gdbmstate (basilys_ptr_t key_p)
   keymagic = basilys_magic_discr ((basilys_ptr_t) keyv);
   if (keymagic == OBMAG_STRING)
     {
-      keydata.dptr = (char *) basilys_string_str ((basilys_ptr_t) keyv);
+      keydata.dptr = CONST_CAST (char *, basilys_string_str ((basilys_ptr_t) keyv));
       keydata.dsize = strlen (keydata.dptr);
       valdata = gdbm_fetch (dbf, keydata);
     }
   else if (keymagic == OBMAG_STRBUF)
     {
-      keydata.dptr = (char *) basilys_strbuf_str ((basilys_ptr_t) keyv);
+      keydata.dptr = CONST_CAST(char*, basilys_strbuf_str ((basilys_ptr_t) keyv));
       keydata.dsize = strlen (keydata.dptr);
       valdata = gdbm_fetch (dbf, keydata);
     }
@@ -7720,7 +8368,7 @@ basilysgc_fetch_gdbmstate (basilys_ptr_t key_p)
       kstrv = basilys_field_object ((basilys_ptr_t) keyv, FNAMED_NAME);
       if (basilys_magic_discr ((basilys_ptr_t) kstrv) == OBMAG_STRING)
 	{
-	  keydata.dptr = (char *) basilys_string_str ((basilys_ptr_t) kstrv);
+	  keydata.dptr = CONST_CAST(char*, basilys_string_str ((basilys_ptr_t) kstrv));
 	  keydata.dsize = strlen (keydata.dptr);
 	  valdata = gdbm_fetch (dbf, keydata);
 	}
@@ -7752,14 +8400,14 @@ basilysgc_put_gdbmstate_constr (const char *key, basilys_ptr_t data_p)
   datum keydata = { 0, 0 };
   datum valdata = { 0, 0 };
   int datamagic = 0;
-  GDBM_FILE dbf = get_basilys_gdbm ();
+  GDBM_FILE dbf = get_melt_gdbm ();
   BASILYS_ENTERFRAME (2, NULL);
 #define datav  curfram__.varptr[0]
 #define dstrv  curfram__.varptr[1]
   datav = data_p;
   if (!dbf || !key || !key[0])
     goto end;
-  keydata.dptr = (char *) key;
+  keydata.dptr = CONST_CAST(char *, key);
   keydata.dsize = strlen (key);
   if (!datav)
     {
@@ -7769,13 +8417,13 @@ basilysgc_put_gdbmstate_constr (const char *key, basilys_ptr_t data_p)
   datamagic = basilys_magic_discr ((basilys_ptr_t) datav);
   if (datamagic == OBMAG_STRING)
     {
-      valdata.dptr = (char *) basilys_string_str ((basilys_ptr_t) datav);
+      valdata.dptr = CONST_CAST(char *, basilys_string_str ((basilys_ptr_t) datav));
       valdata.dsize = strlen (keydata.dptr);
       gdbm_store (dbf, keydata, valdata, GDBM_REPLACE);
     }
   else if (datamagic == OBMAG_STRBUF)
     {
-      valdata.dptr = (char *) basilys_strbuf_str ((basilys_ptr_t) datav);
+      valdata.dptr = CONST_CAST(char*, basilys_strbuf_str ((basilys_ptr_t) datav));
       valdata.dsize = strlen (keydata.dptr);
       gdbm_store (dbf, keydata, valdata, GDBM_REPLACE);
     }
@@ -7787,7 +8435,7 @@ basilysgc_put_gdbmstate_constr (const char *key, basilys_ptr_t data_p)
       dstrv = basilys_field_object ((basilys_ptr_t) datav, FNAMED_NAME);
       if (basilys_magic_discr ((basilys_ptr_t) dstrv) == OBMAG_STRING)
 	{
-	  valdata.dptr = (char *) basilys_string_str ((basilys_ptr_t) dstrv);
+	  valdata.dptr = CONST_CAST (char *, basilys_string_str ((basilys_ptr_t) dstrv));
 	  valdata.dsize = strlen (keydata.dptr);
 	  gdbm_store (dbf, keydata, valdata, GDBM_REPLACE);
 	}
@@ -7810,7 +8458,7 @@ basilysgc_put_gdbmstate (basilys_ptr_t key_p, basilys_ptr_t data_p)
   datum valdata = { 0, 0 };
   int keymagic = 0;
   int datamagic = 0;
-  GDBM_FILE dbf = get_basilys_gdbm ();
+  GDBM_FILE dbf = get_melt_gdbm ();
   BASILYS_ENTERFRAME (4, NULL);
 #define keyv   curfram__.varptr[0]
 #define kstrv  curfram__.varptr[1]
@@ -7823,12 +8471,12 @@ basilysgc_put_gdbmstate (basilys_ptr_t key_p, basilys_ptr_t data_p)
   keymagic = basilys_magic_discr ((basilys_ptr_t) keyv);
   if (keymagic == OBMAG_STRING)
     {
-      keydata.dptr = basilys_string_str ((basilys_ptr_t) keyv);
+      keydata.dptr = CONST_CAST(char*, basilys_string_str ((basilys_ptr_t) keyv));
       keydata.dsize = strlen (keydata.dptr);
     }
   else if (keymagic == OBMAG_STRBUF)
     {
-      keydata.dptr = basilys_strbuf_str ((basilys_ptr_t) keyv);
+      keydata.dptr = CONST_CAST(char*, basilys_strbuf_str ((basilys_ptr_t) keyv));
       keydata.dsize = strlen (keydata.dptr);
     }
   else if (keymagic == OBMAG_OBJECT
@@ -7839,7 +8487,7 @@ basilysgc_put_gdbmstate (basilys_ptr_t key_p, basilys_ptr_t data_p)
       kstrv = basilys_field_object ((basilys_ptr_t) keyv, FNAMED_NAME);
       if (basilys_magic_discr ((basilys_ptr_t) kstrv) == OBMAG_STRING)
 	{
-	  keydata.dptr = basilys_string_str ((basilys_ptr_t) kstrv);
+	  keydata.dptr = CONST_CAST(char*, basilys_string_str ((basilys_ptr_t) kstrv));
 	  keydata.dsize = strlen (keydata.dptr);
 	}
       else
@@ -7855,13 +8503,13 @@ basilysgc_put_gdbmstate (basilys_ptr_t key_p, basilys_ptr_t data_p)
   datamagic = basilys_magic_discr ((basilys_ptr_t) datav);
   if (datamagic == OBMAG_STRING)
     {
-      valdata.dptr = (char *) basilys_string_str ((basilys_ptr_t) datav);
+      valdata.dptr = CONST_CAST(char*, basilys_string_str ((basilys_ptr_t) datav));
       valdata.dsize = strlen (keydata.dptr);
       gdbm_store (dbf, keydata, valdata, GDBM_REPLACE);
     }
   else if (datamagic == OBMAG_STRBUF)
     {
-      valdata.dptr = (char *) basilys_strbuf_str ((basilys_ptr_t) datav);
+      valdata.dptr = CONST_CAST(char*, basilys_strbuf_str ((basilys_ptr_t) datav));
       valdata.dsize = strlen (keydata.dptr);
       gdbm_store (dbf, keydata, valdata, GDBM_REPLACE);
     }
@@ -7873,7 +8521,7 @@ basilysgc_put_gdbmstate (basilys_ptr_t key_p, basilys_ptr_t data_p)
       dstrv = basilys_field_object ((basilys_ptr_t) datav, FNAMED_NAME);
       if (basilys_magic_discr ((basilys_ptr_t) dstrv) == OBMAG_STRING)
 	{
-	  valdata.dptr = basilys_string_str ((basilys_ptr_t) dstrv);
+	  valdata.dptr = CONST_CAST(char*, basilys_string_str ((basilys_ptr_t) dstrv));
 	  valdata.dsize = strlen (keydata.dptr);
 	  gdbm_store (dbf, keydata, valdata, GDBM_REPLACE);
 	}
@@ -7892,152 +8540,814 @@ end:
 
 /* wrapping gimple & tree prettyprinting for MELT debug */
 
-/* the  prettyprinter buflushdata */
-#define PPBASILYS_MAGIC 0x094f2de3
-struct ppbasilysflushdata_st
-{
-  int gf_magic;			/* always  PPBASILYS_MAGIC */
-  basilys_ptr_t *gf_sbufad;	/* adress of pointer to sbuf */
-  pretty_printer gf_pp;
-};
 
-static void
-ppbasilys_flushrout (const char *txt, void *data)
+/* we really need in memory FILE* output; GNU libc -ie Linux- provides
+   open_memstream for that; on other systems we use a temporary file,
+   which would be very slow if it happens to not be cached in
+   memory */
+
+static char* meltppbuffer;
+static size_t meltppbufsiz;
+static FILE* meltppfile;
+
+#if !HAVE_OPEN_MEMSTREAM
+static char* meltppfilename;
+#endif
+
+/* open the melttppfile for pretty printing */
+static void 
+open_meltpp_file(void)
 {
-  struct ppbasilysflushdata_st *fldata =
-    (struct ppbasilysflushdata_st *) data;
-  gcc_assert (fldata->gf_magic == PPBASILYS_MAGIC);
-  basilysgc_add_strbuf ((struct basilysstrbuf_st *) (*fldata->gf_sbufad),
-			txt);
+#if HAVE_OPEN_MEMSTREAM
+  meltppbufsiz = 1024;
+  meltppbuffer = xcalloc (1, meltppbufsiz);
+  meltppfile = open_memstream (&meltppbuffer, &meltppsiz);
+  if (!meltppfile)
+    fatal_error ("failed to open meltpp file in memory");
+#else
+  if (!meltppfilename) 
+    {
+      meltppfilename = make_temp_file (".meltmem");
+      if (!meltppfilename)
+	fatal_error ("failed to get melt memory temporary file");
+    }
+  meltppfile = fopen (meltppfilename, "w+");
+#endif
 }
 
-/* pretty print into an sbuf a gimple */
-void
-basilysgc_ppstrbuf_gimple (basilys_ptr_t sbuf_p, int indentsp, gimple gstmt)
+/* close the meltppfile for pretty printing; after than, the
+   meltppbuffer & meltppbufsize contains the FILE* content */
+static void
+close_meltpp_file(void)
 {
-  struct ppbasilysflushdata_st ppgdat;
-#define sbufv curfram__.varptr[0]
+  gcc_assert (meltppfile != (FILE*)0);
+#if HAVE_OPEN_MEMSTREAM
+  /* the fclose automagically updates meltppbuffer & meltppbufsiz */
+  fclose (meltppfile);
+#else
+  /* we don't have an in-memory FILE*; so we read the file; you'll
+     better have it in a fast file system, like a memory one. */
+  meltppbufsiz = (size_t) ftell (meltppfile);
+  rewind (meltppfile);
+  meltppbuffer = (char*) xcalloc(1, meltppbufsiz);
+  if (fread (meltppbuffer, meltppbufsiz, 1, meltppfile) <= 0)
+    fatal_error ("failed to re-read melt buffer temporary file");
+  fclose (meltppfile);
+#endif
+  meltppfile = NULL;
+}
+
+
+
+/* pretty print into an outbuf a gimple */
+void
+basilysgc_ppout_gimple (basilys_ptr_t out_p, int indentsp, gimple gstmt)
+{
+  int outmagic = 0;
+#define outv curfram__.varptr[0]
   BASILYS_ENTERFRAME (2, NULL);
-  sbufv = sbuf_p;
-  if (!sbufv || basilys_magic_discr ((basilys_ptr_t) sbufv) != OBMAG_STRBUF)
+  outv = out_p;
+  if (!outv) 
     goto end;
+  outmagic = basilys_magic_discr ((basilys_ptr_t) outv);
   if (!gstmt)
     {
-      basilysgc_add_strbuf ((struct basilysstrbuf_st *) sbufv,
+      basilysgc_add_out ((basilys_ptr_t) outv,
 			    "%nullgimple%");
       goto end;
     }
-  memset (&ppgdat, 0, sizeof (ppgdat));
-  ppgdat.gf_sbufad = (basilys_ptr_t *) & sbufv;
-  ppgdat.gf_magic = PPBASILYS_MAGIC;
-  pp_construct_routdata (&ppgdat.gf_pp, NULL, 72, ppbasilys_flushrout,
-			 (void *) &ppgdat);
-  dump_gimple_stmt (&ppgdat.gf_pp, gstmt, indentsp,
-		    TDF_LINENO | TDF_SLIM | TDF_VOPS);
-  pp_flush (&ppgdat.gf_pp);
-  pp_destruct (&ppgdat.gf_pp);
+  switch (outmagic) 
+    {
+    case OBMAG_STRBUF:
+      {
+	open_meltpp_file ();
+	print_gimple_stmt (meltppfile, gstmt, indentsp,
+			   TDF_LINENO | TDF_SLIM | TDF_VOPS);
+	close_meltpp_file ();
+	basilysgc_add_out_raw_len ((basilys_ptr_t) outv, meltppbuffer, (int) meltppbufsiz);
+	free(meltppbuffer);
+	meltppbuffer = 0;
+	meltppbufsiz = 0;
+      }
+      break;
+    case OBMAG_SPEC_FILE:
+      {
+	FILE* f = ((struct basilysspecial_st*)outv)->val.sp_file;
+	if (!f) 
+	  goto end;
+	print_gimple_stmt (f, gstmt, indentsp,
+			   TDF_LINENO | TDF_SLIM | TDF_VOPS);
+	fflush (f);
+      }
+      break;
+    default:
+      goto end;
+    }
 end:
-  memset (&ppgdat, 0, sizeof (ppgdat));
   BASILYS_EXITFRAME ();
-#undef sbufv
+#undef outv
 }
 
-/* pretty print into an sbuf a gimple seq */
+/* pretty print into an outbuf a gimple seq */
 void
-basilysgc_ppstrbuf_gimple_seq (basilys_ptr_t sbuf_p, int indentsp,
+basilysgc_ppout_gimple_seq (basilys_ptr_t out_p, int indentsp,
 			       gimple_seq gseq)
 {
-  struct ppbasilysflushdata_st ppgdat;
-#define sbufv curfram__.varptr[0]
+  int outmagic = 0;
+#define outv curfram__.varptr[0]
   BASILYS_ENTERFRAME (2, NULL);
-  sbufv = sbuf_p;
-  if (!sbufv || basilys_magic_discr ((basilys_ptr_t) sbufv) != OBMAG_STRBUF)
+  outv = out_p;
+  if (!outv)
     goto end;
   if (!gseq)
     {
-      basilysgc_add_strbuf ((struct basilysstrbuf_st *) sbufv,
+      basilysgc_add_out ((basilys_ptr_t) outv,
 			    "%nullgimpleseq%");
       goto end;
     }
-  memset (&ppgdat, 0, sizeof (ppgdat));
-  ppgdat.gf_sbufad = (basilys_ptr_t *) & sbufv;
-  ppgdat.gf_magic = PPBASILYS_MAGIC;
-  pp_construct_routdata (&ppgdat.gf_pp, NULL, 72, ppbasilys_flushrout,
-			 (void *) &ppgdat);
-  dump_gimple_seq (&ppgdat.gf_pp, gseq, indentsp,
-		   TDF_LINENO | TDF_SLIM | TDF_VOPS);
-  pp_flush (&ppgdat.gf_pp);
-  pp_destruct (&ppgdat.gf_pp);
-end:
-  memset (&ppgdat, 0, sizeof (ppgdat));
-  BASILYS_EXITFRAME ();
-#undef sbufv
-}
-
-/* pretty print into an sbuf a tree */
-void
-basilysgc_ppstrbuf_tree (basilys_ptr_t sbuf_p, int indentsp, tree tr)
-{
-  struct ppbasilysflushdata_st ppgdat;
-#define sbufv curfram__.varptr[0]
-  BASILYS_ENTERFRAME (2, NULL);
-  sbufv = sbuf_p;
-  if (!sbufv || basilys_magic_discr ((basilys_ptr_t) sbufv) != OBMAG_STRBUF)
-    goto end;
-  if (!tr)
+  outmagic = basilys_magic_discr ((basilys_ptr_t) outv);
+  switch (outmagic) 
     {
-      basilysgc_add_strbuf ((struct basilysstrbuf_st *) sbufv, "%nulltree%");
+    case OBMAG_STRBUF:
+      {
+	open_meltpp_file ();
+	print_gimple_seq (meltppfile, gseq, indentsp,
+			   TDF_LINENO | TDF_SLIM | TDF_VOPS);
+	close_meltpp_file ();
+	basilysgc_add_out_raw_len ((basilys_ptr_t) outv, meltppbuffer, (int) meltppbufsiz);
+	free(meltppbuffer);
+	meltppbuffer = 0;
+	meltppbufsiz = 0;
+      }
+      break;
+    case OBMAG_SPEC_FILE:
+      {
+	FILE* f = ((struct basilysspecial_st*)outv)->val.sp_file;
+	if (!f) 
+	  goto end;
+	print_gimple_seq (f, gseq, indentsp,
+			   TDF_LINENO | TDF_SLIM | TDF_VOPS);
+	fflush (f);
+      }
+      break;
+    default:
       goto end;
     }
-  memset (&ppgdat, 0, sizeof (ppgdat));
-  ppgdat.gf_sbufad = (basilys_ptr_t *) & sbufv;
-  ppgdat.gf_magic = PPBASILYS_MAGIC;
-  pp_construct_routdata (&ppgdat.gf_pp, NULL, 72, ppbasilys_flushrout,
-			 (void *) &ppgdat);
-  dump_generic_node (&ppgdat.gf_pp, tr, indentsp,
-		     TDF_LINENO | TDF_SLIM | TDF_VOPS, false);
-  pp_flush (&ppgdat.gf_pp);
-  pp_destruct (&ppgdat.gf_pp);
 end:
-  memset (&ppgdat, 0, sizeof (ppgdat));
   BASILYS_EXITFRAME ();
-#undef sbufv
+#undef endv
+}
+
+/* pretty print a tree */
+void
+basilysgc_ppout_tree (basilys_ptr_t out_p, int indentsp, tree tr)
+{
+  int outmagic = 0;
+#define outv curfram__.varptr[0]
+  BASILYS_ENTERFRAME (2, NULL);
+  outv = out_p;
+  if (!outv)
+    goto end;
+  if (!tr) 
+    {
+      basilysgc_add_out_raw ((basilys_ptr_t) outv, "%nulltree%");
+      goto end;
+    }
+  outmagic = basilys_magic_discr ((basilys_ptr_t) outv);
+  switch (outmagic) 
+    {
+    case OBMAG_STRBUF:
+      {
+	open_meltpp_file ();
+	print_node_brief (meltppfile, "", tr, indentsp);
+	close_meltpp_file ();
+	basilysgc_add_out_raw_len ((basilys_ptr_t) outv, meltppbuffer, (int) meltppbufsiz);
+	free(meltppbuffer);
+	meltppbuffer = 0;
+	meltppbufsiz = 0;
+      }
+      break;
+    case OBMAG_SPEC_FILE:
+      {
+	FILE* f = ((struct basilysspecial_st*)outv)->val.sp_file;
+	if (!f) 
+	  goto end;
+	print_node_brief (f, "", tr, indentsp);
+	fflush (f);
+      }
+      break;
+    default:
+      goto end;
+    }
+end:
+  BASILYS_EXITFRAME ();
+#undef outv
 }
 
 
-/* pretty print into an sbuf a basicblock */
+/* pretty print into an outbuf a basicblock */
 void
-basilysgc_ppstrbuf_basicblock (basilys_ptr_t sbuf_p, int indentsp,
+basilysgc_ppout_basicblock (basilys_ptr_t out_p, int indentsp,
 			       basic_block bb)
 {
   gimple_seq gsq = 0;
-#define sbufv curfram__.varptr[0]
+#define outv curfram__.varptr[0]
   BASILYS_ENTERFRAME (2, NULL);
-  sbufv = sbuf_p;
-  if (!sbufv || basilys_magic_discr ((basilys_ptr_t) sbufv) != OBMAG_STRBUF)
+  outv = out_p;
+  if (!outv)
     goto end;
   if (!bb)
     {
-      basilysgc_add_strbuf ((struct basilysstrbuf_st *) sbufv,
+      basilysgc_add_out_raw ((basilys_ptr_t) outv,
 			    "%nullbasicblock%");
       goto end;
     }
-  basilysgc_strbuf_printf ((struct basilysstrbuf_st *) sbufv,
-			   "basicblock ix%d", bb->index);
+  basilysgc_out_printf ((basilys_ptr_t) outv,
+			"basicblock ix%d", bb->index);
   gsq = bb_seq (bb);
   if (gsq)
     {
-      basilysgc_add_strbuf_raw ((struct basilysstrbuf_st *) sbufv, "{.");
-      basilysgc_ppstrbuf_gimple_seq ((struct basilysstrbuf_st *) sbufv,
+      basilysgc_add_out_raw ((basilys_ptr_t) outv, "{.");
+      basilysgc_ppout_gimple_seq ((basilys_ptr_t) outv,
 				     indentsp + 1, gsq);
-      basilysgc_add_strbuf_raw ((struct basilysstrbuf_st *) sbufv, ".}");
+      basilysgc_add_out_raw ((basilys_ptr_t) outv, ".}");
     }
   else
-    basilysgc_add_strbuf_raw ((struct basilysstrbuf_st *) sbufv, ";");
+    basilysgc_add_out_raw ((basilys_ptr_t) outv, ";");
 end:
   BASILYS_EXITFRAME ();
 #undef sbufv
 }
+
+
+/* pretty print into an sbuf a mpz_t GMP multiprecision integer */
+void
+basilysgc_ppout_mpz (basilys_ptr_t out_p, int indentsp, mpz_t mp)
+{
+  int len = 0;
+  char* cbuf = 0;
+  char tinybuf [64];
+#define outv curfram__.varptr[0]
+  BASILYS_ENTERFRAME (2, NULL);
+  outv = out_p;
+  memset(tinybuf, 0, sizeof (tinybuf));
+  if (!outv || indentsp<0)
+    goto end;
+  if (!mp)
+    {
+      basilysgc_add_out_raw ((basilys_ptr_t) outv, "%nullmp%");
+      goto end;
+    }
+  len = mpz_sizeinbase(mp, 10) + 2;
+  if (len < (int)sizeof(tinybuf)-2) 
+    {
+      mpz_get_str (tinybuf, 10, mp);
+      basilysgc_add_out_raw ((basilys_ptr_t) outv, tinybuf);
+    }
+  else
+    {
+      cbuf = (char*) xcalloc(len+2, 1);
+      mpz_get_str(cbuf, 10, mp);
+      basilysgc_add_out_raw ((basilys_ptr_t) outv, cbuf);
+      free(cbuf);
+    }
+ end:
+  BASILYS_EXITFRAME ();
+#undef sbufv
+}
+
+
+/* pretty print into an out the GMP multiprecision integer of a mixbigint */
+void
+basilysgc_ppout_mixbigint (basilys_ptr_t out_p, int indentsp,
+			      basilys_ptr_t big_p)
+{
+#define outv curfram__.varptr[0]
+#define bigv  curfram__.varptr[1]
+  BASILYS_ENTERFRAME (3, NULL);
+  outv = out_p;
+  bigv = big_p;
+  if (!outv)
+    goto end;
+  if (!bigv || basilys_magic_discr ((basilys_ptr_t) bigv) != OBMAG_MIXBIGINT)
+    goto end;
+  {
+    mpz_t mp;
+    mpz_init (mp);
+    if (basilys_fill_mpz_from_mixbigint((basilys_ptr_t) bigv, mp)) 
+      basilysgc_ppout_mpz ((basilys_ptr_t) outv, indentsp, mp);
+    mpz_clear (mp);
+  }
+ end:
+  BASILYS_EXITFRAME ();
+#undef sbufv
+#undef bigv
+}
+
+/* make a new boxed file */
+basilys_ptr_t
+basilysgc_new_file(basilys_ptr_t discr_p, FILE* fil)
+{
+  BASILYS_ENTERFRAME(2, NULL);
+#define discrv curfram__.varptr[0]
+#define object_discrv ((basilysobject_ptr_t)(discrv))
+#define resv   curfram__.varptr[1]
+#define spec_resv ((struct basilysspecial_st*)(resv))
+  discrv = (void *) discr_p;
+  if (basilys_magic_discr ((basilys_ptr_t) (discrv)) != OBMAG_OBJECT)
+    goto end;
+  if (object_discrv->object_magic != OBMAG_SPEC_FILE)
+    goto end;
+  resv = basilysgc_allocate (sizeof (struct basilysspecial_st), 0);
+  spec_resv->discr = (basilysobject_ptr_t) discrv;
+  spec_resv->mark = 0;
+  spec_resv->val.sp_pointer = NULL;
+  spec_resv->val.sp_file = fil;
+ end:
+  BASILYS_EXITFRAME ();
+  return (basilys_ptr_t) resv;
+}
+
+/***********************************************************************
+ *   P A R M A     P O L Y H E D R A     L I B R A R Y     S T U F F   *
+ ***********************************************************************/
+
+/* utility to make a ppl_Coefficient_t out of a constant tree */
+ppl_Coefficient_t
+basilys_make_ppl_coefficient_from_tree(tree tr)
+{
+  HOST_WIDE_INT lo=0, hi=0;
+  ppl_Coefficient_t coef=NULL;
+  mpz_t mp;
+  if (!tr) return NULL;
+  switch (TREE_CODE(tr)) {
+  case INTEGER_CST:
+    mpz_init(mp);
+    lo = TREE_INT_CST_LOW(tr);
+    hi = TREE_INT_CST_HIGH(tr);
+    if (hi==0 && lo>=0) 
+      mpz_set_ui(mp, lo);
+    else if (hi== -1 && lo<0)
+      mpz_set_si(mp, lo);
+    else {
+      mpz_t mp2;
+      mpz_init_set_ui (mp2, lo);
+      mpz_set_si(mp, hi);
+      mpz_mul_2exp(mp, mp, HOST_BITS_PER_WIDE_INT);
+      mpz_add(mp, mp, mp2);
+      mpz_clear(mp2);
+    };
+    if (ppl_new_Coefficient_from_mpz_t (&coef, mp))
+      fatal_error("ppl_new_Coefficient_from_mpz_t failed");
+    mpz_clear(mp);
+    return coef;
+  default:
+    break;
+  }
+  return NULL;
+}
+
+/* utility to make a ppl_Coefficient_t from a long number */
+ppl_Coefficient_t
+basilys_make_ppl_coefficient_from_long(long l)
+{
+  ppl_Coefficient_t coef=NULL;
+  mpz_t mp;
+  mpz_init_set_si (mp, l);
+  if (ppl_new_Coefficient_from_mpz_t (&coef, mp))
+    fatal_error("ppl_new_Coefficient_from_mpz_t failed");
+  mpz_clear(mp);
+  return coef;
+}
+
+/* make a new boxed PPL empty or unsatisfiable constraint system */
+basilys_ptr_t
+basilysgc_new_ppl_constraint_system(basilys_ptr_t discr_p, bool unsatisfiable)
+{
+  int err = 0;
+  BASILYS_ENTERFRAME(2, NULL);
+#define discrv curfram__.varptr[0]
+#define object_discrv ((basilysobject_ptr_t)(discrv))
+#define resv   curfram__.varptr[1]
+#define spec_resv ((struct basilysspecial_st*)(resv))
+  discrv = (void *) discr_p;
+  if (basilys_magic_discr ((basilys_ptr_t) (discrv)) != OBMAG_OBJECT)
+    goto end;
+  if (object_discrv->object_magic != OBMAG_SPECPPL_CONSTRAINT_SYSTEM)
+    goto end;
+  resv = basilysgc_allocate (sizeof (struct basilysspecial_st), 0);
+  spec_resv->discr = (basilysobject_ptr_t) discrv;
+  spec_resv->mark = 0;
+  spec_resv->val.sp_pointer = NULL;
+  if (!unsatisfiable)
+    err = ppl_new_Constraint_System(&spec_resv->val.sp_constraint_system);
+  else
+    err = ppl_new_Constraint_System_zero_dim_empty(&spec_resv->val.sp_constraint_system);
+  if (err) 
+    fatal_error("PPL new Constraint System failed in Basilys"); 
+ end:
+  BASILYS_EXITFRAME();
+  return (basilys_ptr_t)resv;
+#undef discrv
+#undef object_discrv
+#undef resv
+#undef spec_resv
+}
+
+/* box clone a PPL constraint system */
+basilys_ptr_t
+basilysgc_clone_ppl_constraint_system (basilys_ptr_t ppl_p)
+{
+  int err = 0;
+  ppl_Constraint_System_t oldconsys = NULL, newconsys = NULL;
+  BASILYS_ENTERFRAME(3, NULL);
+#define pplv   curfram__.varptr[0]
+#define spec_pplv ((struct basilysspecial_st*)(pplv))
+#define discrv curfram__.varptr[1]
+#define object_discrv ((basilysobject_ptr_t)(discrv))
+#define resv   curfram__.varptr[2]
+#define spec_resv ((struct basilysspecial_st*)(resv))
+  pplv = ppl_p;
+  resv = NULL;
+  if (basilys_magic_discr ((basilys_ptr_t) (pplv)) != OBMAG_SPECPPL_CONSTRAINT_SYSTEM)
+    goto end;
+  oldconsys =  spec_pplv->val.sp_constraint_system;
+  resv = basilysgc_allocate (sizeof (struct basilysspecial_st), 0);
+  spec_resv->discr = spec_pplv->discr;
+  spec_resv->mark = 0;
+  spec_resv->val.sp_pointer = NULL;
+  if (oldconsys)
+    err = ppl_new_Constraint_System_from_Constraint_System(&newconsys, oldconsys);
+  if (err) 
+    fatal_error("PPL clone Constraint System failed in Basilys");
+  spec_resv->val.sp_constraint_system = newconsys;
+ end:
+  BASILYS_EXITFRAME();
+  return (basilys_ptr_t)resv;
+#undef discrv
+#undef object_discrv
+#undef resv
+#undef spec_resv
+#undef pplv
+#undef spec_pplv
+}
+
+/* insert a raw PPL constraint into a boxed constraint system */
+void
+basilys_insert_ppl_constraint_in_boxed_system(ppl_Constraint_t cons, basilys_ptr_t ppl_p) 
+{
+  BASILYS_ENTERFRAME(3, NULL);
+#define pplv   curfram__.varptr[0]
+#define spec_pplv ((struct basilysspecial_st*)(pplv))
+  pplv = ppl_p;
+  if (!pplv || !cons 
+      || basilys_magic_discr((basilys_ptr_t)pplv) != OBMAG_SPECPPL_CONSTRAINT_SYSTEM)
+    goto end;
+  if (spec_pplv->val.sp_constraint_system
+      && ppl_Constraint_System_insert_Constraint (spec_pplv->val.sp_constraint_system,
+						  cons))
+    fatal_error("failed to ppl_Constraint_System_insert_Constraint");
+ end:
+  BASILYS_EXITFRAME();
+#undef pplv
+#undef spec_pplv
+}
+
+/* utility to make a NNC [=not necessarily closed] ppl_Polyhedron_t
+   out of a constraint system */
+ppl_Polyhedron_t 
+basilys_make_ppl_NNC_Polyhedron_from_Constraint_System(ppl_Constraint_System_t consys)
+{
+  ppl_Polyhedron_t poly = NULL;
+  if (ppl_new_NNC_Polyhedron_from_Constraint_System(&poly, consys))
+    fatal_error("basilys_make_ppl_NNC_Polyhedron_from_Constraint_System failed");
+  return poly;
+}
+
+/* make a new boxed PPL polyhedron; if cloned is true, the poly is
+   copied otherwise taken as is */
+basilys_ptr_t
+basilysgc_new_ppl_polyhedron(basilys_ptr_t discr_p, ppl_Polyhedron_t poly, bool cloned)
+{
+  BASILYS_ENTERFRAME(2, NULL);
+#define discrv curfram__.varptr[0]
+#define object_discrv ((basilysobject_ptr_t)(discrv))
+#define resv   curfram__.varptr[1]
+#define spec_resv ((struct basilysspecial_st*)(resv))
+  discrv = (void *) discr_p;
+  if (basilys_magic_discr ((basilys_ptr_t) (discrv)) != OBMAG_OBJECT)
+    goto end;
+  if (object_discrv->object_magic != OBMAG_SPECPPL_POLYHEDRON)
+    goto end;
+  resv = basilysgc_allocate (sizeof (struct basilysspecial_st), 0);
+  spec_resv->discr = (basilysobject_ptr_t) discrv;
+  spec_resv->mark = 0;
+  spec_resv->val.sp_pointer = NULL;
+  if (cloned && poly)
+    {
+      if (ppl_new_NNC_Polyhedron_from_NNC_Polyhedron(&spec_resv->val.sp_polyhedron, poly))
+	fatal_error("failed to ppl_new_NNC_Polyhedron_from_NNC_Polyhedron");
+    }
+  else
+    spec_resv->val.sp_polyhedron = poly;
+ end:
+  BASILYS_EXITFRAME();
+  return (basilys_ptr_t)resv;
+#undef discrv
+#undef object_discrv
+#undef resv
+#undef spec_resv
+}
+
+/* utility to make a ppl_Linear_Expression_t */
+ppl_Linear_Expression_t 
+basilys_make_ppl_linear_expression(void)
+{
+  ppl_Linear_Expression_t liex = NULL;
+  if (ppl_new_Linear_Expression(&liex))
+    fatal_error("basilys_make_ppl_linear_expression failed");
+  return liex;
+}
+
+/* utility to make a ppl_Constraint ; the constraint type is a string
+   "==" or "!=" ">" "<" ">=" "<=" because we don't want enums in
+   MELT... */
+ppl_Constraint_t 
+basilys_make_ppl_constraint_cstrtype(ppl_Linear_Expression_t liex, const char*constyp) {
+  ppl_Constraint_t cons = NULL;
+  if (!liex || !constyp) return NULL;
+  if (!strcmp(constyp, "==")
+      && !ppl_new_Constraint(&cons, liex,
+			     PPL_CONSTRAINT_TYPE_EQUAL)) 
+    return cons;
+  else if (!strcmp(constyp, ">")
+	   && !ppl_new_Constraint(&cons, liex, 
+				  PPL_CONSTRAINT_TYPE_GREATER_THAN))
+    return cons;
+  else if (!strcmp(constyp, "<")
+	   && !ppl_new_Constraint(&cons, liex, 
+				  PPL_CONSTRAINT_TYPE_LESS_THAN))
+    return cons;
+  else if (!strcmp(constyp, ">=")
+	   && !ppl_new_Constraint(&cons, liex, 
+				  PPL_CONSTRAINT_TYPE_GREATER_OR_EQUAL))
+    return cons;
+  else if (!strcmp(constyp, "<=")
+	   && !ppl_new_Constraint(&cons, liex, 
+				  PPL_CONSTRAINT_TYPE_LESS_OR_EQUAL))
+    return cons;
+  return NULL;
+}
+
+/* make a new boxed PPL linear expression  */
+basilys_ptr_t
+basilysgc_new_ppl_linear_expression(basilys_ptr_t discr_p)
+{
+  int err = 0;
+  BASILYS_ENTERFRAME(2, NULL);
+#define discrv curfram__.varptr[0]
+#define object_discrv ((basilysobject_ptr_t)(discrv))
+#define resv   curfram__.varptr[1]
+#define spec_resv ((struct basilysspecial_st*)(resv))
+  discrv = (void *) discr_p;
+  if (basilys_magic_discr ((basilys_ptr_t) (discrv)) != OBMAG_OBJECT)
+    goto end;
+  if (object_discrv->object_magic != OBMAG_SPECPPL_LINEAR_EXPRESSION)
+    goto end;
+  resv = basilysgc_allocate (sizeof (struct basilysspecial_st), 0);
+  spec_resv->discr = (basilysobject_ptr_t) discrv;
+  spec_resv->mark = 0;
+  spec_resv->val.sp_pointer = NULL;
+  err = ppl_new_Linear_Expression(&spec_resv->val.sp_linear_expression);
+  if (err) 
+    fatal_error("PPL new Linear Expression failed in Basilys"); 
+ end:
+  BASILYS_EXITFRAME();
+  return (basilys_ptr_t)resv;
+#undef discrv
+#undef object_discrv
+#undef resv
+#undef spec_resv
+}
+
+
+void basilys_clear_special(basilys_ptr_t val_p)
+{
+  BASILYS_ENTERFRAME(1, NULL);
+#define valv curfram__.varptr[0]
+#define spec_valv ((struct basilysspecial_st*)valv)
+  valv = val_p;
+  if (!valv) goto end;
+  switch(basilys_magic_discr((basilys_ptr_t) valv)) {
+  case ALL_OBMAG_SPECIAL_CASES:
+      delete_special(spec_valv);
+      break;
+  default:
+    break;
+  }
+ end:
+  BASILYS_EXITFRAME();
+#undef valv
+#undef spec_valv
+}
+
+
+/***
+  pretty print into an sbuf a PPL related value; 
+
+recent PPL (ie 0.10.1) has a ppl_io_asprint_##Type (char** strp,
+  ppl_const_##Type##_t x); which mallocs a string buffer, print x
+  inside it, and return it in *STRP but this is supposed to
+  change. Seee
+  http://www.cs.unipr.it/pipermail/ppl-devel/2009-March/014162.html
+***/
+
+static basilys_ptr_t* basilys_pplcoefvectp;
+
+static const char* 
+ppl_basilys_variable_output_function(ppl_dimension_type var)
+{
+  static char buf[80];
+  const char *s = 0;
+  BASILYS_ENTERFRAME(2, NULL);
+#define vectv  curfram__.varptr[0]
+#define namv   curfram__.varptr[1]
+  if (basilys_pplcoefvectp)
+    vectv =  *basilys_pplcoefvectp;
+  memset(buf, 0, sizeof(buf));
+  if (vectv)
+    namv = basilys_multiple_nth((basilys_ptr_t) vectv, (int)var);
+  if (basilys_is_instance_of((basilys_ptr_t) namv, BASILYSG (CLASS_NAMED))) 
+    namv = basilys_object_nth_field((basilys_ptr_t) namv, FNAMED_NAME);
+  if (namv)
+    s = basilys_string_str((basilys_ptr_t) namv);
+  if (!s && basilys_magic_discr((basilys_ptr_t) namv) == OBMAG_TREE) {
+    tree trnam = basilys_tree_content((basilys_ptr_t) namv);
+    if (trnam) {
+      switch (TREE_CODE(trnam)) {
+      case IDENTIFIER_NODE:
+	s = IDENTIFIER_POINTER(trnam);
+	break;
+      case VAR_DECL:
+      case PARM_DECL:
+      case TYPE_DECL:
+      case FIELD_DECL:
+      case LABEL_DECL:
+      case CONST_DECL:
+      case RESULT_DECL:
+	if (DECL_NAME(trnam))
+	  s = IDENTIFIER_POINTER(DECL_NAME(trnam));
+	break;
+      case SSA_NAME:
+	snprintf (buf, sizeof(buf)-1, "%s.%d", 
+		 get_name(trnam), SSA_NAME_VERSION(trnam));
+	goto end;
+      default:
+	snprintf (buf, sizeof(buf)-1, "@%p!%s", 
+		 (void*)trnam, tree_code_name[TREE_CODE(trnam)]);
+	goto end;
+      }
+    }
+  }
+  if (s) 
+    strncpy(buf, s, sizeof(buf)-1);
+  else if (!buf[0])
+    snprintf (buf, sizeof(buf)-1, "_$_%d", (int)var);
+ end:
+  BASILYS_EXITFRAME();
+  return buf;
+}
+
+
+/* call the ppl_io_asprint_##Type (char** strp, ppl_const_##Type##_t
+   x); these functions are now stable in PPL */
+void
+basilysgc_ppstrbuf_ppl_varnamvect (basilys_ptr_t sbuf_p, int indentsp, basilys_ptr_t ppl_p, basilys_ptr_t varnamvect_p)
+{
+  int mag = 0;
+  char *ppstr = NULL;
+  BASILYS_ENTERFRAME(4, NULL);
+#define sbufv    curfram__.varptr[0]
+#define pplv     curfram__.varptr[1]
+#define varvectv curfram__.varptr[2]
+#define spec_pplv ((struct basilysspecial_st*)(pplv))
+  sbufv = sbuf_p;
+  pplv = ppl_p;
+  varvectv = varnamvect_p;
+  if (!pplv) 
+    goto end;
+  ppl_io_set_variable_output_function (ppl_basilys_variable_output_function);
+  mag = basilys_magic_discr((basilys_ptr_t) pplv);
+  if (varvectv)
+    basilys_pplcoefvectp = (basilys_ptr_t*)&varvectv;
+  else
+    basilys_pplcoefvectp = NULL;
+  switch (mag) {
+  case OBMAG_SPECPPL_COEFFICIENT:
+    if (ppl_io_asprint_Coefficient(&ppstr, 
+				   spec_pplv->val.sp_coefficient))
+      fatal_error("failed to ppl_io_asprint_Coefficient");
+    break;
+  case OBMAG_SPECPPL_LINEAR_EXPRESSION:
+    if (ppl_io_asprint_Linear_Expression(&ppstr,
+					 spec_pplv->val.sp_linear_expression))
+      fatal_error("failed to ppl_io_asprint_Linear_Expression");
+    break;
+  case OBMAG_SPECPPL_CONSTRAINT:
+    if (ppl_io_asprint_Constraint(&ppstr, 
+				  spec_pplv->val.sp_constraint))
+      fatal_error("failed to ppl_io_asprint_Constraint");
+    break;
+  case OBMAG_SPECPPL_CONSTRAINT_SYSTEM:
+    if (ppl_io_asprint_Constraint_System(&ppstr, 
+					 spec_pplv->val.sp_constraint_system))
+      fatal_error("failed to ppl_io_asprint_Constraint_System");
+    break;
+  case OBMAG_SPECPPL_GENERATOR:
+    if (ppl_io_asprint_Generator(&ppstr, spec_pplv->val.sp_generator))
+      fatal_error("failed to ppl_io_asprint_Generator");
+    break;
+  case OBMAG_SPECPPL_GENERATOR_SYSTEM:
+    if (ppl_io_asprint_Generator_System(&ppstr, 
+					spec_pplv->val.sp_generator_system))
+      fatal_error("failed to ppl_io_asprint_Generator_System");
+    break;
+  case OBMAG_SPECPPL_POLYHEDRON:
+    if (ppl_io_asprint_Polyhedron(&ppstr, 
+					spec_pplv->val.sp_polyhedron))
+      fatal_error("failed to ppl_io_asprint_Polyhedron");
+    break;
+  default:
+    {
+      char errmsg[64];
+      memset(errmsg, 0, sizeof(errmsg));
+      snprintf (errmsg, sizeof(errmsg)-1, "{{unknown PPL magic %d}}", mag); 
+      ppstr = xstrdup(errmsg);
+    }
+    break;
+  }
+  if (!ppstr) 
+    fatal_error("ppl_io_asprint_* gives a null string pointer");
+  /* in the resulting ppstr, replace each newline with appropriate
+     indentation */
+  {
+    char*bl = NULL;		/* current begin of line */
+    char*nl = NULL;		/* current newline = end of line */
+    for (bl = ppstr; (nl = bl?strchr(bl, '\n'):NULL), bl; bl = nl?(nl+1):NULL) {
+      if (nl) 
+	*nl = (char)0;
+      basilysgc_add_strbuf_raw((basilys_ptr_t) sbufv, bl);
+      if (nl) 
+	basilysgc_strbuf_add_indent((basilys_ptr_t) sbufv, indentsp, 0);
+    }
+  }
+  free(ppstr);
+ end:
+  basilys_pplcoefvectp = (basilys_ptr_t*)0;
+  BASILYS_EXITFRAME();
+#undef sbufv
+#undef pplv
+#undef varvectv
+#undef spec_pplv
+}
+
+
+
+static void basilys_ppl_error_handler(enum ppl_enum_error_code err, const char* descr)
+{
+  switch(err) {
+  case PPL_ERROR_OUT_OF_MEMORY: 
+    error("Basilys PPL out of memory: %s", descr);
+    return;
+  case PPL_ERROR_INVALID_ARGUMENT:
+    error("Basilys PPL invalid argument: %s", descr);
+    return;
+  case PPL_ERROR_DOMAIN_ERROR:
+    error("Basilys PPL domain error: %s", descr);
+    return;
+  case PPL_ERROR_LENGTH_ERROR:
+    error("Basilys PPL length error: %s", descr);
+    return;
+  case PPL_ARITHMETIC_OVERFLOW:
+    error("Basilys PPL arithmetic overflow: %s", descr);
+    return;
+  case PPL_STDIO_ERROR:
+    error("Basilys PPL stdio error: %s", descr);
+    return;
+  case PPL_ERROR_INTERNAL_ERROR:
+    error("Basilys PPL internal error: %s", descr);
+    return;
+  case PPL_ERROR_UNKNOWN_STANDARD_EXCEPTION:
+    error("Basilys PPL unknown exception: %s", descr);
+    return;
+  case PPL_ERROR_UNEXPECTED_ERROR:
+    error("Basilys PPL unexpected error: %s", descr);
+    return;
+  default:
+    fatal_error("Basilys unexpected PPL error #%d - %s", err, descr);
+  }
+}
+
 
 /***********************************************************
  * generate C code for a basilys unit name 
@@ -8072,20 +9382,36 @@ basilys_output_cfile_decl_impl (basilys_ptr_t unitnam,
   if (!cfil)
     fatal_error ("failed to open basilys generated file %s - %m", dotcnam);
   fprintf (cfil,
-	   "/* GCC BASILYS GENERATED FILE %s - DO NOT EDIT */\n", dotcnam);
+	   "/* GCC MELT GENERATED FILE %s - DO NOT EDIT */\n", dotcnam);
   {
     time_t now = 0;
     char nowtimstr[64];
-    char *nl = 0;
     time (&now);
     memset (nowtimstr, 0, sizeof (nowtimstr));
-    strncpy (nowtimstr, ctime (&now), sizeof (nowtimstr) - 1);
-    nl = strrchr (nowtimstr, '\n');
-    if (nl && nl[1] == (char) 0)
-      *nl = 0;
+    /* we only write the date (not the hour); the comment is for
+       humans only.  This might make ccache happier, when the same
+       file is generated several times in the same day */
+    strftime(nowtimstr, sizeof(nowtimstr)-1, "%Y %b %d", gmtime(&now));
     if (strlen (nowtimstr) > 2)
       fprintf (cfil, "/* generated on %s */\n\n", nowtimstr);
   }
+  /* we protect genchecksum_melt with MELTGCC_DYNAMIC_OBJSTRUCT since
+     for sure when compiling the warmelt*0.c it would mismatch, and we
+     want to avoid a useless warning */
+  fprintf (cfil, "\n#ifndef MELTGCC_DYNAMIC_OBJSTRUCT\n"
+	   "/* checksum of the gcc executable generating this file: */\n"
+	   "const unsigned char genchecksum_melt[16]=\n {");
+  {
+    int i;
+    for (i=0; i<16; i++) {
+      if (i>0) 
+	fputc(',', cfil);
+      if (i==8) 
+	fputs("\n   ", cfil);
+      fprintf (cfil, " %#x", executable_checksum[i]);
+    }
+  };
+  fprintf (cfil, "};\n" "#endif\n" "\n");
   fprintf (cfil, "#include \"run-basilys.h\"\n");
   fprintf (cfil, "\n/**** %s declarations ****/\n",
 	   basilys_string_str (unitnam));
@@ -8111,6 +9437,10 @@ basilys_output_cfile_decl_impl (basilys_ptr_t unitnam,
   free (dotcdotnam);
   free (dotcpercentnam);
 }
+
+/* Added */
+#undef basilys_assert_failed
+#undef basilys_check_failed
 
 void
 basilys_assert_failed (const char *msg, const char *filnam,
@@ -8159,312 +9489,577 @@ basilys_check_failed (const char *msg, const char *filnam,
 }
 
 
-/*****************************************************************/
-/*** stuff for passes ***/
-static bool
-dispatch_gate_basilys (const char *passname)
+/* convert a MELT value to a plugin flag or option */
+static unsigned long 
+basilys_val2passflag(basilys_ptr_t val_p)
 {
-  bool res = FALSE;
-  BASILYS_ENTERFRAME (4, NULL);
-#define passdictv curfram__.varptr[0]
-#define passv     curfram__.varptr[1]
-#define gatev     curfram__.varptr[2]
-#define resvalv   curfram__.varptr[3]
-  if (errorcount > 0 || sorrycount > 0 || !basilys_mode_string
-      || !basilys_mode_string[0])
+  unsigned long res = 0;
+  int valmag = 0;
+  BASILYS_ENTERFRAME (3, NULL);
+#define valv    curfram__.varptr[0]
+#define compv   curfram__.varptr[1]
+#define pairv   curfram__.varptr[2]
+  valv = val_p;
+  if (!valv) goto end;
+  valmag = basilys_magic_discr((basilys_ptr_t) valv);
+  if (valmag == OBMAG_INT || valmag == OBMAG_MIXINT)
+    { 
+      res = basilys_get_int((basilys_ptr_t) valv);
+      goto end;
+    }
+  else if (valmag == OBMAG_OBJECT 
+	   && basilys_is_instance_of((basilys_ptr_t) valv, 
+				     BASILYSG(CLASS_NAMED)))
+    {
+      compv = ((basilysobject_ptr_t)valv)->obj_vartab[FNAMED_NAME];
+      res = basilys_val2passflag((basilys_ptr_t) compv);
+      goto end;
+    }
+  else if (valmag == OBMAG_STRING) {
+    const char *valstr = basilys_string_str((basilys_ptr_t) valv);
+    /* should be kept in sync with the defines in tree-pass.h */
+#define WHENFLAG(F) if (!strcasecmp(valstr, #F)) { res = F; goto end; } 
+    WHENFLAG(PROP_gimple_any);
+    WHENFLAG(PROP_gimple_lcf);		
+    WHENFLAG(PROP_gimple_leh);		
+    WHENFLAG(PROP_cfg);	
+    WHENFLAG(PROP_referenced_vars);
+    WHENFLAG(PROP_ssa);
+    WHENFLAG(PROP_no_crit_edges);
+    WHENFLAG(PROP_rtl);
+    WHENFLAG(PROP_gimple_lomp);
+    WHENFLAG(PROP_cfglayout);
+    WHENFLAG(PROP_trees);
+    /* likewise for TODO flags */
+    WHENFLAG(TODO_dump_func);
+    WHENFLAG(TODO_ggc_collect);
+    WHENFLAG(TODO_verify_ssa);
+    WHENFLAG(TODO_verify_flow);
+    WHENFLAG(TODO_verify_stmts);
+    WHENFLAG(TODO_cleanup_cfg);
+    WHENFLAG(TODO_verify_loops);
+    WHENFLAG(TODO_dump_cgraph);
+    WHENFLAG(TODO_remove_functions);
+    WHENFLAG(TODO_rebuild_frequencies);
+    WHENFLAG(TODO_verify_rtl_sharing);
+    WHENFLAG(TODO_update_ssa);
+    WHENFLAG(TODO_update_ssa_no_phi);
+    WHENFLAG(TODO_update_ssa_full_phi);
+    WHENFLAG(TODO_update_ssa_only_virtuals);
+    WHENFLAG(TODO_remove_unused_locals);
+    WHENFLAG(TODO_df_finish);
+    WHENFLAG(TODO_df_verify);
+    WHENFLAG(TODO_mark_first_instance);
+    WHENFLAG(TODO_rebuild_alias);
+    WHENFLAG(TODO_update_address_taken);
+    WHENFLAG(TODO_update_ssa_any);
+    WHENFLAG(TODO_verify_all);
+#undef WHENFLAG
+    goto end;
+  }
+  else if (valmag == OBMAG_LIST) {
+    for (pairv = ((struct basilyslist_st *) valv)->first;
+	 basilys_magic_discr ((basilys_ptr_t) pairv) ==
+	   OBMAG_PAIR; 
+	 pairv = ((struct basilyspair_st *)pairv)->tl) {
+      compv = ((struct basilyspair_st *)pairv)->hd;
+      res |= basilys_val2passflag((basilys_ptr_t) compv);
+    }
+  }
+  else if (valmag == OBMAG_MULTIPLE) {
+    int i=0, l=0;
+    l = basilys_multiple_length((basilys_ptr_t)valv);
+    for (i=0; i<l; i++) {
+      compv = basilys_multiple_nth((basilys_ptr_t) valv, i);
+      res |= basilys_val2passflag((basilys_ptr_t) compv);
+    }
+  }
+ end:
+  BASILYS_EXITFRAME();
+  return res;
+#undef valv    
+#undef compv   
+#undef pairv   
+}
+
+
+
+
+/* the gate function of MELT gimple passes */
+static bool 
+basilysgc_gimple_gate(void)
+{
+  int ok = 0;
+  BASILYS_ENTERFRAME(6, NULL);
+#define passv        curfram__.varptr[0]
+#define passdictv    curfram__.varptr[1]
+#define closv        curfram__.varptr[2]
+#define resv        curfram__.varptr[3]
+  if (!melt_mode_string || !melt_mode_string[0]) 
     goto end;
   passdictv =
     basilys_object_nth_field ((basilys_ptr_t)
 			      BASILYSGOB (INITIAL_SYSTEM_DATA),
 			      FSYSDAT_PASS_DICT);
-  passv =
-    basilys_get_mapstrings ((struct basilysmapstrings_st *) passdictv,
-			    passname);
-  debugeprintf ("dispatch_gate_basilys passname %s passv %p", passname,
-		passv);
-  if (basilys_is_instance_of
-      ((basilys_ptr_t) passv, (basilys_ptr_t) BASILYSGOB (CLASS_GCC_PASS)))
-    {
-      gatev = basilys_object_nth_field ((basilys_ptr_t) passv, FGCCPASS_GATE);
-      debugeprintf ("dispatch_gate_basilys passname %s gatev %p", passname,
-		    gatev);
-      if (basilys_magic_discr ((basilys_ptr_t) gatev) == OBMAG_CLOSURE)
-	{
-	  debugeprintf
-	    ("dispatch_gate_basilys passname %s before apply gatev %p",
-	     passname, gatev);
-	  resvalv =
-	    basilys_apply ((struct basilysclosure_st *) gatev,
-			   (basilys_ptr_t) passv, "",
-			   (union basilysparam_un *) 0, "",
-			   (union basilysparam_un *) 0);
-	  res = (resvalv != NULL);
-	  debugeprintf
-	    ("dispatch_gate_basilys passname %s after apply resv %p",
-	     passname, resvalv);
-	  /* force a minor GC to be sure that nothing is in the young region */
-	  basilys_garbcoll (0, BASILYS_MINOR_OR_FULL);
-	}
-    }
-end:
-  BASILYS_EXITFRAME ();
-#undef passdictv
-#undef passv
-#undef gatev
-#undef resvalv
+  if (basilys_magic_discr((basilys_ptr_t) passdictv) != OBMAG_MAPSTRINGS) 
+    goto end;
+  gcc_assert(current_pass != NULL);
+  gcc_assert(current_pass->name != NULL);
+  gcc_assert(current_pass->type == GIMPLE_PASS);
+  passv = basilys_get_mapstrings((struct basilysmapstrings_st*) passdictv, current_pass->name);
+  if (!passv 
+      || !basilys_is_instance_of((basilys_ptr_t) passv, (basilys_ptr_t) BASILYSGOB(CLASS_GCC_GIMPLE_PASS)))
+    goto end;
+  closv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_GATE);
+  if (basilys_magic_discr((basilys_ptr_t) closv) != OBMAG_CLOSURE) 
+    goto end;
+  resv = 
+    basilys_apply ((struct basilysclosure_st *) closv,
+		   (basilys_ptr_t) passv, "",
+		   (union basilysparam_un *) 0, "",
+		   (union basilysparam_un *) 0);
+  ok = (resv != NULL);
+  /* force a minor GC to be sure that nothing is in the young region */
+  basilys_garbcoll (0, BASILYS_MINOR_OR_FULL);
+ end:
+  BASILYS_EXITFRAME();
+  return ok;
+}
+
+
+/* the execute function of MELT gimple passes */
+static unsigned int
+basilysgc_gimple_execute(void)
+{
+  unsigned int res = 0;
+  BASILYS_ENTERFRAME(6, NULL);
+#define passv        curfram__.varptr[0]
+#define passdictv    curfram__.varptr[1]
+#define closv        curfram__.varptr[2]
+#define resvalv        curfram__.varptr[3]
+  if (!melt_mode_string || !melt_mode_string[0]) 
+    goto end;
+  passdictv =
+    basilys_object_nth_field ((basilys_ptr_t)
+			      BASILYSGOB (INITIAL_SYSTEM_DATA),
+			      FSYSDAT_PASS_DICT);
+  if (basilys_magic_discr((basilys_ptr_t) passdictv) != OBMAG_MAPSTRINGS) 
+    goto end;
+  gcc_assert (current_pass != NULL);
+  gcc_assert (current_pass->name != NULL);
+  gcc_assert (current_pass->type == GIMPLE_PASS);
+  passv = basilys_get_mapstrings((struct basilysmapstrings_st *)passdictv, current_pass->name);
+  if (!passv 
+      || !basilys_is_instance_of((basilys_ptr_t) passv, (basilys_ptr_t) BASILYSGOB(CLASS_GCC_GIMPLE_PASS)))
+    goto end;
+  closv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_EXEC);
+  if (basilys_magic_discr((basilys_ptr_t) closv) != OBMAG_CLOSURE) 
+    goto end;
+  {
+    long passdbgcounter = basilys_dbgcounter;
+    long todol = 0;
+    union basilysparam_un restab[1];
+    memset (&restab, 0, sizeof (restab));
+    restab[0].bp_longptr = &todol;
+    debugeprintf
+      ("gimple_execute passname %s dbgcounter %ld cfun %p ",
+       current_pass->name, basilys_dbgcounter, (void *) cfun);
+    if (cfun && flag_melt_debug)
+      debug_tree (cfun->decl);
+    debugeprintf ("gimple_execute passname %s before apply",
+		  current_pass->name);
+    /* apply with one extra long result */
+    resvalv =
+      basilys_apply ((struct basilysclosure_st *) closv,
+		     (basilys_ptr_t) passv, "",
+		     (union basilysparam_un *) 0, BPARSTR_LONG "",
+		     restab);
+    debugeprintf ("gimple_execute passname %s after apply dbgcounter %ld",
+		  current_pass->name, passdbgcounter);
+    if (resvalv)
+      res = (unsigned int) todol;
+    /* force a minor GC to be sure that nothing is in the young region */
+    basilys_garbcoll (0, BASILYS_MINOR_OR_FULL);
+  }
+ end:
+  BASILYS_EXITFRAME();
   return res;
 }
 
-static unsigned int
-dispatch_execute_basilys (const char *passname)
+
+
+/* the gate function of MELT rtl passes */
+static bool 
+basilysgc_rtl_gate(void)
 {
-  unsigned int restodo = 0;
-  long todol = 0;
-  BASILYS_ENTERFRAME (4, NULL);
-#define passdictv curfram__.varptr[0]
-#define passv     curfram__.varptr[1]
-#define execuv    curfram__.varptr[2]
-#define resvalv   curfram__.varptr[3]
-  if (!basilys_mode_string || !basilys_mode_string[0])
+  int ok = 0;
+  BASILYS_ENTERFRAME(6, NULL);
+#define passv        curfram__.varptr[0]
+#define passdictv    curfram__.varptr[1]
+#define closv        curfram__.varptr[2]
+#define resv        curfram__.varptr[3]
+  if (!melt_mode_string || !melt_mode_string[0]) 
     goto end;
   passdictv =
     basilys_object_nth_field ((basilys_ptr_t)
 			      BASILYSGOB (INITIAL_SYSTEM_DATA),
 			      FSYSDAT_PASS_DICT);
-  passv =
-    basilys_get_mapstrings ((struct basilysmapstrings_st *) passdictv,
-			    passname);
-  debugeprintf ("dispatch_execute_basilys passname %s passv %p", passname,
-		passv);
-  if (basilys_is_instance_of
-      ((basilys_ptr_t) passv, (basilys_ptr_t) BASILYSGOB (CLASS_GCC_PASS)))
-    {
-      execuv =
-	basilys_object_nth_field ((basilys_ptr_t) passv, FGCCPASS_EXEC);
-      if (basilys_magic_discr ((basilys_ptr_t) execuv) == OBMAG_CLOSURE)
-	{
-#if ENABLE_CHECKING
-	  long passdbgcounter = basilys_dbgcounter;
-#endif
-	  union basilysparam_un restab[1];
-	  memset (&restab, 0, sizeof (restab));
-	  restab[0].bp_longptr = &todol;
-	  debugeprintf
-	    ("dispatch_execute_basilys passname %s dbgcounter %ld cfun %p ",
-	     passname, basilys_dbgcounter, (void *) cfun);
-	  if (cfun && flag_basilys_debug)
-	    debug_tree (cfun->decl);
-	  debugeprintf ("dispatch_execute_basilys passname %s before apply",
-			passname);
-	  /* apply with one extra long result */
-	  resvalv =
-	    basilys_apply ((struct basilysclosure_st *) execuv,
-			   (basilys_ptr_t) passv, "",
-			   (union basilysparam_un *) 0, BPARSTR_LONG "",
-			   restab);
-	  debugeprintf ("dispatch_execute_basilys passname %s after apply",
-			passname);
-	  if (resvalv)
-	    restodo = (unsigned int) todol;
-	  /* force a minor GC to be sure that nothing is in the young region */
-	  basilys_garbcoll (0, BASILYS_MINOR_OR_FULL);
-	  debugeprintf
-	    ("dispatch_execute_basilys passname %s dbgcounter %ld was %ld ended\n",
-	     passname, basilys_dbgcounter, passdbgcounter);
-	}
-    }
-end:
-  BASILYS_EXITFRAME ();
-  return restodo;
+  if (basilys_magic_discr((basilys_ptr_t) passdictv) != OBMAG_MAPSTRINGS) 
+    goto end;
+  gcc_assert(current_pass != NULL);
+  gcc_assert(current_pass->name != NULL);
+  gcc_assert(current_pass->type == RTL_PASS);
+  passv = basilys_get_mapstrings((struct basilysmapstrings_st*) passdictv, 
+				  current_pass->name);
+  if (!passv 
+      || !basilys_is_instance_of((basilys_ptr_t) passv, 
+				 (basilys_ptr_t) BASILYSGOB(CLASS_GCC_RTL_PASS)))
+    goto end;
+  closv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_GATE);
+  if (basilys_magic_discr((basilys_ptr_t) closv) != OBMAG_CLOSURE) 
+    goto end;
+  resv = 
+    basilys_apply ((struct basilysclosure_st *) closv,
+		   (basilys_ptr_t) passv, "",
+		   (union basilysparam_un *) 0, "",
+		   (union basilysparam_un *) 0);
+  ok = (resv != NULL);
+  /* force a minor GC to be sure that nothing is in the young region */
+  basilys_garbcoll (0, BASILYS_MINOR_OR_FULL);
+ end:
+  BASILYS_EXITFRAME();
+  return ok;
 }
 
-/* decide if basilys_lowering pass has to be run */
-static bool
-gate_basilys_lowering (void)
-{
-  return dispatch_gate_basilys ("basilys-lowering");
-}
 
-/* execute the basilys_lowering pass */
+/* the execute function of MELT rtl passes */
 static unsigned int
-execute_basilys_lowering (void)
+basilysgc_rtl_execute(void)
 {
-  return dispatch_execute_basilys ("basilys-lowering");
+  unsigned int res = 0;
+  BASILYS_ENTERFRAME(6, NULL);
+#define passv        curfram__.varptr[0]
+#define passdictv    curfram__.varptr[1]
+#define closv        curfram__.varptr[2]
+#define namev        curfram__.varptr[3]
+  if (!melt_mode_string || !melt_mode_string[0]) 
+    goto end;
+  passdictv =
+    basilys_object_nth_field ((basilys_ptr_t)
+			      BASILYSGOB (INITIAL_SYSTEM_DATA),
+			      FSYSDAT_PASS_DICT);
+  if (basilys_magic_discr((basilys_ptr_t) passdictv) != OBMAG_MAPSTRINGS) 
+    goto end;
+  gcc_assert (current_pass != NULL);
+  gcc_assert (current_pass->name != NULL);
+  gcc_assert (current_pass->type == RTL_PASS);
+  passv = basilys_get_mapstrings((struct basilysmapstrings_st*) passdictv, 
+				 current_pass->name);
+  if (!passv 
+      || !basilys_is_instance_of((basilys_ptr_t) passv, (basilys_ptr_t) BASILYSGOB(CLASS_GCC_RTL_PASS)))
+    goto end;
+  closv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_EXEC);
+  if (basilys_magic_discr((basilys_ptr_t) closv) != OBMAG_CLOSURE) 
+    goto end;
+  {
+    long passdbgcounter = basilys_dbgcounter;
+    long todol = 0;
+    union basilysparam_un restab[1];
+    memset (&restab, 0, sizeof (restab));
+    restab[0].bp_longptr = &todol;
+    debugeprintf
+      ("rtl_execute passname %s dbgcounter %ld",
+       current_pass->name, basilys_dbgcounter);
+    debugeprintf ("rtl_execute passname %s before apply",
+		  current_pass->name);
+    /* apply with one extra long result */
+    resvalv =
+      basilys_apply ((struct basilysclosure_st *) closv,
+		     (basilys_ptr_t) passv, "",
+		     (union basilysparam_un *) 0, BPARSTR_LONG "",
+		     restab);
+    debugeprintf ("rtl_execute passname %s after apply dbgcounter %ld",
+		  current_pass->name, passdbgcounter);
+    if (resvalv)
+      res = (unsigned int) todol;
+    /* force a minor GC to be sure that nothing is in the young region */
+    basilys_garbcoll (0, BASILYS_MINOR_OR_FULL);
+  }
+ end:
+  BASILYS_EXITFRAME();
+  return res;
 }
 
 
 
-/* decide if basilys_earlyopt pass has to be run */
-static bool
-gate_basilys_earlyopt (void)
+/* the gate function of MELT simple_ipa passes */
+static bool 
+basilysgc_simple_ipa_gate(void)
 {
-  return dispatch_gate_basilys ("basilys-earlyopt");
+  int ok = 0;
+  BASILYS_ENTERFRAME(6, NULL);
+#define passv        curfram__.varptr[0]
+#define passdictv    curfram__.varptr[1]
+#define closv        curfram__.varptr[2]
+#define resv        curfram__.varptr[3]
+  if (!melt_mode_string || !melt_mode_string[0]) 
+    goto end;
+  passdictv =
+    basilys_object_nth_field ((basilys_ptr_t)
+			      BASILYSGOB (INITIAL_SYSTEM_DATA),
+			      FSYSDAT_PASS_DICT);
+  if (basilys_magic_discr((basilys_ptr_t) passdictv) != OBMAG_MAPSTRINGS) 
+    goto end;
+  gcc_assert(current_pass != NULL);
+  gcc_assert(current_pass->name != NULL);
+  gcc_assert(current_pass->type == SIMPLE_IPA_PASS);
+  passv = basilys_get_mapstrings((struct basilysmapstrings_st*) passdictv, 
+				 current_pass->name);
+  if (!passv 
+      || !basilys_is_instance_of((basilys_ptr_t) passv, 
+				 (basilys_ptr_t) BASILYSGOB(CLASS_GCC_SIMPLE_IPA_PASS)))
+    goto end;
+  closv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_GATE);
+  if (basilys_magic_discr((basilys_ptr_t) closv) != OBMAG_CLOSURE) 
+    goto end;
+  resv = 
+    basilys_apply ((struct basilysclosure_st *) closv,
+		   (basilys_ptr_t) passv, "",
+		   (union basilysparam_un *) 0, "",
+		   (union basilysparam_un *) 0);
+  ok = (resv != NULL);
+  /* force a minor GC to be sure that nothing is in the young region */
+  basilys_garbcoll (0, BASILYS_MINOR_OR_FULL);
+ end:
+  BASILYS_EXITFRAME();
+  return ok;
 }
 
-/* execute the basilys_earlyopt pass */
+
+/* the execute function of MELT simple_ipa passes */
 static unsigned int
-execute_basilys_earlyopt (void)
+basilysgc_simple_ipa_execute(void)
 {
-  return dispatch_execute_basilys ("basilys-earlyopt");
-}
-
-
-
-/* decide if basilys_lateopt pass has to be run */
-static bool
-gate_basilys_lateopt (void)
-{
-  return dispatch_gate_basilys ("basilys-lateopt");
-}
-
-/* execute the basilys_lateopt pass */
-static unsigned int
-execute_basilys_lateopt (void)
-{
-  return dispatch_execute_basilys ("basilys-lateopt");
-}
-
-
-
-/* decide if basilys_latessa pass has to be run */
-static bool
-gate_basilys_latessa (void)
-{
-  return dispatch_gate_basilys ("basilys-latessa");
-}
-
-/* execute the basilys_lateopt pass */
-static unsigned int
-execute_basilys_latessa (void)
-{
-  return dispatch_execute_basilys ("basilys-latessa");
-}
-
-
-/* decide if basilys_ipa pass has to be run */
-static bool
-gate_basilys_ipa (void)
-{
-  return dispatch_gate_basilys ("basilys-ipa");
-}
-
-/* execute the basilys_ipa pass */
-static unsigned int
-execute_basilys_ipa (void)
-{
-  return dispatch_execute_basilys ("basilys-ipa");
-}
-
-
-
-struct simple_ipa_opt_pass pass_basilys_ipa = {
+  unsigned int res = 0;
+  BASILYS_ENTERFRAME(6, NULL);
+#define passv        curfram__.varptr[0]
+#define passdictv    curfram__.varptr[1]
+#define closv        curfram__.varptr[2]
+#define namev        curfram__.varptr[3]
+  if (!melt_mode_string || !melt_mode_string[0]) 
+    goto end;
+  passdictv =
+    basilys_object_nth_field ((basilys_ptr_t)
+			      BASILYSGOB (INITIAL_SYSTEM_DATA),
+			      FSYSDAT_PASS_DICT);
+  if (basilys_magic_discr((basilys_ptr_t) passdictv) != OBMAG_MAPSTRINGS) 
+    goto end;
+  gcc_assert (current_pass != NULL);
+  gcc_assert (current_pass->name != NULL);
+  gcc_assert (current_pass->type == SIMPLE_IPA_PASS);
+  passv = basilys_get_mapstrings((struct basilysmapstrings_st*)passdictv, 
+				 current_pass->name);
+  if (!passv 
+      || !basilys_is_instance_of((basilys_ptr_t) passv, 
+				 (basilys_ptr_t) BASILYSGOB(CLASS_GCC_SIMPLE_IPA_PASS)))
+    goto end;
+  closv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_EXEC);
+  if (basilys_magic_discr((basilys_ptr_t) closv) != OBMAG_CLOSURE) 
+    goto end;
   {
-   SIMPLE_IPA_PASS,		/* type */
-   "basilys-ipa",		/* name */
-   gate_basilys_ipa,		/* gate */
-   execute_basilys_ipa,		/* execute */
-   NULL,			/* sub */
-   NULL,			/* next */
-   0,				/* static_pass_number */
-   TV_BASILE_ANALYSIS,		/* tv_id */
-   PROP_cfg | PROP_ssa,		/* properties_required */
-   0,				/* properties_provided */
-   0,				/* properties_destroyed */
-   0,				/* todo_flags_start */
-   0,				/* todo_flags_finish */
-   }
-};
-
-
-/* pass_basilys_lowering is called in passes.c after pass_inline_parameters */
-struct gimple_opt_pass pass_basilys_lowering = {
-  {
-   GIMPLE_PASS,
-   "basilys-lowering",		/* name */
-   gate_basilys_lowering,	/* gate */
-   execute_basilys_lowering,	/* execute */
-   NULL,			/* sub */
-   NULL,			/* next */
-   0,				/* static_pass_number */
-   TV_BASILE_ANALYSIS,		/* tv_id */
-   PROP_cfg,			/* properties_required */
-   0,				/* properties_provided */
-   0,				/* properties_destroyed */
-   0,				/* todo_flags_start */
-   0,				/* todo_flags_finish */
-   }
-};
-
-/* pass_basilys_earlyopt is called in passes.c after
-   pass_convert_switch; code is in SSA form */
-struct gimple_opt_pass pass_basilys_earlyopt = {
-  {
-   GIMPLE_PASS,
-   "basilys-earlyopt",		/* name */
-   gate_basilys_earlyopt,	/* gate */
-   execute_basilys_earlyopt,	/* execute */
-   NULL,			/* sub */
-   NULL,			/* next */
-   0,				/* static_pass_number */
-   TV_BASILE_ANALYSIS,		/* tv_id */
-   PROP_cfg | PROP_ssa,		/* properties_required */
-   0,				/* properties_provided */
-   0,				/* properties_destroyed */
-   0,				/* todo_flags_start */
-   TODO_verify_ssa		/* todo_flags_finish */
-   }
-};
-
-
-/* pass_basilys_lateopt is called before pass_del_ssa in the
-   all_optimisations metapass */
-struct gimple_opt_pass pass_basilys_lateopt = {
-  {
-   GIMPLE_PASS,
-   "basilys-lateopt",		/* name */
-   gate_basilys_lateopt,	/* gate */
-   execute_basilys_lateopt,	/* execute */
-   NULL,			/* sub */
-   NULL,			/* next */
-   0,				/* static_pass_number */
-   TV_BASILE_ANALYSIS,		/* tv_id */
-   PROP_cfg | PROP_ssa,		/* properties_required */
-   0,				/* properties_provided */
-   0,				/* properties_destroyed */
-   0,				/* todo_flags_start */
-   TODO_verify_ssa		/* todo_flags_finish */
-   }
-};
+    long passdbgcounter = basilys_dbgcounter;
+    long todol = 0;
+    union basilysparam_un restab[1];
+    memset (&restab, 0, sizeof (restab));
+    restab[0].bp_longptr = &todol;
+    debugeprintf
+      ("simple_ipa_execute passname %s dbgcounter %ld",
+       current_pass->name, basilys_dbgcounter);
+    debugeprintf ("simple_ipa_execute passname %s before apply",
+		  current_pass->name);
+    /* apply with one extra long result */
+    resvalv =
+      basilys_apply ((struct basilysclosure_st *) closv,
+		     (basilys_ptr_t) passv, "",
+		     (union basilysparam_un *) 0, BPARSTR_LONG "",
+		     restab);
+    debugeprintf ("simple_ipa_execute passname %s after apply dbgcounter %ld",
+		  current_pass->name, passdbgcounter);
+    if (resvalv)
+      res = (unsigned int) todol;
+    /* force a minor GC to be sure that nothing is in the young region */
+    basilys_garbcoll (0, BASILYS_MINOR_OR_FULL);
+  }
+ end:
+  BASILYS_EXITFRAME();
+  return res;
+}
 
 
 
 
-/* pass_basilys_latessa is called just before pass_del_ssa even
-   without optimization */
-struct gimple_opt_pass pass_basilys_latessa = {
-  {
-   GIMPLE_PASS,
-   "basilys-latessa",		/* name */
-   gate_basilys_latessa,	/* gate */
-   execute_basilys_latessa,	/* execute */
-   NULL,			/* sub */
-   NULL,			/* next */
-   0,				/* static_pass_number */
-   TV_BASILE_ANALYSIS,		/* tv_id */
-   PROP_cfg | PROP_ssa,		/* properties_required */
-   0,				/* properties_provided */
-   0,				/* properties_destroyed */
-   0,				/* todo_flags_start */
-   TODO_verify_ssa		/* todo_flags_finish */
-   }
-};
+
+/* register a MELT pass; there is no way to unregister it, and the
+   opt_pass and plugin_pass used internally are never deallocated.
+   Non-simple IPA passes are not yet implemented! */
+void
+basilysgc_register_pass (basilys_ptr_t pass_p, 
+			 const char* positioning, 
+			 const char*refpassname,
+			 int refpassnum)
+{
+  /* the plugin_pass can be local, since it is only locally used in
+     plugin.c */
+  struct plugin_pass plugpass = { NULL, NULL, 0, 0 };
+  enum pass_positioning_ops posop = PASS_POS_INSERT_AFTER;
+  unsigned long propreq=0, propprov=0, propdest=0, todostart=0, todofinish=0;
+  BASILYS_ENTERFRAME (7, NULL);
+#define passv        curfram__.varptr[0]
+#define passdictv    curfram__.varptr[1]
+#define compv        curfram__.varptr[2]
+#define namev        curfram__.varptr[3]
+  passv = pass_p;
+  if (!melt_mode_string || !melt_mode_string[0]) 
+    goto end;
+  if (!refpassname || !refpassname[0]) 
+    goto end;
+  if (!positioning || !positioning[0])
+    goto end;
+  if (!strcasecmp(positioning,"after"))
+    posop = PASS_POS_INSERT_AFTER;
+  else if (!strcasecmp(positioning,"before"))
+    posop = PASS_POS_INSERT_BEFORE;
+  else if (!strcasecmp(positioning,"replace"))
+    posop = PASS_POS_REPLACE;
+  else fatal_error("invalid positioning string %s in MELT pass", positioning);
+  if (!passv || basilys_object_length((basilys_ptr_t) passv) < FGCCPASS__LAST
+      || !basilys_is_instance_of((basilys_ptr_t) passv, 
+				 (basilys_ptr_t) BASILYSGOB(CLASS_GCC_PASS)))
+    goto end;
+  namev = basilys_object_nth_field((basilys_ptr_t) passv, FNAMED_NAME);
+  if (basilys_magic_discr((basilys_ptr_t) namev) != OBMAG_STRING)
+    goto end;
+  passdictv =
+    basilys_object_nth_field ((basilys_ptr_t)
+			      BASILYSGOB (INITIAL_SYSTEM_DATA),
+			      FSYSDAT_PASS_DICT);
+  if (basilys_magic_discr((basilys_ptr_t)passdictv) != OBMAG_MAPSTRINGS) 
+    goto end;
+  if (basilys_get_mapstrings((struct basilysmapstrings_st*)passdictv, 
+			     basilys_string_str((basilys_ptr_t) namev)))
+    goto end;
+  compv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_PROPERTIES_REQUIRED);
+  propreq = basilys_val2passflag((basilys_ptr_t) compv);
+  compv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_PROPERTIES_PROVIDED);
+  propprov = basilys_val2passflag((basilys_ptr_t) compv);
+  compv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_TODO_FLAGS_START);
+  todostart = basilys_val2passflag((basilys_ptr_t) compv);
+  compv = basilys_object_nth_field((basilys_ptr_t) passv, FGCCPASS_TODO_FLAGS_FINISH);
+  todofinish = basilys_val2passflag((basilys_ptr_t) compv);
+  /* allocate the opt pass and fill it; it is never deallocated (ie it
+     is never free-d)! */
+  if (basilys_is_instance_of((basilys_ptr_t) passv, (basilys_ptr_t) BASILYSGOB(CLASS_GCC_GIMPLE_PASS))) {
+    struct gimple_opt_pass* gimpass = NULL;     
+    gimpass = XNEW(struct gimple_opt_pass);
+    memset(gimpass, 0, sizeof(struct gimple_opt_pass));
+    gimpass->pass.type = GIMPLE_PASS;
+    /* the name of the pass is also strduped and is never deallocated
+       (so it it never free-d! */
+    gimpass->pass.name = xstrdup(basilys_string_str((basilys_ptr_t) namev));
+    gimpass->pass.gate = basilysgc_gimple_gate;
+    gimpass->pass.execute = basilysgc_gimple_execute;
+    gimpass->pass.tv_id = TV_PLUGIN_RUN;
+    gimpass->pass.properties_required = propreq;
+    gimpass->pass.properties_provided = propprov;
+    gimpass->pass.properties_destroyed = propdest;
+    gimpass->pass.todo_flags_start = todostart;
+    gimpass->pass.todo_flags_finish = todofinish;
+    plugpass.pass = (struct opt_pass*) gimpass;
+    plugpass.reference_pass_name = refpassname;
+    plugpass.ref_pass_instance_number = refpassnum;
+    plugpass.pos_op = posop;
+    register_callback(MELT_PLUGIN_NAME, PLUGIN_PASS_MANAGER_SETUP, 
+		      NULL, &plugpass);
+    /* add the pass into the pass dict */
+    basilysgc_put_mapstrings((struct basilysmapstrings_st*) passdictv,
+			     gimpass->pass.name, (basilys_ptr_t) passv);
+  }
+  else if (basilys_is_instance_of((basilys_ptr_t) passv, 
+				  (basilys_ptr_t) BASILYSGOB(CLASS_GCC_RTL_PASS))) {
+    struct rtl_opt_pass* rtlpass = NULL;     
+    rtlpass = XNEW(struct rtl_opt_pass);
+    memset(rtlpass, 0, sizeof(struct rtl_opt_pass));
+    rtlpass->pass.type = RTL_PASS;
+    /* the name of the pass is also strduped and is never deallocated
+       (so it it never free-d! */
+    rtlpass->pass.name = xstrdup(basilys_string_str((basilys_ptr_t) namev));
+    rtlpass->pass.gate = basilysgc_rtl_gate;
+    rtlpass->pass.execute = basilysgc_rtl_execute;
+    rtlpass->pass.tv_id = TV_PLUGIN_RUN;
+    rtlpass->pass.properties_required = propreq;
+    rtlpass->pass.properties_provided = propprov;
+    rtlpass->pass.properties_destroyed = propdest;
+    rtlpass->pass.todo_flags_start = todostart;
+    rtlpass->pass.todo_flags_finish = todofinish;
+    plugpass.pass = (struct opt_pass*)rtlpass;
+    plugpass.reference_pass_name = refpassname;
+    plugpass.ref_pass_instance_number = refpassnum;
+    plugpass.pos_op = posop;
+    register_callback(MELT_PLUGIN_NAME, PLUGIN_PASS_MANAGER_SETUP, 
+		      NULL, &plugpass);
+    /* add the pass into the pass dict */
+    basilysgc_put_mapstrings((struct basilysmapstrings_st*) passdictv,
+			     rtlpass->pass.name, (basilys_ptr_t) passv);
+  }
+  else if (basilys_is_instance_of((basilys_ptr_t) passv, (basilys_ptr_t) BASILYSGOB(CLASS_GCC_SIMPLE_IPA_PASS))) {
+    struct simple_ipa_opt_pass* sipapass = NULL;     
+    sipapass = XNEW(struct simple_ipa_opt_pass);
+    memset(sipapass, 0, sizeof(struct simple_ipa_opt_pass));
+    sipapass->pass.type = SIMPLE_IPA_PASS;
+    /* the name of the pass is also strduped and is never deallocated
+       (so it it never free-d! */
+    sipapass->pass.name = xstrdup(basilys_string_str((basilys_ptr_t) namev));
+    sipapass->pass.gate = basilysgc_simple_ipa_gate;
+    sipapass->pass.execute = basilysgc_simple_ipa_execute;
+    sipapass->pass.tv_id = TV_PLUGIN_RUN;
+    sipapass->pass.properties_required = propreq;
+    sipapass->pass.properties_provided = propprov;
+    sipapass->pass.properties_destroyed = propdest;
+    sipapass->pass.todo_flags_start = todostart;
+    sipapass->pass.todo_flags_finish = todofinish;
+    plugpass.pass = (struct opt_pass*) sipapass;
+    plugpass.reference_pass_name = refpassname;
+    plugpass.ref_pass_instance_number = refpassnum;
+    plugpass.pos_op = posop;
+    register_callback(MELT_PLUGIN_NAME, PLUGIN_PASS_MANAGER_SETUP, 
+		      NULL, &plugpass);
+    /* add the pass into the pass dict */
+    basilysgc_put_mapstrings((struct basilysmapstrings_st*) passdictv,
+			     sipapass->pass.name, (basilys_ptr_t) passv);
+  }
+  /* non simple ipa passes are a different story - TODO! */
+  else 
+    fatal_error ("MELT cannot register pass %s of unexpected class %s",
+		 basilys_string_str ((basilys_ptr_t) namev), 
+		 basilys_string_str (basilys_object_nth_field 
+				     ((basilys_ptr_t) basilys_discr((basilys_ptr_t) passv), 
+				      FNAMED_NAME)));
+ end:
+  BASILYS_EXITFRAME();
+#undef passv
+#undef passdictv
+#undef namev
+}
+
+
+
 
 
 
 
 
 /*****
- * called from c-common.c in handle_melt_attribute
+ * called from handle_melt_attribute
  *****/
 
 void

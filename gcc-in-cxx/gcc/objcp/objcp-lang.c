@@ -1,5 +1,5 @@
 /* Language-dependent hooks for Objective-C++.
-   Copyright 2005, 2007 Free Software Foundation, Inc.
+   Copyright 2005, 2007, 2008 Free Software Foundation, Inc.
    Contributed by Ziemowit Laski  <zlaski@apple.com>
 
 This file is part of GCC.
@@ -58,7 +58,7 @@ const struct lang_hooks lang_hooks = LANG_HOOKS_INITIALIZER;
    there should be very few (if any) routines below.  */
 
 tree
-objcp_tsubst_copy_and_build (tree t, tree args, int complain, 
+objcp_tsubst_copy_and_build (tree t, tree args, tsubst_flags_t complain, 
 			     tree in_decl, bool function_p ATTRIBUTE_UNUSED)
 {
 #define RECURSE(NODE)							\

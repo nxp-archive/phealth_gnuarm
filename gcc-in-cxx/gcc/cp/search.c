@@ -1,7 +1,7 @@
 /* Breadth-first and depth-first routines for
    searching multiple-inheritance lattice for GNU C++.
    Copyright (C) 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2002, 2003, 2004, 2005, 2007, 2008
+   1999, 2000, 2002, 2003, 2004, 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
 
@@ -189,7 +189,7 @@ accessible_base_p (tree t, tree base, bool consider_local_p)
    NULL_TREE is returned.  */
 
 tree
-lookup_base (tree t, tree base, int access, base_kind *kind_ptr)
+lookup_base (tree t, tree base, base_access access, base_kind *kind_ptr)
 {
   tree binfo;
   tree t_binfo;

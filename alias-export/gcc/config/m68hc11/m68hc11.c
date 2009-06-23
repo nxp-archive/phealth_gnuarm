@@ -1,13 +1,13 @@
 /* Subroutines for code generation on Motorola 68HC11 and 68HC12.
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005
-   Free Software Foundation, Inc.
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
+   2009 Free Software Foundation, Inc.
    Contributed by Stephane Carrez (stcarrez@nerim.fr)
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.
 
 Note:
    A first 68HC11 port was made by Otto Lind (otto@coactive.com)
@@ -59,18 +58,20 @@ Note:
 #include "reload.h"
 #include "target.h"
 #include "target-def.h"
+#include "df.h"
 
 static void emit_move_after_reload (rtx, rtx, rtx);
 static rtx simplify_logical (enum machine_mode, int, rtx, rtx *);
 static void m68hc11_emit_logical (enum machine_mode, int, rtx *);
 static void m68hc11_reorg (void);
-static int go_if_legitimate_address_internal (rtx, enum machine_mode, int);
+static bool m68hc11_legitimate_address_p_1 (enum machine_mode, rtx, bool);
+static bool m68hc11_legitimate_address_p (enum machine_mode, rtx, bool);
 static rtx m68hc11_expand_compare (enum rtx_code, rtx, rtx);
 static int must_parenthesize (rtx);
-static int m68hc11_address_cost (rtx);
+static int m68hc11_address_cost (rtx, bool);
 static int m68hc11_shift_cost (enum machine_mode, rtx, int);
 static int m68hc11_rtx_costs_1 (rtx, enum rtx_code, enum rtx_code);
-static bool m68hc11_rtx_costs (rtx, int, int, int *);
+static bool m68hc11_rtx_costs (rtx, int, int, int *, bool);
 static tree m68hc11_handle_fntype_attribute (tree *, tree, tree, int, bool *);
 const struct attribute_spec m68hc11_attribute_table[];
 
@@ -88,7 +89,7 @@ static int autoinc_mode (rtx);
 static int m68hc11_make_autoinc_notes (rtx *, void *);
 static void m68hc11_init_libfuncs (void);
 static rtx m68hc11_struct_value_rtx (tree, int);
-static bool m68hc11_return_in_memory (tree, tree);
+static bool m68hc11_return_in_memory (const_tree, const_tree);
 
 /* Must be set to 1 to produce debug messages.  */
 int debug_m6811 = 0;
@@ -141,10 +142,6 @@ int m68hc11_sp_correction;
 
 int m68hc11_addr_mode;
 int m68hc11_mov_addr_mode;
-
-/* Comparison operands saved by the "tstxx" and "cmpxx" expand patterns.  */
-rtx m68hc11_compare_op0;
-rtx m68hc11_compare_op1;
 
 
 const struct processor_costs *m68hc11_cost;
@@ -263,6 +260,9 @@ static const struct processor_costs m6812_cost = {
 
 #undef TARGET_STRIP_NAME_ENCODING
 #define TARGET_STRIP_NAME_ENCODING m68hc11_strip_name_encoding
+
+#undef TARGET_LEGITIMATE_ADDRESS_P
+#define TARGET_LEGITIMATE_ADDRESS_P	m68hc11_legitimate_address_p
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
@@ -435,7 +435,7 @@ m68hc11_hard_regno_rename_ok (int reg1, int reg2)
 }
 
 enum reg_class
-preferred_reload_class (rtx operand, enum reg_class class)
+preferred_reload_class (rtx operand, enum reg_class rclass)
 {
   enum machine_mode mode;
 
@@ -443,97 +443,97 @@ preferred_reload_class (rtx operand, enum reg_class class)
 
   if (debug_m6811)
     {
-      printf ("Preferred reload: (class=%s): ", reg_class_names[class]);
+      printf ("Preferred reload: (class=%s): ", reg_class_names[rclass]);
     }
 
-  if (class == D_OR_A_OR_S_REGS && SP_REG_P (operand))
+  if (rclass == D_OR_A_OR_S_REGS && SP_REG_P (operand))
     return m68hc11_base_reg_class;
 
-  if (class >= S_REGS && (GET_CODE (operand) == MEM
+  if (rclass >= S_REGS && (GET_CODE (operand) == MEM
 			  || GET_CODE (operand) == CONST_INT))
     {
       /* S_REGS class must not be used.  The movhi template does not
          work to move a memory to a soft register.
          Restrict to a hard reg.  */
-      switch (class)
+      switch (rclass)
 	{
 	default:
 	case G_REGS:
 	case D_OR_A_OR_S_REGS:
-	  class = A_OR_D_REGS;
+	  rclass = A_OR_D_REGS;
 	  break;
 	case A_OR_S_REGS:
-	  class = A_REGS;
+	  rclass = A_REGS;
 	  break;
 	case D_OR_SP_OR_S_REGS:
-	  class = D_OR_SP_REGS;
+	  rclass = D_OR_SP_REGS;
 	  break;
 	case D_OR_Y_OR_S_REGS:
-	  class = D_OR_Y_REGS;
+	  rclass = D_OR_Y_REGS;
 	  break;
 	case D_OR_X_OR_S_REGS:
-	  class = D_OR_X_REGS;
+	  rclass = D_OR_X_REGS;
 	  break;
 	case SP_OR_S_REGS:
-	  class = SP_REGS;
+	  rclass = SP_REGS;
 	  break;
 	case Y_OR_S_REGS:
-	  class = Y_REGS;
+	  rclass = Y_REGS;
 	  break;
 	case X_OR_S_REGS:
-	  class = X_REGS;
+	  rclass = X_REGS;
 	  break;
 	case D_OR_S_REGS:
-	  class = D_REGS;
+	  rclass = D_REGS;
 	}
     }
-  else if (class == Y_REGS && GET_CODE (operand) == MEM)
+  else if (rclass == Y_REGS && GET_CODE (operand) == MEM)
     {
-      class = Y_REGS;
+      rclass = Y_REGS;
     }
-  else if (class == A_OR_D_REGS && GET_MODE_SIZE (mode) == 4)
+  else if (rclass == A_OR_D_REGS && GET_MODE_SIZE (mode) == 4)
     {
-      class = D_OR_X_REGS;
+      rclass = D_OR_X_REGS;
     }
-  else if (class >= S_REGS && S_REG_P (operand))
+  else if (rclass >= S_REGS && S_REG_P (operand))
     {
-      switch (class)
+      switch (rclass)
 	{
 	default:
 	case G_REGS:
 	case D_OR_A_OR_S_REGS:
-	  class = A_OR_D_REGS;
+	  rclass = A_OR_D_REGS;
 	  break;
 	case A_OR_S_REGS:
-	  class = A_REGS;
+	  rclass = A_REGS;
 	  break;
 	case D_OR_SP_OR_S_REGS:
-	  class = D_OR_SP_REGS;
+	  rclass = D_OR_SP_REGS;
 	  break;
 	case D_OR_Y_OR_S_REGS:
-	  class = D_OR_Y_REGS;
+	  rclass = D_OR_Y_REGS;
 	  break;
 	case D_OR_X_OR_S_REGS:
-	  class = D_OR_X_REGS;
+	  rclass = D_OR_X_REGS;
 	  break;
 	case SP_OR_S_REGS:
-	  class = SP_REGS;
+	  rclass = SP_REGS;
 	  break;
 	case Y_OR_S_REGS:
-	  class = Y_REGS;
+	  rclass = Y_REGS;
 	  break;
 	case X_OR_S_REGS:
-	  class = X_REGS;
+	  rclass = X_REGS;
 	  break;
 	case D_OR_S_REGS:
-	  class = D_REGS;
+	  rclass = D_REGS;
 	}
     }
-  else if (class >= S_REGS)
+  else if (rclass >= S_REGS)
     {
       if (debug_m6811)
 	{
-	  printf ("Class = %s for: ", reg_class_names[class]);
+	  printf ("Class = %s for: ", reg_class_names[rclass]);
 	  fflush (stdout);
 	  debug_rtx (operand);
 	}
@@ -541,12 +541,12 @@ preferred_reload_class (rtx operand, enum reg_class class)
 
   if (debug_m6811)
     {
-      printf (" => class=%s\n", reg_class_names[class]);
+      printf (" => class=%s\n", reg_class_names[rclass]);
       fflush (stdout);
       debug_rtx (operand);
     }
 
-  return class;
+  return rclass;
 }
 
 /* Return 1 if the operand is a valid indexed addressing mode.
@@ -725,9 +725,9 @@ m68hc11_register_indirect_p (rtx operand, enum machine_mode mode)
   return m68hc11_valid_addressing_p (operand, mode, addr_mode);
 }
 
-static int
-go_if_legitimate_address_internal (rtx operand, enum machine_mode mode,
-                                   int strict)
+static bool
+m68hc11_legitimate_address_p_1  (enum machine_mode mode, rtx operand,
+                                 bool strict)
 {
   int addr_mode;
 
@@ -756,9 +756,9 @@ go_if_legitimate_address_internal (rtx operand, enum machine_mode mode,
   return 0;
 }
 
-int
-m68hc11_go_if_legitimate_address (rtx operand, enum machine_mode mode,
-                                  int strict)
+bool
+m68hc11_legitimate_address_p (enum machine_mode mode, rtx operand,
+                              bool strict)
 {
   int result;
 
@@ -769,7 +769,7 @@ m68hc11_go_if_legitimate_address (rtx operand, enum machine_mode mode,
       debug_rtx (operand);
     }
 
-  result = go_if_legitimate_address_internal (operand, mode, strict);
+  result = m68hc11_legitimate_address_p_1 (mode, operand, strict);
 
   if (debug_m6811)
     {
@@ -787,14 +787,6 @@ m68hc11_go_if_legitimate_address (rtx operand, enum machine_mode mode,
 	}
     }
   return result;
-}
-
-int
-m68hc11_legitimize_address (rtx *operand ATTRIBUTE_UNUSED,
-                            rtx old_operand ATTRIBUTE_UNUSED,
-                            enum machine_mode mode ATTRIBUTE_UNUSED)
-{
-  return 0;
 }
 
 
@@ -1115,8 +1107,8 @@ m68hc11_handle_page0_attribute (tree *node, tree name,
     }
   else
     {
-      warning (OPT_Wattributes, "%qs attribute ignored",
-	       IDENTIFIER_POINTER (name));
+      warning (OPT_Wattributes, "%qE attribute ignored",
+	       name);
       *no_add_attrs = true;
     }
 
@@ -1152,8 +1144,8 @@ m68hc11_handle_fntype_attribute (tree *node, tree name,
       && TREE_CODE (*node) != FIELD_DECL
       && TREE_CODE (*node) != TYPE_DECL)
     {
-      warning (OPT_Wattributes, "%qs attribute only applies to functions",
-	       IDENTIFIER_POINTER (name));
+      warning (OPT_Wattributes, "%qE attribute only applies to functions",
+	       name);
       *no_add_attrs = true;
     }
 
@@ -1172,7 +1164,7 @@ m68hc11_encode_label (tree decl)
 {
   const char *str = XSTR (XEXP (DECL_RTL (decl), 0), 0);
   int len = strlen (str);
-  char *newstr = alloca (len + 2);
+  char *newstr = XALLOCAVEC (char, len + 2);
 
   newstr[0] = '@';
   strcpy (&newstr[1], str);
@@ -1336,7 +1328,7 @@ m68hc11_initial_elimination_offset (int from, int to)
   /* Push any 2 byte pseudo hard registers that we need to save.  */
   for (regno = SOFT_REG_FIRST; regno < SOFT_REG_LAST; regno++)
     {
-      if (regs_ever_live[regno] && !call_used_regs[regno])
+      if (df_regs_ever_live_p (regno) && !call_used_regs[regno])
 	{
 	  size += 2;
 	}
@@ -1479,7 +1471,7 @@ m68hc11_function_arg (const CUMULATIVE_ARGS *cum, enum machine_mode mode,
 
    Structures are stored left shifted in their argument slot.  */
 int
-m68hc11_function_arg_padding (enum machine_mode mode, tree type)
+m68hc11_function_arg_padding (enum machine_mode mode, const_tree type)
 {
   if (type != 0 && AGGREGATE_TYPE_P (type))
     return upward;
@@ -1550,7 +1542,7 @@ m68hc11_total_frame_size (void)
     size += HARD_REG_SIZE;
 
   for (regno = SOFT_REG_FIRST; regno <= SOFT_REG_LAST; regno++)
-    if (regs_ever_live[regno] && !call_used_regs[regno])
+    if (df_regs_ever_live_p (regno) && !call_used_regs[regno])
       size += HARD_REG_SIZE;
 
   return size;
@@ -1597,7 +1589,7 @@ expand_prologue (void)
      If the first argument is a 32-bit quantity, the D+X registers
      are used.  Use Y to compute the frame.  Otherwise, X is cheaper.
      For 68HC12, this scratch register is not used.  */
-  if (current_function_args_info.nregs == 2)
+  if (crtl->args.info.nregs == 2)
     scratch = iy_reg;
   else
     scratch = ix_reg;
@@ -1662,7 +1654,7 @@ expand_prologue (void)
   /* Push any 2 byte pseudo hard registers that we need to save.  */
   for (regno = SOFT_REG_FIRST; regno <= SOFT_REG_LAST; regno++)
     {
-      if (regs_ever_live[regno] && !call_used_regs[regno])
+      if (df_regs_ever_live_p (regno) && !call_used_regs[regno])
 	{
 	  emit_move_after_reload (stack_push_word,
 				  gen_rtx_REG (HImode, regno), scratch);
@@ -1685,12 +1677,12 @@ expand_epilogue (void)
   /* If we are returning a value in two registers, we have to preserve the
      X register and use the Y register to restore the stack and the saved
      registers.  Otherwise, use X because it's faster (and smaller).  */
-  if (current_function_return_rtx == 0)
+  if (crtl->return_rtx == 0)
     return_size = 0;
-  else if (GET_CODE (current_function_return_rtx) == MEM)
+  else if (GET_CODE (crtl->return_rtx) == MEM)
     return_size = HARD_REG_SIZE;
   else
-    return_size = GET_MODE_SIZE (GET_MODE (current_function_return_rtx));
+    return_size = GET_MODE_SIZE (GET_MODE (crtl->return_rtx));
 
   if (return_size > HARD_REG_SIZE && return_size <= 2 * HARD_REG_SIZE)
     scratch = iy_reg;
@@ -1700,7 +1692,7 @@ expand_epilogue (void)
   /* Pop any 2 byte pseudo hard registers that we saved.  */
   for (regno = SOFT_REG_LAST; regno >= SOFT_REG_FIRST; regno--)
     {
-      if (regs_ever_live[regno] && !call_used_regs[regno])
+      if (df_regs_ever_live_p (regno) && !call_used_regs[regno])
 	{
 	  emit_move_after_reload (gen_rtx_REG (HImode, regno),
 				  stack_pop_word, scratch);
@@ -1960,7 +1952,7 @@ m68hc11_gen_highpart (enum machine_mode mode, rtx x)
   switch (GET_CODE (x))
     {
     case SUBREG:
-      return gen_rtx_SUBREG (mode, XEXP (x, 0), XEXP (x, 1));
+      return gen_rtx_SUBREG (mode, XEXP (x, 0), XINT (x, 1));
     case REG:
       if (REGNO (x) < FIRST_PSEUDO_REGISTER)
         return gen_rtx_REG (mode, REGNO (x));
@@ -3885,7 +3877,11 @@ m68hc11_notice_update_cc (rtx exp, rtx insn ATTRIBUTE_UNUSED)
 	{
 	  cc_status.flags = 0;
 	  cc_status.value1 = XEXP (exp, 0);
-	  cc_status.value2 = XEXP (exp, 1);
+	  if (GET_CODE (XEXP (exp, 1)) == COMPARE
+	      && XEXP (XEXP (exp, 1), 1) == CONST0_RTX (GET_MODE (XEXP (XEXP (exp, 1), 0))))
+	    cc_status.value2 = XEXP (XEXP (exp, 1), 0);
+	  else
+	    cc_status.value2 = XEXP (exp, 1);
 	}
       else
 	{
@@ -5004,7 +5000,7 @@ static void
 m68hc11_reorg (void)
 {
   int split_done = 0;
-  rtx insn, first;
+  rtx first;
 
   z_replacement_completed = 0;
   z_reg = gen_rtx_REG (HImode, HARD_Z_REGNUM);
@@ -5036,29 +5032,9 @@ m68hc11_reorg (void)
      description to use the best assembly directives.  */
   if (optimize)
     {
-      /* Before recomputing the REG_DEAD notes, remove all of them.
-         This is necessary because the reload_cse_regs() pass can
-         have replaced some (MEM) with a register.  In that case,
-         the REG_DEAD that could exist for that register may become
-         wrong.  */
-      for (insn = first; insn; insn = NEXT_INSN (insn))
-        {
-          if (INSN_P (insn))
-            {
-              rtx *pnote;
-
-              pnote = &REG_NOTES (insn);
-              while (*pnote != 0)
-                {
-                  if (REG_NOTE_KIND (*pnote) == REG_DEAD)
-                    *pnote = XEXP (*pnote, 1);
-                  else
-                    pnote = &XEXP (*pnote, 1);
-                }
-            }
-        }
-
-      life_analysis (PROP_REG_INFO | PROP_DEATH_NOTES);
+      df_note_add_problem ();
+      df_analyze ();
+      df_remove_problem (df_note);
     }
 
   z_replacement_completed = 2;
@@ -5117,10 +5093,10 @@ m68hc11_init_libfuncs (void)
 
 /* Cost of moving memory.  */
 int
-m68hc11_memory_move_cost (enum machine_mode mode, enum reg_class class,
+m68hc11_memory_move_cost (enum machine_mode mode, enum reg_class rclass,
                           int in ATTRIBUTE_UNUSED)
 {
-  if (class <= H_REGS && class > NO_REGS)
+  if (rclass <= H_REGS && rclass > NO_REGS)
     {
       if (GET_MODE_SIZE (mode) <= 2)
 	return COSTS_N_INSNS (1) + (reload_completed | reload_in_progress);
@@ -5165,7 +5141,7 @@ m68hc11_register_move_cost (enum machine_mode mode, enum reg_class from,
    If ADDR is not a valid address, its cost is irrelevant.  */
 
 static int
-m68hc11_address_cost (rtx addr)
+m68hc11_address_cost (rtx addr, bool speed ATTRIBUTE_UNUSED)
 {
   int cost = 4;
 
@@ -5250,7 +5226,7 @@ m68hc11_shift_cost (enum machine_mode mode, rtx x, int shift)
 {
   int total;
 
-  total = rtx_cost (x, SET);
+  total = rtx_cost (x, SET, !optimize_size);
   if (mode == QImode)
     total += m68hc11_cost->shiftQI_const[shift % 8];
   else if (mode == HImode)
@@ -5294,14 +5270,14 @@ m68hc11_rtx_costs_1 (rtx x, enum rtx_code code,
           return m68hc11_shift_cost (mode, XEXP (x, 0), INTVAL (XEXP (x, 1)));
 	}
 
-      total = rtx_cost (XEXP (x, 0), code) + rtx_cost (XEXP (x, 1), code);
+      total = rtx_cost (XEXP (x, 0), code, !optimize_size) + rtx_cost (XEXP (x, 1), code, !optimize_size);
       total += m68hc11_cost->shift_var;
       return total;
 
     case AND:
     case XOR:
     case IOR:
-      total = rtx_cost (XEXP (x, 0), code) + rtx_cost (XEXP (x, 1), code);
+      total = rtx_cost (XEXP (x, 0), code, !optimize_size) + rtx_cost (XEXP (x, 1), code, !optimize_size);
       total += m68hc11_cost->logical;
 
       /* Logical instructions are byte instructions only.  */
@@ -5310,7 +5286,7 @@ m68hc11_rtx_costs_1 (rtx x, enum rtx_code code,
 
     case MINUS:
     case PLUS:
-      total = rtx_cost (XEXP (x, 0), code) + rtx_cost (XEXP (x, 1), code);
+      total = rtx_cost (XEXP (x, 0), code, !optimize_size) + rtx_cost (XEXP (x, 1), code, !optimize_size);
       total += m68hc11_cost->add;
       if (GET_MODE_SIZE (mode) > 2)
 	{
@@ -5321,7 +5297,7 @@ m68hc11_rtx_costs_1 (rtx x, enum rtx_code code,
     case UDIV:
     case DIV:
     case MOD:
-      total = rtx_cost (XEXP (x, 0), code) + rtx_cost (XEXP (x, 1), code);
+      total = rtx_cost (XEXP (x, 0), code, !optimize_size) + rtx_cost (XEXP (x, 1), code, !optimize_size);
       switch (mode)
         {
         case QImode:
@@ -5344,18 +5320,19 @@ m68hc11_rtx_costs_1 (rtx x, enum rtx_code code,
       if (mode == HImode && GET_CODE (XEXP (x, 0)) == ZERO_EXTEND
           && GET_CODE (XEXP (x, 1)) == ZERO_EXTEND)
         return m68hc11_cost->multQI
-          + rtx_cost (XEXP (XEXP (x, 0), 0), code)
-          + rtx_cost (XEXP (XEXP (x, 1), 0), code);
+          + rtx_cost (XEXP (XEXP (x, 0), 0), code, !optimize_size)
+          + rtx_cost (XEXP (XEXP (x, 1), 0), code, !optimize_size);
 
       /* emul instruction produces 32-bit result for 68HC12.  */
       if (TARGET_M6812 && mode == SImode
           && GET_CODE (XEXP (x, 0)) == ZERO_EXTEND
           && GET_CODE (XEXP (x, 1)) == ZERO_EXTEND)
         return m68hc11_cost->multHI
-          + rtx_cost (XEXP (XEXP (x, 0), 0), code)
-          + rtx_cost (XEXP (XEXP (x, 1), 0), code);
+          + rtx_cost (XEXP (XEXP (x, 0), 0), code, !optimize_size)
+          + rtx_cost (XEXP (XEXP (x, 1), 0), code, !optimize_size);
 
-      total = rtx_cost (XEXP (x, 0), code) + rtx_cost (XEXP (x, 1), code);
+      total = rtx_cost (XEXP (x, 0), code, !optimize_size)
+      	      + rtx_cost (XEXP (x, 1), code, !optimize_size);
       switch (mode)
         {
         case QImode:
@@ -5382,7 +5359,8 @@ m68hc11_rtx_costs_1 (rtx x, enum rtx_code code,
     case COMPARE:
     case ABS:
     case ZERO_EXTEND:
-      total = extra_cost + rtx_cost (XEXP (x, 0), code);
+    case ZERO_EXTRACT:
+      total = extra_cost + rtx_cost (XEXP (x, 0), code, !optimize_size);
       if (mode == QImode)
 	{
 	  return total + COSTS_N_INSNS (1);
@@ -5409,7 +5387,8 @@ m68hc11_rtx_costs_1 (rtx x, enum rtx_code code,
 }
 
 static bool
-m68hc11_rtx_costs (rtx x, int code, int outer_code, int *total)
+m68hc11_rtx_costs (rtx x, int code, int outer_code, int *total,
+		   bool speed ATTRIBUTE_UNUSED)
 {
   switch (code)
     {
@@ -5431,6 +5410,10 @@ m68hc11_rtx_costs (rtx x, int code, int outer_code, int *total)
 	*total = 0;
       return true;
     
+    case ZERO_EXTRACT:
+      if (outer_code != COMPARE)
+	return false;
+
     case ROTATE:
     case ROTATERT:
     case ASHIFT:
@@ -5503,7 +5486,7 @@ m68hc11_struct_value_rtx (tree fntype ATTRIBUTE_UNUSED,
    in the register (D + X = 4).  */
 
 static bool
-m68hc11_return_in_memory (tree type, tree fntype ATTRIBUTE_UNUSED)
+m68hc11_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 {
   if (TYPE_MODE (type) == BLKmode)
     {

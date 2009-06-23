@@ -1,6 +1,6 @@
 /* Parser for Java(TM) .class files.
    Copyright (C) 1996, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
-   2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   2005, 2006, 2007, 2008, 2009 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -507,7 +507,7 @@ handle_constant (JCF *jcf, int index, enum cpool_tag purpose)
   if (! CPOOL_INDEX_IN_RANGE (&jcf->cpool, index))
     error ("<constant pool index %d not in range>", index);
   
-  kind = JPOOL_TAG (jcf, index);
+  kind = (enum cpool_tag) JPOOL_TAG (jcf, index);
 
   if ((kind & ~CONSTANT_ResolvedFlag) != purpose)
     {
@@ -1699,7 +1699,33 @@ java_emit_static_constructor (void)
   write_resource_constructor (&body);
 
   if (body)
-    cgraph_build_static_cdtor ('I', body, DEFAULT_INIT_PRIORITY);
+    {
+      tree name = get_identifier ("_Jv_global_static_constructor");
+
+      tree decl 
+	= build_decl (FUNCTION_DECL, name,
+		      build_function_type (void_type_node, void_list_node));
+
+      tree resdecl = build_decl (RESULT_DECL, NULL_TREE, void_type_node);
+      DECL_ARTIFICIAL (resdecl) = 1;
+      DECL_RESULT (decl) = resdecl;
+      current_function_decl = decl;
+      allocate_struct_function (decl, false);
+
+      TREE_STATIC (decl) = 1;
+      TREE_USED (decl) = 1;
+      DECL_ARTIFICIAL (decl) = 1;
+      DECL_NO_INSTRUMENT_FUNCTION_ENTRY_EXIT (decl) = 1;
+      DECL_SAVED_TREE (decl) = body;
+      DECL_UNINLINABLE (decl) = 1;
+
+      DECL_INITIAL (decl) = make_node (BLOCK);
+      TREE_USED (DECL_INITIAL (decl)) = 1;
+
+      DECL_STATIC_CONSTRUCTOR (decl) = 1;
+      java_genericize (decl);
+      cgraph_finalize_function (decl, false);
+    }
 }
 
 

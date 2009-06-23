@@ -8,7 +8,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -17,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* This macro is a C statement to print on `stderr' a string describing the
    particular machine description choice.  */
@@ -47,11 +46,11 @@ do {							\
 	builtin_define("__IA64__");			\
 	builtin_define("_LONGLONG");			\
 	builtin_define("_INCLUDE_LONGLONG");		\
+	builtin_define("__STDC_EXT__");			\
 	builtin_define("_UINT128_T");			\
 	if (c_dialect_cxx () || !flag_iso)		\
 	  {						\
 	    builtin_define("_HPUX_SOURCE");		\
-	    builtin_define("__STDC_EXT__");		\
 	    builtin_define("__STDCPP__");		\
 	    builtin_define("_INCLUDE__STDC_A1_SOURCE");	\
 	  }						\
@@ -107,7 +106,7 @@ do {							\
 
 #undef TARGET_DEFAULT
 #define TARGET_DEFAULT \
-  (MASK_DWARF2_ASM | MASK_BIG_ENDIAN | MASK_ILP32)
+  (MASK_DWARF2_ASM | MASK_BIG_ENDIAN | MASK_ILP32 | MASK_FUSED_MADD)
 
 /* ??? Might not be needed anymore.  */
 #define MEMBER_TYPE_FORCES_BLK(FIELD, MODE) ((MODE) == TFmode)

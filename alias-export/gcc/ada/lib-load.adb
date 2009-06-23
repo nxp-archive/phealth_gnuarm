@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -30,7 +29,6 @@ with Einfo;    use Einfo;
 with Errout;   use Errout;
 with Fname;    use Fname;
 with Fname.UF; use Fname.UF;
-with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
 with Opt;      use Opt;
@@ -53,7 +51,7 @@ package body Lib.Load is
    -- Local Subprograms --
    -----------------------
 
-   function From_Limited_With_Chain (Lim : Boolean) return Boolean;
+   function From_Limited_With_Chain return Boolean;
    --  Check whether a possible circular dependence includes units that
    --  have been loaded through limited_with clauses, in which case there
    --  is no real circularity.
@@ -70,6 +68,69 @@ package body Lib.Load is
    procedure Write_Dependency_Chain;
    --  This procedure is used to generate error message info lines that
    --  trace the current dependency chain when a load error occurs.
+
+   ------------------------------
+   -- Change_Main_Unit_To_Spec --
+   ------------------------------
+
+   procedure Change_Main_Unit_To_Spec is
+      U : Unit_Record renames Units.Table (Main_Unit);
+      N : File_Name_Type;
+      X : Source_File_Index;
+
+   begin
+      --  Get name of unit body
+
+      Get_Name_String (U.Unit_File_Name);
+
+      --  Note: for the following we should really generalize and consult the
+      --  file name pattern data, but for now we just deal with the common
+      --  naming cases, which is probably good enough in practice ???
+
+      --  Change .adb to .ads
+
+      if Name_Len >= 5
+        and then Name_Buffer (Name_Len - 3 .. Name_Len) = ".adb"
+      then
+         Name_Buffer (Name_Len) := 's';
+
+      --  Change .2.ada to .1.ada (Rational convention)
+
+      elsif Name_Len >= 7
+        and then Name_Buffer (Name_Len - 5 .. Name_Len) = ".2.ada"
+      then
+         Name_Buffer (Name_Len - 4) := '1';
+
+      --  Change .ada to _.ada (DEC convention)
+
+      elsif Name_Len >= 5
+        and then Name_Buffer (Name_Len - 3 .. Name_Len) = ".ada"
+      then
+         Name_Buffer (Name_Len - 3 .. Name_Len + 1) := "_.ada";
+         Name_Len := Name_Len + 1;
+
+      --  No match, don't make the change
+
+      else
+         return;
+      end if;
+
+      --  Try loading the spec
+
+      N := Name_Find;
+      X := Load_Source_File (N);
+
+      --  No change if we did not find the spec
+
+      if X = No_Source_File then
+         return;
+      end if;
+
+      --  Otherwise modify Main_Unit entry to point to spec
+
+      U.Unit_File_Name := N;
+      U.Source_Index := X;
+   end Change_Main_Unit_To_Spec;
 
    -------------------------------
    -- Create_Dummy_Package_Unit --
@@ -108,14 +169,14 @@ package body Lib.Load is
              Chars => Chars (Selector_Name (Name (With_Node))));
          Du_Name :=
            Make_Defining_Program_Unit_Name (No_Location,
-             Name => New_Copy_Tree (Prefix (Name (With_Node))),
+             Name => Copy_Separate_Tree (Prefix (Name (With_Node))),
              Defining_Identifier => Cunit_Entity);
 
          Set_Is_Child_Unit (Cunit_Entity);
 
          End_Lab :=
            Make_Designator (No_Location,
-             Name => New_Copy_Tree (Prefix (Name (With_Node))),
+             Name => Copy_Separate_Tree (Prefix (Name (With_Node))),
              Identifier => New_Occurrence_Of (Cunit_Entity, No_Location));
       end if;
 
@@ -145,24 +206,26 @@ package body Lib.Load is
       Unum := Units.Last;
 
       Units.Table (Unum) := (
-        Cunit           => Cunit,
-        Cunit_Entity    => Cunit_Entity,
-        Dependency_Num  => 0,
-        Dynamic_Elab    => False,
-        Error_Location  => Sloc (With_Node),
-        Expected_Unit   => Spec_Name,
-        Fatal_Error     => True,
-        Generate_Code   => False,
-        Has_RACW        => False,
-        Ident_String    => Empty,
-        Loading         => False,
-        Main_Priority   => Default_Main_Priority,
-        Munit_Index     => 0,
-        Serial_Number   => 0,
-        Source_Index    => No_Source_File,
-        Unit_File_Name  => Get_File_Name (Spec_Name, Subunit => False),
-        Unit_Name       => Spec_Name,
-        Version         => 0);
+        Cunit            => Cunit,
+        Cunit_Entity     => Cunit_Entity,
+        Dependency_Num   => 0,
+        Dynamic_Elab     => False,
+        Error_Location   => Sloc (With_Node),
+        Expected_Unit    => Spec_Name,
+        Fatal_Error      => True,
+        Generate_Code    => False,
+        Has_RACW         => False,
+        Is_Compiler_Unit => False,
+        Ident_String     => Empty,
+        Loading          => False,
+        Main_Priority    => Default_Main_Priority,
+        Munit_Index      => 0,
+        Serial_Number    => 0,
+        Source_Index     => No_Source_File,
+        Unit_File_Name   => Get_File_Name (Spec_Name, Subunit => False),
+        Unit_Name        => Spec_Name,
+        Version          => 0,
+        OA_Setting       => 'O');
 
       Set_Comes_From_Source_Default (Save_CS);
       Set_Error_Posted (Cunit_Entity);
@@ -174,22 +237,24 @@ package body Lib.Load is
    -- From_Limited_With_Chain --
    -----------------------------
 
-   function From_Limited_With_Chain (Lim : Boolean) return Boolean is
+   function From_Limited_With_Chain return Boolean is
+      Curr_Num : constant Unit_Number_Type :=
+                   Load_Stack.Table (Load_Stack.Last).Unit_Number;
+
    begin
       --  True if the current load operation is through a limited_with clause
+      --  and we are not within a loop of regular with_clauses.
 
-      if Lim then
-         return True;
+      for U in reverse Load_Stack.First .. Load_Stack.Last - 1 loop
+         if Load_Stack.Table (U).Unit_Number = Curr_Num then
+            return False;
 
-      --  Examine the Load_Stack to locate any previous Limited_with clause
-
-      elsif Load_Stack.Last - 1 > Load_Stack.First then
-         for U in Load_Stack.First .. Load_Stack.Last - 1 loop
-            if Load_Stack.Table (U).From_Limited_With then
-               return True;
-            end if;
-         end loop;
-      end if;
+         elsif Present (Load_Stack.Table (U).With_Node)
+           and then Limited_Present (Load_Stack.Table (U).With_Node)
+         then
+            return True;
+         end if;
+      end loop;
 
       return False;
    end From_Limited_With_Chain;
@@ -218,11 +283,12 @@ package body Lib.Load is
    ----------------------
 
    procedure Load_Main_Source is
-      Fname : File_Name_Type;
+      Fname   : File_Name_Type;
+      Version : Word := 0;
 
    begin
       Load_Stack.Increment_Last;
-      Load_Stack.Table (Load_Stack.Last) := (Main_Unit, False);
+      Load_Stack.Table (Load_Stack.Last) := (Main_Unit, Empty);
 
       --  Initialize unit table entry for Main_Unit. Note that we don't know
       --  the unit name yet, that gets filled in when the parser parses the
@@ -239,25 +305,31 @@ package body Lib.Load is
          Main_Source_File := Load_Source_File (Fname);
          Current_Error_Source_File := Main_Source_File;
 
+         if Main_Source_File /= No_Source_File then
+            Version := Source_Checksum (Main_Source_File);
+         end if;
+
          Units.Table (Main_Unit) := (
-           Cunit           => Empty,
-           Cunit_Entity    => Empty,
-           Dependency_Num  => 0,
-           Dynamic_Elab    => False,
-           Error_Location  => No_Location,
-           Expected_Unit   => No_Name,
-           Fatal_Error     => False,
-           Generate_Code   => False,
-           Has_RACW        => False,
-           Ident_String    => Empty,
-           Loading         => True,
-           Main_Priority   => Default_Main_Priority,
-           Munit_Index     => 0,
-           Serial_Number   => 0,
-           Source_Index    => Main_Source_File,
-           Unit_File_Name  => Fname,
-           Unit_Name       => No_Name,
-           Version         => Source_Checksum (Main_Source_File));
+           Cunit            => Empty,
+           Cunit_Entity     => Empty,
+           Dependency_Num   => 0,
+           Dynamic_Elab     => False,
+           Error_Location   => No_Location,
+           Expected_Unit    => No_Unit_Name,
+           Fatal_Error      => False,
+           Generate_Code    => False,
+           Has_RACW         => False,
+           Is_Compiler_Unit => False,
+           Ident_String     => Empty,
+           Loading          => True,
+           Main_Priority    => Default_Main_Priority,
+           Munit_Index      => 0,
+           Serial_Number    => 0,
+           Source_Index     => Main_Source_File,
+           Unit_File_Name   => Fname,
+           Unit_Name        => No_Unit_Name,
+           Version          => Version,
+           OA_Setting       => 'O');
       end if;
    end Load_Main_Source;
 
@@ -272,7 +344,7 @@ package body Lib.Load is
       Subunit           : Boolean;
       Corr_Body         : Unit_Number_Type := No_Unit;
       Renamings         : Boolean          := False;
-      From_Limited_With : Boolean          := False) return Unit_Number_Type
+      With_Node         : Node_Id          := Empty) return Unit_Number_Type
    is
       Calling_Unit : Unit_Number_Type;
       Uname_Actual : Unit_Name_Type;
@@ -286,6 +358,8 @@ package body Lib.Load is
    begin
       --  If renamings are allowed and we have a child unit name, then we
       --  must first load the parent to deal with finding the real name.
+      --  Retain the with_clause that names the child, so that if it is
+      --  limited, the parent is loaded under the same condition.
 
       if Renamings and then Is_Child_Name (Load_Name) then
          Unump :=
@@ -294,7 +368,8 @@ package body Lib.Load is
               Required   => Required,
               Subunit    => False,
               Renamings  => True,
-              Error_Node => Error_Node);
+              Error_Node => Error_Node,
+              With_Node  => With_Node);
 
          if Unump = No_Unit then
             return No_Unit;
@@ -303,13 +378,10 @@ package body Lib.Load is
          --  If parent is a renaming, then we use the renamed package as
          --  the actual parent for the subsequent load operation.
 
-         if Nkind (Parent (Cunit_Entity (Unump))) =
-           N_Package_Renaming_Declaration
-         then
+         if Nkind (Unit (Cunit (Unump))) = N_Package_Renaming_Declaration then
             Uname_Actual :=
               New_Child
-                (Load_Name,
-                 Get_Unit_Name (Name (Parent (Cunit_Entity (Unump)))));
+                (Load_Name, Get_Unit_Name (Name (Unit (Cunit (Unump)))));
 
             --  Save the renaming entity, to establish its visibility when
             --  installing the context. The implicit with is on this entity,
@@ -382,7 +454,7 @@ package body Lib.Load is
       --  Note: Unit_Name (Main_Unit) is not set if we are parsing gnat.adc.
 
       if Present (Error_Node)
-        and then Unit_Name (Main_Unit) /= No_Name
+        and then Unit_Name (Main_Unit) /= No_Unit_Name
       then
          --  It seems like In_Extended_Main_Source_Unit (Error_Node) would
          --  do the trick here, but that's wrong, it is much too early to
@@ -407,9 +479,6 @@ package body Lib.Load is
 
             --  If the load is called from a with_type clause, the error
             --  node is correct.
-
-            elsif Nkind (Parent (Error_Node)) = N_With_Type_Clause then
-               Load_Msg_Sloc := Sloc (Error_Node);
 
             --  Otherwise, check for the subunit case, and if so, consider
             --  we have a match if one name is a prefix of the other name.
@@ -474,14 +543,13 @@ package body Lib.Load is
 
                if Present (Error_Node) then
                   if Is_Predefined_File_Name (Fname) then
-                     Error_Msg_Name_1 := Uname_Actual;
-                     Error_Msg
-                       ("% is not a language defined unit", Load_Msg_Sloc);
-                  else
-                     Error_Msg_Name_1 := Fname;
                      Error_Msg_Unit_1 := Uname_Actual;
                      Error_Msg
-                       ("File{ does not contain unit$", Load_Msg_Sloc);
+                       ("$$ is not a language defined unit", Load_Msg_Sloc);
+                  else
+                     Error_Msg_File_1 := Fname;
+                     Error_Msg_Unit_1 := Uname_Actual;
+                     Error_Msg ("File{ does not contain unit$", Load_Msg_Sloc);
                   end if;
 
                   Write_Dependency_Chain;
@@ -498,7 +566,7 @@ package body Lib.Load is
       --  and indicate the kind of with_clause responsible for the load.
 
       Load_Stack.Increment_Last;
-      Load_Stack.Table (Load_Stack.Last) := (Unum, From_Limited_With);
+      Load_Stack.Table (Load_Stack.Last) := (Unum, With_Node);
 
       --  Case of entry already in table
 
@@ -519,7 +587,7 @@ package body Lib.Load is
                        or else Acts_As_Spec (Units.Table (Unum).Cunit))
            and then (Nkind (Error_Node) /= N_With_Clause
                        or else not Limited_Present (Error_Node))
-           and then not From_Limited_With_Chain (From_Limited_With)
+           and then not From_Limited_With_Chain
          then
             if Debug_Flag_L then
                Write_Str ("  circular dependency encountered");
@@ -566,24 +634,26 @@ package body Lib.Load is
 
          if Src_Ind /= No_Source_File then
             Units.Table (Unum) := (
-              Cunit           => Empty,
-              Cunit_Entity    => Empty,
-              Dependency_Num  => 0,
-              Dynamic_Elab    => False,
-              Error_Location  => Sloc (Error_Node),
-              Expected_Unit   => Uname_Actual,
-              Fatal_Error     => False,
-              Generate_Code   => False,
-              Has_RACW        => False,
-              Ident_String    => Empty,
-              Loading         => True,
-              Main_Priority   => Default_Main_Priority,
-              Munit_Index     => 0,
-              Serial_Number   => 0,
-              Source_Index    => Src_Ind,
-              Unit_File_Name  => Fname,
-              Unit_Name       => Uname_Actual,
-              Version         => Source_Checksum (Src_Ind));
+              Cunit            => Empty,
+              Cunit_Entity     => Empty,
+              Dependency_Num   => 0,
+              Dynamic_Elab     => False,
+              Error_Location   => Sloc (Error_Node),
+              Expected_Unit    => Uname_Actual,
+              Fatal_Error      => False,
+              Generate_Code    => False,
+              Has_RACW         => False,
+              Is_Compiler_Unit => False,
+              Ident_String     => Empty,
+              Loading          => True,
+              Main_Priority    => Default_Main_Priority,
+              Munit_Index      => 0,
+              Serial_Number    => 0,
+              Source_Index     => Src_Ind,
+              Unit_File_Name   => Fname,
+              Unit_Name        => Uname_Actual,
+              Version          => Source_Checksum (Src_Ind),
+              OA_Setting       => 'O');
 
             --  Parse the new unit
 
@@ -593,8 +663,7 @@ package body Lib.Load is
                Multiple_Unit_Index := Get_Unit_Index (Uname_Actual);
                Units.Table (Unum).Munit_Index := Multiple_Unit_Index;
                Initialize_Scanner (Unum, Source_Index (Unum));
-               Discard_List (Par (Configuration_Pragmas => False,
-                                  From_Limited_With     => From_Limited_With));
+               Discard_List (Par (Configuration_Pragmas => False));
                Multiple_Unit_Index := Save_Index;
                Set_Loading (Unum, False);
             end;
@@ -604,11 +673,10 @@ package body Lib.Load is
             if Corr_Body /= No_Unit
               and then Spec_Is_Irrelevant (Unum, Corr_Body)
             then
-               Error_Msg_Name_1 := Unit_File_Name (Corr_Body);
+               Error_Msg_File_1 := Unit_File_Name (Corr_Body);
                Error_Msg
-                 ("cannot compile subprogram in file {!",
-                  Load_Msg_Sloc);
-               Error_Msg_Name_1 := Unit_File_Name (Unum);
+                 ("cannot compile subprogram in file {!", Load_Msg_Sloc);
+               Error_Msg_File_1 := Unit_File_Name (Unum);
                Error_Msg
                  ("\incorrect spec in file { must be removed first!",
                   Load_Msg_Sloc);
@@ -646,21 +714,21 @@ package body Lib.Load is
                   --  it may very likely be the case that there is also pragma
                   --  Restriction forbidding its usage. This is typically the
                   --  case when building a configurable run time, where the
-                  --  usage of certain run-time units units is restricted by
-                  --  means of both the corresponding pragma Restriction (such
-                  --  as No_Calendar), and by not including the unit. Hence,
-                  --  we check whether this predefined unit is forbidden, so
-                  --  that the message about the restriction violation is
-                  --  generated, if needed.
+                  --  usage of certain run-time units is restricted by means
+                  --  of both the corresponding pragma Restriction (such as
+                  --  No_Calendar), and by not including the unit. Hence, we
+                  --  check whether this predefined unit is forbidden, so that
+                  --  the message about the restriction violation is generated,
+                  --  if needed.
 
                   Check_Restricted_Unit (Load_Name, Error_Node);
 
-                  Error_Msg_Name_1 := Uname_Actual;
-                  Error_Msg
-                    ("% is not a predefined library unit", Load_Msg_Sloc);
+                  Error_Msg_Unit_1 := Uname_Actual;
+                  Error_Msg -- CODEFIX
+                    ("$$ is not a predefined library unit", Load_Msg_Sloc);
 
                else
-                  Error_Msg_Name_1 := Fname;
+                  Error_Msg_File_1 := Fname;
                   Error_Msg ("file{ not found", Load_Msg_Sloc);
                end if;
 
@@ -685,6 +753,30 @@ package body Lib.Load is
       end if;
    end Load_Unit;
 
+   --------------------------
+   -- Make_Child_Decl_Unit --
+   --------------------------
+
+   procedure Make_Child_Decl_Unit (N : Node_Id) is
+      Unit_Decl : constant Node_Id := Library_Unit (N);
+
+   begin
+      Units.Increment_Last;
+      Units.Table (Units.Last) := Units.Table (Get_Cunit_Unit_Number (N));
+      Units.Table (Units.Last).Unit_Name :=
+        Get_Spec_Name (Unit_Name (Get_Cunit_Unit_Number (N)));
+      Units.Table (Units.Last).Cunit := Unit_Decl;
+      Units.Table (Units.Last).Cunit_Entity  :=
+        Defining_Identifier
+          (Defining_Unit_Name (Specification (Unit (Unit_Decl))));
+
+      --  The library unit created for of a child subprogram unit plays no
+      --  role in code generation and binding, so label it accordingly.
+
+      Units.Table (Units.Last).Generate_Code := False;
+      Set_Has_No_Elaboration_Code (Unit_Decl);
+   end Make_Child_Decl_Unit;
+
    ------------------------
    -- Make_Instance_Unit --
    ------------------------
@@ -698,17 +790,30 @@ package body Lib.Load is
    --  declaration has been attached to a new compilation unit node, and
    --  code will have to be generated for it.
 
-   procedure Make_Instance_Unit (N : Node_Id) is
+   procedure Make_Instance_Unit (N : Node_Id; In_Main : Boolean) is
       Sind : constant Source_File_Index := Source_Index (Main_Unit);
+
    begin
       Units.Increment_Last;
-      Units.Table (Units.Last)               := Units.Table (Main_Unit);
-      Units.Table (Units.Last).Cunit         := Library_Unit (N);
-      Units.Table (Units.Last).Generate_Code := True;
-      Units.Table (Main_Unit).Cunit          := N;
-      Units.Table (Main_Unit).Unit_Name      :=
-        Get_Body_Name (Unit_Name (Get_Cunit_Unit_Number (Library_Unit (N))));
-      Units.Table (Main_Unit).Version        := Source_Checksum (Sind);
+
+      if In_Main then
+         Units.Table (Units.Last)               := Units.Table (Main_Unit);
+         Units.Table (Units.Last).Cunit         := Library_Unit (N);
+         Units.Table (Units.Last).Generate_Code := True;
+         Units.Table (Main_Unit).Cunit          := N;
+         Units.Table (Main_Unit).Unit_Name      :=
+           Get_Body_Name
+             (Unit_Name (Get_Cunit_Unit_Number (Library_Unit (N))));
+         Units.Table (Main_Unit).Version        := Source_Checksum (Sind);
+
+      else
+         --  Duplicate information from instance unit, for the body. The unit
+         --  node N has been rewritten as a body, but it was placed in the
+         --  units table when first loaded as a declaration.
+
+         Units.Table (Units.Last) := Units.Table (Get_Cunit_Unit_Number (N));
+         Units.Table (Units.Last).Cunit := Library_Unit (N);
+      end if;
    end Make_Instance_Unit;
 
    ------------------------
@@ -723,11 +828,10 @@ package body Lib.Load is
       Bunit : constant Node_Id := Cunit (Body_Unit);
 
    begin
-      --  The spec is irrelevant if the body is a subprogram body, and the
-      --  spec is other than a subprogram spec or generic subprogram spec.
-      --  Note that the names must be the same, we don't need to check that,
-      --  because we already know that from the fact that the file names are
-      --  the same.
+      --  The spec is irrelevant if the body is a subprogram body, and the spec
+      --  is other than a subprogram spec or generic subprogram spec. Note that
+      --  the names must be the same, we don't need to check that, because we
+      --  already know that from the fact that the file names are the same.
 
       return
          Nkind (Unit (Bunit)) = N_Subprogram_Body

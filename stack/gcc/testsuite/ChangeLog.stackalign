@@ -1,3 +1,25 @@
+2009-03-07  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR c/39323
+	* gcc.dg/pr39323-1.c: New.
+	* gcc.dg/pr39323-2.c: Likewise.
+	* gcc.dg/pr39323-3.c: Likewise.
+
+2009-03-03  Joey Ye  <joey.ye@intel.com>
+	    H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR middle-end/39146
+	* gcc.target/i386/stackalign/pr39146.c: New.
+
+2009-02-28  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR middle-end/39315
+	* gcc.target/i386/pr39315-1.c: New.
+	* gcc.target/i386/pr39315-2.c: Likewise.
+	* gcc.target/i386/pr39315-3.c: Likewise.
+	* gcc.target/i386/pr39315-4.c: Likewise.
+	* gcc.target/i386/pr39315-check.c: Likewise.
+
 2008-08-05  H.J. Lu  <hongjiu.lu@intel.com>
 
 	PR middle-end/37010
@@ -14,6 +36,7 @@
 
 2008-08-04  H.J. Lu  <hongjiu.lu@intel.com>
 
+	PR target/37049
 	* gcc.target/i386/push-1.c: New.
 
 2008-08-04  H.J. Lu  <hongjiu.lu@intel.com>

@@ -7,8 +7,8 @@
 
 #define DOT2 -21856
 
-signed char X[N] __attribute__ ((__aligned__(16)));
-signed char Y[N] __attribute__ ((__aligned__(16)));
+signed char X[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
+signed char Y[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
 
 /* char->short->short dot product.
    The dot-product pattern should be detected.
@@ -26,7 +26,7 @@ signed char Y[N] __attribute__ ((__aligned__(16)));
    Alternatively, the loop could also be vectorized as widening-mult + summation,
    or with type-conversion support.
  */
-short
+__attribute__ ((noinline)) short
 foo2(int len) {
   int i;
   short result = 0;

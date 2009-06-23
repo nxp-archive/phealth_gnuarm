@@ -1,5 +1,5 @@
 /* Definitions for branch prediction routines in the GNU compiler.
-   Copyright (C) 2001, 2003, 2004, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -20,6 +20,8 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_PREDICT_H
 #define GCC_PREDICT_H
 
+#include "multi-target.h"
+
 #define DEF_PREDICTOR(ENUM, NAME, HITRATE, FLAGS) ENUM,
 enum br_predictor
 {
@@ -35,7 +37,12 @@ enum prediction
    TAKEN
 };
 
+START_TARGET_SPECIFIC
 extern void predict_insn_def (rtx, enum br_predictor, enum prediction);
+END_TARGET_SPECIFIC
 extern int counts_to_freqs (void);
+extern void estimate_bb_frequencies (void);
+extern const char *predictor_name (enum br_predictor);
+extern tree build_predict_expr (enum br_predictor, enum prediction);
 
 #endif  /* GCC_PREDICT_H */

@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2006, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -36,7 +34,6 @@ with Ada.Tags;
 
 with System.Soft_Links;
 
-with Unchecked_Conversion;
 with System.Restrictions;
 
 package body System.Finalization_Implementation is
@@ -55,17 +52,17 @@ package body System.Finalization_Implementation is
    type RC_Ptr is access all Record_Controller;
 
    function To_RC_Ptr is
-     new Unchecked_Conversion (Address, RC_Ptr);
+     new Ada.Unchecked_Conversion (Address, RC_Ptr);
 
-   procedure Raise_Exception_No_Defer
-     (E       : Exception_Id;
-      Message : String := "");
-   pragma Import (Ada, Raise_Exception_No_Defer,
-     "ada__exceptions__raise_exception_no_defer");
-   pragma No_Return (Raise_Exception_No_Defer);
-   --  Raise an exception without deferring abort. Note that we have to
-   --  use this rather kludgy Ada Import interface, since this subprogram
-   --  is not available in the visible spec of Ada.Exceptions.
+   procedure Raise_From_Controlled_Operation (X : Exception_Occurrence);
+   pragma Import
+     (Ada, Raise_From_Controlled_Operation,
+      "ada__exceptions__raise_from_controlled_operation");
+   pragma No_Return (Raise_From_Controlled_Operation);
+   --  Raise Program_Error from an exception that occurred during an Adjust or
+   --  Finalize operation. We use this rather kludgy Ada Import interface
+   --  because this procedure is not available in the visible part of the
+   --  Ada.Exceptions spec.
 
    procedure Raise_From_Finalize
      (L          : Finalizable_Ptr;
@@ -91,17 +88,17 @@ package body System.Finalization_Implementation is
    -- Adjust --
    ------------
 
-   procedure Adjust (Object : in out Record_Controller) is
+   overriding procedure Adjust (Object : in out Record_Controller) is
 
       First_Comp : Finalizable_Ptr;
-      My_Offset : constant SSE.Storage_Offset :=
-                    Object.My_Address - Object'Address;
+      My_Offset  : constant SSE.Storage_Offset :=
+                     Object.My_Address - Object'Address;
 
       procedure Ptr_Adjust (Ptr : in out Finalizable_Ptr);
       --  Subtract the offset to the pointer
 
       procedure Reverse_Adjust (P : Finalizable_Ptr);
-      --  Ajust the components in the reverse order in which they are stored
+      --  Adjust the components in the reverse order in which they are stored
       --  on the finalization list. (Adjust and Finalization are not done in
       --  the same order)
 
@@ -126,7 +123,7 @@ package body System.Finalization_Implementation is
             Ptr_Adjust (P.Next);
             Reverse_Adjust (P.Next);
             Adjust (P.all);
-            Object.F := P;   --  Successfully adjusted, so place in list.
+            Object.F := P;   --  Successfully adjusted, so place in list
          end if;
       end Reverse_Adjust;
 
@@ -140,7 +137,7 @@ package body System.Finalization_Implementation is
 
       First_Comp := Object.F;
       Object.F := null;               --  nothing adjusted yet.
-      Ptr_Adjust (First_Comp);        --  set addresss of first component.
+      Ptr_Adjust (First_Comp);        --  set address of first component.
       Reverse_Adjust (First_Comp);
 
       --  Then Adjust the controller itself
@@ -259,12 +256,11 @@ package body System.Finalization_Implementation is
    -----------------------------
 
    --  We know that the detach object is neither at the beginning nor at the
-   --  end of the list, thank's to the dummy First and Last Elements but the
+   --  end of the list, thanks to the dummy First and Last Elements, but the
    --  object may not be attached at all if it is Finalize_Storage_Only
 
    procedure Detach_From_Final_List (Obj : in out Finalizable) is
    begin
-
       --  When objects are not properly attached to a doubly linked list do
       --  not try to detach them. The only case where it can happen is when
       --  dealing with Finalize_Storage_Only objects which are not always
@@ -274,6 +270,13 @@ package body System.Finalization_Implementation is
          SSL.Lock_Task.all;
          Obj.Next.Prev := Obj.Prev;
          Obj.Prev.Next := Obj.Next;
+
+         --  Reset the pointers so that a new finalization of the same object
+         --  has no effect on the finalization list.
+
+         Obj.Next := null;
+         Obj.Prev := null;
+
          SSL.Unlock_Task.all;
       end if;
 
@@ -287,7 +290,7 @@ package body System.Finalization_Implementation is
    -- Finalize --
    --------------
 
-   procedure Finalize   (Object : in out Limited_Record_Controller) is
+   overriding procedure Finalize (Object : in out Limited_Record_Controller) is
    begin
       Finalize_List (Object.F);
    end Finalize;
@@ -335,7 +338,7 @@ package body System.Finalization_Implementation is
       type Ptr is access all Fake_Exception_Occurence;
 
       function To_Ptr is new
-        Unchecked_Conversion (Exception_Occurrence_Access, Ptr);
+        Ada.Unchecked_Conversion (Exception_Occurrence_Access, Ptr);
 
       X :  Exception_Id := Null_Id;
 
@@ -386,7 +389,7 @@ package body System.Finalization_Implementation is
 
    begin
       --  Fetch the controller from the Parent or above if necessary
-      --  when there are no controller at this level
+      --  when there are no controller at this level.
 
       while Offset = -2 loop
          The_Tag := Ada.Tags.Parent_Tag (The_Tag);
@@ -406,7 +409,7 @@ package body System.Finalization_Implementation is
       --  At this stage, we know that the controller is part of the
       --  ancestor corresponding to the tag "The_Tag" and that its parent
       --  is variable sized. We assume that the _controller is the first
-      --  compoment right after the parent.
+      --  component right after the parent.
 
       --  ??? note that it may not be true if there are new discriminants
 
@@ -437,7 +440,7 @@ package body System.Finalization_Implementation is
 
             type Obj_Ptr is access all Faked_Type_Of_Obj;
             function To_Obj_Ptr is
-              new Unchecked_Conversion (Address, Obj_Ptr);
+              new Ada.Unchecked_Conversion (Address, Obj_Ptr);
 
          begin
             return To_RC_Ptr (To_Obj_Ptr (Obj).Controller'Address);
@@ -449,13 +452,15 @@ package body System.Finalization_Implementation is
    -- Initialize --
    ----------------
 
-   procedure Initialize (Object : in out Limited_Record_Controller) is
+   overriding procedure Initialize
+     (Object : in out Limited_Record_Controller)
+   is
       pragma Warnings (Off, Object);
    begin
       null;
    end Initialize;
 
-   procedure Initialize (Object : in out Record_Controller) is
+   overriding procedure Initialize (Object : in out Record_Controller) is
    begin
       Object.My_Address := Object'Address;
    end Initialize;
@@ -497,9 +502,8 @@ package body System.Finalization_Implementation is
       From_Abort : Boolean;
       E_Occ      : Exception_Occurrence)
    is
-      Msg : constant String := Exception_Message (E_Occ);
-      P   : Finalizable_Ptr := L;
-      Q   : Finalizable_Ptr;
+      P : Finalizable_Ptr := L;
+      Q : Finalizable_Ptr;
 
    begin
       --  We already got an exception. We now finalize the remainder of
@@ -517,24 +521,15 @@ package body System.Finalization_Implementation is
          P := Q;
       end loop;
 
-      --  If finalization from an Abort, then nothing to do
-
       if From_Abort then
+         --  If finalization from an Abort, then nothing to do
+
          null;
 
-      --  If no message, then add our own message saying what happened
-
-      elsif Msg = "" then
-         Raise_Exception_No_Defer
-           (E       => Program_Error'Identity,
-            Message => "exception " &
-                       Exception_Name (E_Occ) &
-                       " raised during finalization");
-
-      --  If there was a message, pass it on
-
       else
-         Raise_Exception_No_Defer (Program_Error'Identity, Msg);
+         --  Else raise Program_Error with an appropriate message
+
+         Raise_From_Controlled_Operation (E_Occ);
       end if;
    end Raise_From_Finalize;
 
@@ -542,5 +537,4 @@ package body System.Finalization_Implementation is
 
 begin
    SSL.Finalize_Global_List := Finalize_Global_List'Access;
-
 end System.Finalization_Implementation;

@@ -5,15 +5,15 @@
 
 #define N 64
 
-unsigned char uX[N] __attribute__ ((__aligned__(16)));
-unsigned short uY[N] __attribute__ ((__aligned__(16)));
+unsigned char uX[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
+unsigned short uY[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
 unsigned int uresult[N];
-signed char X[N] __attribute__ ((__aligned__(16)));
-signed short Y[N] __attribute__ ((__aligned__(16)));
+signed char X[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
+signed short Y[N] __attribute__ ((__aligned__(__BIGGEST_ALIGNMENT__)));
 int result[N];
 
 /* Unsigned type promotion (hi->si) */
-int
+__attribute__ ((noinline)) int
 foo1(int len) {
   int i;
 
@@ -24,7 +24,7 @@ foo1(int len) {
 }
 
 /* Signed type promotion (hi->si) */
-int
+__attribute__ ((noinline)) int
 foo2(int len) {
   int i;
 

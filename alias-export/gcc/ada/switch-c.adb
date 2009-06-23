@@ -6,18 +6,17 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2001-2006, Free Software Foundation, Inc.         --
+--          Copyright (C) 2001-2008, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
 -- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
 -- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
+-- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -33,7 +32,7 @@ with Validsw;  use Validsw;
 with Sem_Warn; use Sem_Warn;
 with Stylesw;  use Stylesw;
 
-with GNAT.OS_Lib; use GNAT.OS_Lib;
+with System.OS_Lib; use System.OS_Lib;
 
 with System.WCh_Con; use System.WCh_Con;
 
@@ -110,11 +109,13 @@ package body Switch.C is
                Add_Src_Search_Dir (Switch_Chars (Ptr .. Max));
             end if;
 
-         --  Processing of the --RTS switch. --RTS has been modified by
-         --  gcc and is now of the form -fRTS.
+         --  Processing of the --RTS switch. --RTS may have been modified by
+         --  gcc into -fRTS (for GCC targets).
 
          elsif Ptr + 3 <= Max
-           and then Switch_Chars (Ptr .. Ptr + 3) = "fRTS"
+           and then (Switch_Chars (Ptr .. Ptr + 3) = "fRTS"
+                       or else
+                     Switch_Chars (Ptr .. Ptr + 3) = "-RTS")
          then
             Ptr := Ptr + 1;
 
@@ -127,14 +128,12 @@ package body Switch.C is
                --  it is not the first time, the same path has been specified.
 
                if RTS_Specified = null then
-                  RTS_Specified :=
-                    new String'(Switch_Chars (Ptr + 4 .. Max));
+                  RTS_Specified := new String'(Switch_Chars (Ptr + 4 .. Max));
 
                elsif
                  RTS_Specified.all /= Switch_Chars (Ptr + 4 .. Max)
                then
-                  Osint.Fail
-                    ("--RTS cannot be specified multiple times");
+                  Osint.Fail ("--RTS cannot be specified multiple times");
                end if;
 
                --  Valid --RTS switch
@@ -177,7 +176,7 @@ package body Switch.C is
             --  There are no other switches not starting with -gnat
 
          else
-            Bad_Switch (C);
+            Bad_Switch (Switch_Chars);
          end if;
 
       --  Case of switch starting with -gnat
@@ -212,6 +211,12 @@ package body Switch.C is
                Ptr := Ptr + 1;
                Brief_Output := True;
 
+            --  Processing for B switch
+
+            when 'B' =>
+               Ptr := Ptr + 1;
+               Assume_No_Invalid_Values := True;
+
             --  Processing for c switch
 
             when 'c' =>
@@ -225,6 +230,7 @@ package body Switch.C is
 
                if Tree_Output then
                   ASIS_Mode := True;
+                  Inspector_Mode := False;
                end if;
 
             --  Processing for d switch
@@ -251,6 +257,25 @@ package body Switch.C is
                      if Dot then
                         Set_Dotted_Debug_Flag (C);
                         Store_Compilation_Switch ("-gnatd." & C);
+
+                        --  ??? Change this when we use a non debug flag to
+                        --  enable inspector mode.
+
+                        if C = 'I' then
+                           if ASIS_Mode then
+                              --  Do not enable inspector mode in ASIS mode,
+                              --  since the two switches are incompatible.
+
+                              Inspector_Mode := False;
+
+                           else
+                              --  In inspector mode, we need back-end rep info
+                              --  annotations and disable front-end inlining.
+
+                              Back_Annotate_Rep_Info := True;
+                              Front_End_Inlining := False;
+                           end if;
+                        end if;
                      else
                         Set_Debug_Flag (C);
                         Store_Compilation_Switch ("-gnatd" & C);
@@ -259,8 +284,10 @@ package body Switch.C is
                   elsif C = '.' then
                      Dot := True;
 
+                  elsif Dot then
+                     Bad_Switch ("-gnatd." & Switch_Chars (Ptr .. Max));
                   else
-                     Bad_Switch (C);
+                     Bad_Switch ("-gnatd" & Switch_Chars (Ptr .. Max));
                   end if;
                end loop;
 
@@ -270,6 +297,13 @@ package body Switch.C is
 
             when 'D' =>
                Ptr := Ptr + 1;
+
+               --  Scan optional integer line limit value
+
+               if Nat_Present (Switch_Chars, Max, Ptr) then
+                  Scan_Nat (Switch_Chars, Max, Ptr, Sprint_Line_Limit, 'D');
+                  Sprint_Line_Limit := Nat'Max (Sprint_Line_Limit, 40);
+               end if;
 
                --  Note: -gnatD also sets -gnatx (to turn off cross-reference
                --  generation in the ali file) since otherwise this generation
@@ -288,10 +322,15 @@ package body Switch.C is
                --  so we must always have a character after the e.
 
                if Ptr > Max then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnate");
                end if;
 
                case Switch_Chars (Ptr) is
+
+                  when 'a' =>
+                     Store_Switch := False;
+                     Enable_Switch_Storing;
+                     Ptr := Ptr + 1;
 
                   --  -gnatec (configuration pragmas)
 
@@ -307,7 +346,7 @@ package body Switch.C is
                      end if;
 
                      if Ptr > Max then
-                        Bad_Switch (C);
+                        Bad_Switch ("-gnatec");
                      end if;
 
                      declare
@@ -350,7 +389,7 @@ package body Switch.C is
                      Ptr := Ptr + 1;
 
                      if Ptr > Max then
-                        Bad_Switch (C);
+                        Bad_Switch ("-gnateD");
                      end if;
 
                      Add_Symbol_Definition (Switch_Chars (Ptr .. Max));
@@ -368,6 +407,16 @@ package body Switch.C is
                      Ptr := Ptr + 1;
                      Full_Path_Name_For_Brief_Errors := True;
                      return;
+
+                  --  -gnateG (save preprocessor output)
+
+                  when 'G' =>
+                     if Ptr < Max then
+                        Bad_Switch (Switch_Chars);
+                     end if;
+
+                     Generate_Processed_File := True;
+                     Ptr := Ptr + 1;
 
                   --  -gnateI (index of unit in multi-unit source)
 
@@ -389,7 +438,7 @@ package body Switch.C is
                      end if;
 
                      if Ptr > Max then
-                        Bad_Switch (C);
+                        Bad_Switch ("-gnatem");
                      end if;
 
                      Mapping_File_Name :=
@@ -410,7 +459,7 @@ package body Switch.C is
                      end if;
 
                      if Ptr > Max then
-                        Bad_Switch (C);
+                        Bad_Switch ("-gnatep");
                      end if;
 
                      Preprocessing_Data_File :=
@@ -431,7 +480,7 @@ package body Switch.C is
                   --  All other -gnate? switches are unassigned
 
                   when others =>
-                     Bad_Switch (C);
+                     Bad_Switch ("-gnate" & Switch_Chars (Ptr .. Max));
                end case;
 
             --  -gnatE (dynamic elaboration checks)
@@ -469,32 +518,42 @@ package body Switch.C is
                Ada_Version := Ada_05;
                Ada_Version_Explicit := Ada_Version;
 
-               --  Set default warnings for -gnatg (same set as -gnatwa)
+               --  Set default warnings for -gnatg
 
-               Check_Unreferenced           := True;
-               Check_Unreferenced_Formals   := True;
-               Check_Withs                  := True;
-               Constant_Condition_Warnings  := True;
-               Implementation_Unit_Warnings := True;
-               Ineffective_Inline_Warnings  := True;
-               Warn_On_Assumed_Low_Bound    := True;
-               Warn_On_Bad_Fixed_Value      := True;
-               Warn_On_Constant             := True;
-               Warn_On_Export_Import        := True;
-               Warn_On_Modified_Unread      := True;
-               Warn_On_No_Value_Assigned    := True;
-               Warn_On_Obsolescent_Feature  := True;
-               Warn_On_Redundant_Constructs := True;
-               Warn_On_Unchecked_Conversion := True;
-               Warn_On_Unrecognized_Pragma  := True;
+               Check_Unreferenced              := True;
+               Check_Unreferenced_Formals      := True;
+               Check_Withs                     := True;
+               Constant_Condition_Warnings     := True;
+               Implementation_Unit_Warnings    := True;
+               Ineffective_Inline_Warnings     := True;
+               Warn_On_Assertion_Failure       := True;
+               Warn_On_Assumed_Low_Bound       := True;
+               Warn_On_Bad_Fixed_Value         := True;
+               Warn_On_Constant                := True;
+               Warn_On_Export_Import           := True;
+               Warn_On_Modified_Unread         := True;
+               Warn_On_No_Value_Assigned       := True;
+               Warn_On_Non_Local_Exception     := False;
+               Warn_On_Obsolescent_Feature     := True;
+               Warn_On_Redundant_Constructs    := True;
+               Warn_On_Object_Renames_Function := True;
+               Warn_On_Unchecked_Conversion    := True;
+               Warn_On_Unrecognized_Pragma     := True;
 
-               Set_Style_Check_Options ("3aAbcdefhiklmnprstux");
+               Set_GNAT_Style_Check_Options;
 
             --  Processing for G switch
 
             when 'G' =>
                Ptr := Ptr + 1;
                Print_Generated_Code := True;
+
+               --  Scan optional integer line limit value
+
+               if Nat_Present (Switch_Chars, Max, Ptr) then
+                  Scan_Nat (Switch_Chars, Max, Ptr, Sprint_Line_Limit, 'G');
+                  Sprint_Line_Limit := Nat'Max (Sprint_Line_Limit, 40);
+               end if;
 
             --  Processing for h switch
 
@@ -512,7 +571,7 @@ package body Switch.C is
 
             when 'i' =>
                if Ptr = Max then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnati");
                end if;
 
                Ptr := Ptr + 1;
@@ -530,20 +589,19 @@ package body Switch.C is
                   Ptr := Ptr + 1;
 
                else
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnati" & Switch_Chars (Ptr .. Max));
                end if;
+
+            --  Processing for I switch
+
+            when 'I' =>
+               Ptr := Ptr + 1;
+               Ignore_Rep_Clauses := True;
 
             --  Processing for j switch
 
             when 'j' =>
                Ptr := Ptr + 1;
-
-               --  There may be an equal sign between -gnatj and the value
-
-               if Ptr <= Max and then Switch_Chars (Ptr) = '=' then
-                  Ptr := Ptr + 1;
-               end if;
-
                Scan_Nat (Switch_Chars, Max, Ptr, Error_Msg_Line_Length, C);
 
             --  Processing for k switch
@@ -581,14 +639,7 @@ package body Switch.C is
 
             when 'm' =>
                Ptr := Ptr + 1;
-
-               --  There may be an equal sign between -gnatm and the value
-
-               if Ptr <= Max and then Switch_Chars (Ptr) = '=' then
-                  Ptr := Ptr + 1;
-               end if;
-
-               Scan_Nat (Switch_Chars, Max, Ptr, Maximum_Errors, C);
+               Scan_Nat (Switch_Chars, Max, Ptr, Maximum_Messages, C);
 
             --  Processing for n switch
 
@@ -601,7 +652,14 @@ package body Switch.C is
             when 'N' =>
                Ptr := Ptr + 1;
                Inline_Active := True;
-               Front_End_Inlining := True;
+
+               --  Do not enable front-end inlining in inspector mode, to
+               --  generate trees that can be converted to SCIL. We still
+               --  enable back-end inlining which is fine.
+
+               if not Inspector_Mode then
+                  Front_End_Inlining := True;
+               end if;
 
             --  Processing for o switch
 
@@ -649,12 +707,18 @@ package body Switch.C is
                Ptr := Ptr + 1;
                Try_Semantics := True;
 
-            --  Processing for q switch
+            --  Processing for Q switch
 
             when 'Q' =>
                Ptr := Ptr + 1;
                Force_ALI_Tree_File := True;
                Try_Semantics := True;
+
+               --  Processing for r switch
+
+            when 'r' =>
+               Ptr := Ptr + 1;
+               Treat_Restrictions_As_Warnings := True;
 
             --  Processing for R switch
 
@@ -677,7 +741,7 @@ package body Switch.C is
                      List_Representation_Info_Mechanisms := True;
 
                   else
-                     Bad_Switch (C);
+                     Bad_Switch ("-gnatR" & Switch_Chars (Ptr .. Max));
                   end if;
 
                   Ptr := Ptr + 1;
@@ -708,6 +772,7 @@ package body Switch.C is
 
                if Operating_Mode = Check_Semantics then
                   ASIS_Mode := True;
+                  Inspector_Mode := False;
                end if;
 
                Back_Annotate_Rep_Info := True;
@@ -743,7 +808,7 @@ package body Switch.C is
                Ptr := Ptr + 1;
 
                if Ptr > Max then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnatV");
 
                else
                   declare
@@ -754,7 +819,7 @@ package body Switch.C is
                        (Switch_Chars (Ptr .. Max), OK, Ptr);
 
                      if not OK then
-                        Bad_Switch (C);
+                        Bad_Switch ("-gnatV" & Switch_Chars (Ptr .. Max));
                      end if;
 
                      for Index in First_Char + 1 .. Max loop
@@ -773,7 +838,7 @@ package body Switch.C is
                Ptr := Ptr + 1;
 
                if Ptr > Max then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnatw");
                end if;
 
                while Ptr <= Max loop
@@ -788,7 +853,7 @@ package body Switch.C is
                      if Set_Dot_Warning_Switch (C) then
                         Store_Compilation_Switch ("-gnatw." & C);
                      else
-                        Bad_Switch (C);
+                        Bad_Switch ("-gnatw." & Switch_Chars (Ptr .. Max));
                      end if;
 
                      --  Normal case, no dot
@@ -797,7 +862,7 @@ package body Switch.C is
                      if Set_Warning_Switch (C) then
                         Store_Compilation_Switch ("-gnatw" & C);
                      else
-                        Bad_Switch (C);
+                        Bad_Switch ("-gnatw" & Switch_Chars (Ptr .. Max));
                      end if;
                   end if;
 
@@ -812,7 +877,7 @@ package body Switch.C is
                Ptr := Ptr + 1;
 
                if Ptr > Max then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnatW");
                end if;
 
                begin
@@ -820,12 +885,14 @@ package body Switch.C is
                     Get_WC_Encoding_Method (Switch_Chars (Ptr));
                exception
                   when Constraint_Error =>
-                     Bad_Switch (C);
+                     Bad_Switch ("-gnatW" & Switch_Chars (Ptr .. Max));
                end;
+
+               Wide_Character_Encoding_Method_Specified := True;
 
                Upper_Half_Encoding :=
                  Wide_Character_Encoding_Method in
-                 WC_Upper_Half_Encoding_Method;
+                   WC_Upper_Half_Encoding_Method;
 
                Ptr := Ptr + 1;
 
@@ -904,7 +971,7 @@ package body Switch.C is
                         Distribution_Stub_Mode := Generate_Caller_Stub_Body;
 
                      when others =>
-                        Bad_Switch (C);
+                        Bad_Switch ("-gnatz" & Switch_Chars (Ptr .. Max));
                   end case;
 
                   Ptr := Ptr + 1;
@@ -921,13 +988,13 @@ package body Switch.C is
 
             when '8' =>
                if Ptr = Max then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnat8");
                end if;
 
                Ptr := Ptr + 1;
 
                if Switch_Chars (Ptr) /= '3' then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnat8" & Switch_Chars (Ptr .. Max));
                else
                   Ptr := Ptr + 1;
                   Ada_Version := Ada_83;
@@ -938,13 +1005,13 @@ package body Switch.C is
 
             when '9' =>
                if Ptr = Max then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnat9");
                end if;
 
                Ptr := Ptr + 1;
 
                if Switch_Chars (Ptr) /= '5' then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnat9" & Switch_Chars (Ptr .. Max));
                else
                   Ptr := Ptr + 1;
                   Ada_Version := Ada_95;
@@ -955,13 +1022,13 @@ package body Switch.C is
 
             when '0' =>
                if Ptr = Max then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnat0");
                end if;
 
                Ptr := Ptr + 1;
 
                if Switch_Chars (Ptr) /= '5' then
-                  Bad_Switch (C);
+                  Bad_Switch ("-gnat0" & Switch_Chars (Ptr .. Max));
                else
                   Ptr := Ptr + 1;
                   Ada_Version := Ada_05;
@@ -976,7 +1043,7 @@ package body Switch.C is
             --  Anything else is an error (illegal switch character)
 
             when others =>
-               Bad_Switch (C);
+               Bad_Switch ("-gnat" & Switch_Chars (Ptr .. Max));
             end case;
 
             if Store_Switch then

@@ -1,6 +1,6 @@
 /* Output routines for GCC for CRX.
    Copyright (C) 1991, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001,
-   2002, 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   2002, 2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -136,7 +136,7 @@ static bool crx_fixed_condition_code_regs (unsigned int *, unsigned int *);
 static rtx crx_struct_value_rtx (tree fntype ATTRIBUTE_UNUSED,
 				 int incoming ATTRIBUTE_UNUSED);
 static bool crx_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED);
-static int crx_address_cost (rtx);
+static int crx_address_cost (rtx, bool);
 
 /*****************************************************************************/
 /* STACK LAYOUT AND CALLING CONVENTIONS					     */
@@ -800,7 +800,7 @@ crx_legitimate_address_p (enum machine_mode mode ATTRIBUTE_UNUSED,
 /* Return cost of the memory address x. */
 
 static int
-crx_address_cost (rtx addr)
+crx_address_cost (rtx addr, bool speed ATTRIBUTE_UNUSED)
 {
   enum crx_addrtype addrtype;
   struct crx_address address;

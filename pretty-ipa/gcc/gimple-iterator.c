@@ -604,7 +604,7 @@ gsi_insert_seq_on_edge (edge e, gimple_seq seq)
 
    In all cases, the returned *GSI points to the correct location.  The
    return value is true if insertion should be done after the location,
-   or false if it should be done before the location.  If new basic block
+   or false if it should be done before the location.  If a new basic block
    has to be created, it is stored in *NEW_BB.  */
 
 static bool
@@ -667,6 +667,9 @@ restart:
       if (!stmt_ends_bb_p (tmp))
 	return true;
 
+      /* It would be tempting to handle GIMPLE_RESX here too, but
+         we would have to verify that the sequence inserted is not
+	 setting FILTER_EXPR and EXC_PTR_EXPR used implicitly by RESX.  */
       if (gimple_code (tmp) == GIMPLE_RETURN)
         {
 	  gsi_prev (gsi);

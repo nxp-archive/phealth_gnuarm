@@ -339,6 +339,12 @@ begin
          List_Representation_Info_Mechanisms := True;
       end if;
 
+      --  Force Target_Strict_Alignment true if debug flag -gnatd.a is set
+
+      if Debug_Flag_Dot_A then
+         Ttypes.Target_Strict_Alignment := True;
+      end if;
+
       --  Disable static allocation of dispatch tables if -gnatd.t or if layout
       --  is enabled. The front end's layout phase currently treats types that
       --  have discriminant-dependent arrays as not being static even when a
@@ -393,8 +399,7 @@ begin
          if Targparm.GCC_ZCX_Support_On_Target then
             Exception_Mechanism := Back_End_Exceptions;
          else
-            Osint.Fail
-              ("Zero Cost Exceptions not supported on this target");
+            Osint.Fail ("Zero Cost Exceptions not supported on this target");
          end if;
       end if;
 

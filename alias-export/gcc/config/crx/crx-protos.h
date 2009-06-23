@@ -1,12 +1,12 @@
 /* Prototypes for exported functions defined in crx.c
    Copyright (C) 1991, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001,
-   2002, 2003, 2004  Free Software Foundation, Inc.
+   2002, 2003, 2004, 2007 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published
-   by the Free Software Foundation; either version 2, or (at your
+   by the Free Software Foundation; either version 3, or (at your
    option) any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -15,9 +15,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to
-   the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-   Boston, MA 02110-1301, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_CRX_PROTOS_H
 #define GCC_CRX_PROTOS_H
@@ -54,7 +53,6 @@ enum crx_addrtype
 };
 
 extern enum crx_addrtype crx_decompose_address (rtx addr, struct crx_address *out);
-extern int crx_legitimate_address_p (enum machine_mode, rtx, int);
 
 extern int crx_const_double_ok (rtx op);
 
@@ -63,10 +61,6 @@ extern void crx_print_operand (FILE *, rtx, int);
 extern void crx_print_operand_address (FILE *, rtx);
 
 /* Misc functions called from crx.md.  */
-extern rtx crx_expand_compare (enum rtx_code, enum machine_mode);
-extern void crx_expand_branch (enum rtx_code, rtx);
-extern void crx_expand_scond (enum rtx_code, rtx);
-
 extern void crx_expand_movmem_single (rtx, rtx, rtx, rtx, rtx, unsigned HOST_WIDE_INT *);
 extern int crx_expand_movmem (rtx, rtx, rtx, rtx);
 #endif /* RTX_CODE */

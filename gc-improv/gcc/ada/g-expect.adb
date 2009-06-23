@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                     Copyright (C) 2000-2007, AdaCore                     --
+--                     Copyright (C) 2000-2009, AdaCore                     --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -248,6 +248,7 @@ package body GNAT.Expect is
 
    procedure Close (Descriptor : in out Process_Descriptor) is
       Status : Integer;
+      pragma Unreferenced (Status);
    begin
       Close (Descriptor, Status);
    end Close;
@@ -260,7 +261,7 @@ package body GNAT.Expect is
      (Descriptor  : in out Process_Descriptor;
       Result      : out Expect_Match;
       Regexp      : String;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
    begin
@@ -276,7 +277,7 @@ package body GNAT.Expect is
       Result      : out Expect_Match;
       Regexp      : String;
       Matched     : out GNAT.Regpat.Match_Array;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
    begin
@@ -295,11 +296,11 @@ package body GNAT.Expect is
      (Descriptor  : in out Process_Descriptor;
       Result      : out Expect_Match;
       Regexp      : GNAT.Regpat.Pattern_Matcher;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
       Matched : GNAT.Regpat.Match_Array (0 .. 0);
-
+      pragma Warnings (Off, Matched);
    begin
       Expect (Descriptor, Result, Regexp, Matched, Timeout, Full_Buffer);
    end Expect;
@@ -309,7 +310,7 @@ package body GNAT.Expect is
       Result      : out Expect_Match;
       Regexp      : GNAT.Regpat.Pattern_Matcher;
       Matched     : out GNAT.Regpat.Match_Array;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
       N           : Expect_Match;
@@ -381,11 +382,13 @@ package body GNAT.Expect is
      (Descriptor  : in out Process_Descriptor;
       Result      : out Expect_Match;
       Regexps     : Regexp_Array;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
       Patterns : Compiled_Regexp_Array (Regexps'Range);
-      Matched  : GNAT.Regpat.Match_Array (0 .. 0);
+
+      Matched : GNAT.Regpat.Match_Array (0 .. 0);
+      pragma Warnings (Off, Matched);
 
    begin
       for J in Regexps'Range loop
@@ -403,11 +406,11 @@ package body GNAT.Expect is
      (Descriptor  : in out Process_Descriptor;
       Result      : out Expect_Match;
       Regexps     : Compiled_Regexp_Array;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
       Matched : GNAT.Regpat.Match_Array (0 .. 0);
-
+      pragma Warnings (Off, Matched);
    begin
       Expect (Descriptor, Result, Regexps, Matched, Timeout, Full_Buffer);
    end Expect;
@@ -415,11 +418,11 @@ package body GNAT.Expect is
    procedure Expect
      (Result      : out Expect_Match;
       Regexps     : Multiprocess_Regexp_Array;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
       Matched : GNAT.Regpat.Match_Array (0 .. 0);
-
+      pragma Warnings (Off, Matched);
    begin
       Expect (Result, Regexps, Matched, Timeout, Full_Buffer);
    end Expect;
@@ -429,7 +432,7 @@ package body GNAT.Expect is
       Result      : out Expect_Match;
       Regexps     : Regexp_Array;
       Matched     : out GNAT.Regpat.Match_Array;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
       Patterns : Compiled_Regexp_Array (Regexps'Range);
@@ -453,7 +456,7 @@ package body GNAT.Expect is
       Result      : out Expect_Match;
       Regexps     : Compiled_Regexp_Array;
       Matched     : out GNAT.Regpat.Match_Array;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
       N           : Expect_Match;
@@ -500,7 +503,7 @@ package body GNAT.Expect is
      (Result      : out Expect_Match;
       Regexps     : Multiprocess_Regexp_Array;
       Matched     : out GNAT.Regpat.Match_Array;
-      Timeout     : Integer := 10000;
+      Timeout     : Integer := 10_000;
       Full_Buffer : Boolean := False)
    is
       N           : Expect_Match;
@@ -657,7 +660,7 @@ package body GNAT.Expect is
                            else
                               --  Add what we read to the buffer
 
-                              if Descriptors (J).Buffer_Index + N - 1 >
+                              if Descriptors (J).Buffer_Index + N >
                                 Descriptors (J).Buffer_Size
                               then
                                  --  If the user wants to know when we have
@@ -815,6 +818,7 @@ package body GNAT.Expect is
 
       declare
          Result : Expect_Match;
+         pragma Unreferenced (Result);
 
       begin
          --  This loop runs until the call to Expect raises Process_Died
@@ -1117,10 +1121,11 @@ package body GNAT.Expect is
       Empty_Buffer : Boolean := False)
    is
       Line_Feed   : aliased constant String := (1 .. 1 => ASCII.LF);
-      Result      : Expect_Match;
       Descriptors : Array_Of_Pd := (1 => Descriptor'Unrestricted_Access);
 
+      Result  : Expect_Match;
       Discard : Natural;
+      pragma Warnings (Off, Result);
       pragma Warnings (Off, Discard);
 
    begin
@@ -1185,6 +1190,9 @@ package body GNAT.Expect is
       Args  : System.Address)
    is
       pragma Warnings (Off, Pid);
+      pragma Warnings (Off, Pipe1);
+      pragma Warnings (Off, Pipe2);
+      pragma Warnings (Off, Pipe3);
 
       Input  : File_Descriptor;
       Output : File_Descriptor;
@@ -1205,13 +1213,14 @@ package body GNAT.Expect is
       --  Since we are still called from the parent process, there is no way
       --  currently we can cleanly close the unneeded ends of the pipes, but
       --  this doesn't really matter.
-      --  We could close Pipe1.Output, Pipe2.Input, Pipe3.Input.
+
+      --  We could close Pipe1.Output, Pipe2.Input, Pipe3.Input
 
       Dup2 (Pipe1.Input,  GNAT.OS_Lib.Standin);
       Dup2 (Pipe2.Output, GNAT.OS_Lib.Standout);
       Dup2 (Pipe3.Output, GNAT.OS_Lib.Standerr);
 
-      Portable_Execvp (Pid.Pid'Access, Cmd & ASCII.Nul, Args);
+      Portable_Execvp (Pid.Pid'Access, Cmd & ASCII.NUL, Args);
 
       --  The following commands are not executed on Unix systems, and are
       --  only required for Windows systems. We are now in the parent process.
@@ -1238,6 +1247,7 @@ package body GNAT.Expect is
       Pipe3      : not null access Pipe_Type)
    is
       Status : Boolean;
+      pragma Unreferenced (Status);
 
    begin
       --  Create the pipes
@@ -1292,6 +1302,9 @@ package body GNAT.Expect is
       Pipe3 : in out Pipe_Type)
    is
       pragma Warnings (Off, Pid);
+      pragma Warnings (Off, Pipe1);
+      pragma Warnings (Off, Pipe2);
+      pragma Warnings (Off, Pipe3);
    begin
       Close (Pipe1.Input);
       Close (Pipe2.Output);

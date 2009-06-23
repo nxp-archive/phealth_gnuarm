@@ -1,13 +1,13 @@
 /* Definitions of target machine for GNU compiler, for DEC Alpha.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2004, 2005 Free Software Foundation, Inc.
+   2000, 2001, 2002, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu)
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 /* Target CPU builtins.  */
 #define TARGET_CPU_CPP_BUILTINS()			\
@@ -246,10 +245,6 @@ extern enum alpha_fp_trap_mode alpha_fptm;
 /* Define the size of `long long'.  The default is the twice the word size.  */
 #define LONG_LONG_TYPE_SIZE 64
 
-/* We're IEEE unless someone says to use VAX.  */
-#define TARGET_FLOAT_FORMAT \
-  (TARGET_FLOAT_VAX ? VAX_FLOAT_FORMAT : IEEE_FLOAT_FORMAT)
-
 /* The two floating-point formats we support are S-floating, which is
    4 bytes, and T-floating, which is 8 bytes.  `float' is S and `double'
    and `long double' are T.  */
@@ -452,7 +447,7 @@ extern enum alpha_fp_trap_mode alpha_fptm;
    registers can hold 64-bit integers as well, but not smaller values.  */
 
 #define HARD_REGNO_MODE_OK(REGNO, MODE) 				\
-  ((REGNO) >= 32 && (REGNO) <= 62 					\
+  (IN_RANGE ((REGNO), 32, 62)						\
    ? (MODE) == SFmode || (MODE) == DFmode || (MODE) == DImode		\
      || (MODE) == SCmode || (MODE) == DCmode				\
    : 1)
@@ -479,12 +474,6 @@ extern enum alpha_fp_trap_mode alpha_fptm;
 
 /* Base register for access to local variables of the function.  */
 #define HARD_FRAME_POINTER_REGNUM 15
-
-/* Value should be nonzero if functions must have frame pointers.
-   Zero means the frame pointer need not be set up (and parms
-   may be accessed via the stack pointer) in functions that seem suitable.
-   This is computed in `reload', in reload1.c.  */
-#define FRAME_POINTER_REQUIRED 0
 
 /* Base register for access to arguments of the function.  */
 #define ARG_POINTER_REGNUM 31
@@ -558,6 +547,19 @@ enum reg_class {
   {0x00000000, 0x7fffffff},	/* FLOAT_REGS */	\
   {0xffffffff, 0xffffffff} }
 
+/* The following macro defines cover classes for Integrated Register
+   Allocator.  Cover classes is a set of non-intersected register
+   classes covering all hard registers used for register allocation
+   purpose.  Any move between two registers of a cover class should be
+   cheaper than load or store of the registers.  The macro value is
+   array of register classes with LIM_REG_CLASSES used as the end
+   marker.  */
+
+#define IRA_COVER_CLASSES						     \
+{									     \
+  GENERAL_REGS, FLOAT_REGS, LIM_REG_CLASSES				     \
+}
+
 /* The same information, inverted:
    Return the class number of the smallest class containing
    reg number REGNO.  This could be a conditional expression
@@ -568,7 +570,7 @@ enum reg_class {
   : (REGNO) == 24 ? R24_REG			\
   : (REGNO) == 25 ? R25_REG			\
   : (REGNO) == 27 ? R27_REG			\
-  : (REGNO) >= 32 && (REGNO) <= 62 ? FLOAT_REGS	\
+  : IN_RANGE ((REGNO), 32, 62) ? FLOAT_REGS	\
   : GENERAL_REGS)
 
 /* The class value for index registers, and the one for base regs.  */
@@ -632,7 +634,7 @@ extern int alpha_memory_latency;
 #define MEMORY_MOVE_COST(MODE,CLASS,IN)  (2*alpha_memory_latency)
 
 /* Provide the cost of a branch.  Exact meaning under development.  */
-#define BRANCH_COST 5
+#define BRANCH_COST(speed_p, predictable_p) 5
 
 /* Stack layout; function entry, exit and calling.  */
 
@@ -663,7 +665,7 @@ extern int alpha_memory_latency;
 
 /* Define this if the maximum size of all the outgoing args is to be
    accumulated and pushed during the prologue.  The amount can be
-   found in the variable current_function_outgoing_args_size.  */
+   found in the variable crtl->outgoing_args_size.  */
 #define ACCUMULATE_OUTGOING_ARGS 1
 
 /* Offset of first parameter from the argument pointer register value.  */
@@ -744,7 +746,7 @@ extern int alpha_memory_latency;
    On Alpha, these are $16-$21 and $f16-$f21.  */
 
 #define FUNCTION_ARG_REGNO_P(N) \
-  (((N) >= 16 && (N) <= 21) || ((N) >= 16 + 32 && (N) <= 21 + 32))
+  (IN_RANGE ((N), 16, 21) || ((N) >= 16 + 32 && (N) <= 21 + 32))
 
 /* Define a data type for recording info about an argument list
    during the scan of that argument list.  This data type should
@@ -800,24 +802,6 @@ extern int alpha_memory_latency;
 
 #define FUNCTION_ARG(CUM, MODE, TYPE, NAMED)	\
   function_arg((CUM), (MODE), (TYPE), (NAMED))
-
-/* Try to output insns to set TARGET equal to the constant C if it can be
-   done in less than N insns.  Do all computations in MODE.  Returns the place
-   where the output has been placed if it can be done and the insns have been
-   emitted.  If it would take more than N insns, zero is returned and no
-   insns and emitted.  */
-
-/* Define the information needed to generate branch and scc insns.  This is
-   stored from the compare operation.  Note that we can't use "rtx" here
-   since it hasn't been defined!  */
-
-struct alpha_compare
-{
-  struct rtx_def *op0, *op1;
-  int fp_p;
-};
-
-extern struct alpha_compare alpha_compare;
 
 /* Make (or fake) .linkage entry for function call.
    IS_LOCAL is 0 if name is used in call, 1 if name is used in definition.  */
@@ -916,7 +900,7 @@ do {						\
 #define EH_RETURN_STACKADJ_RTX	gen_rtx_REG (Pmode, 28)
 #define EH_RETURN_HANDLER_RTX \
   gen_rtx_MEM (Pmode, plus_constant (stack_pointer_rtx, \
-				     current_function_outgoing_args_size))
+				     crtl->outgoing_args_size))
 
 /* Addressing modes, and classification of registers for them.  */
 
@@ -941,7 +925,7 @@ do {						\
    symbolic addresses into registers.  */
 
 #define CONSTANT_ADDRESS_P(X)   \
-  (GET_CODE (X) == CONST_INT	\
+  (CONST_INT_P (X)		\
    && (unsigned HOST_WIDE_INT) (INTVAL (X) + 0x8000) < 0x10000)
 
 /* Include all constant integers and constant doubles, but not
@@ -990,37 +974,6 @@ do {						\
 #define REG_OK_FOR_BASE_P(X)	NONSTRICT_REG_OK_FOR_BASE_P (X)
 #endif
 
-/* GO_IF_LEGITIMATE_ADDRESS recognizes an RTL expression that is a
-   valid memory address for an instruction.  */
-
-#ifdef REG_OK_STRICT
-#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, WIN)	\
-do {						\
-  if (alpha_legitimate_address_p (MODE, X, 1))	\
-    goto WIN;					\
-} while (0)
-#else
-#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, WIN)	\
-do {						\
-  if (alpha_legitimate_address_p (MODE, X, 0))	\
-    goto WIN;					\
-} while (0)
-#endif
-
-/* Try machine-dependent ways of modifying an illegitimate address
-   to be legitimate.  If we find one, return the new, valid address.
-   This macro is used in only one place: `memory_address' in explow.c.  */
-
-#define LEGITIMIZE_ADDRESS(X,OLDX,MODE,WIN)			\
-do {								\
-  rtx new_x = alpha_legitimize_address (X, NULL_RTX, MODE);	\
-  if (new_x)							\
-    {								\
-      X = new_x;						\
-      goto WIN;							\
-    }								\
-} while (0)
-
 /* Try a machine-dependent way of reloading an illegitimate address
    operand.  If we find one, push the reload and jump to WIN.  This
    macro is used in only one place: `find_reloads_address' in reload.c.  */
@@ -1071,7 +1024,7 @@ do {									     \
    Without byte/word accesses, we want no more than four instructions;
    with, several single byte accesses are better.  */
 
-#define MOVE_RATIO  (TARGET_BWX ? 7 : 2)
+#define MOVE_RATIO(speed)  (TARGET_BWX ? 7 : 2)
 
 /* Largest number of bytes of an object that can be placed in a register.
    On the Alpha we have plenty of registers, so use TImode.  */
@@ -1117,7 +1070,7 @@ do {									     \
 #define CANONICALIZE_COMPARISON(CODE,OP0,OP1) \
   do {									\
     if (((CODE) == GE || (CODE) == GT || (CODE) == GEU || (CODE) == GTU) \
-	&& (GET_CODE (OP1) == REG || (OP1) == const0_rtx))		\
+	&& (REG_P (OP1) || (OP1) == const0_rtx))		\
       {									\
 	rtx tem = (OP0);						\
 	(OP0) = (OP1);							\
@@ -1125,7 +1078,7 @@ do {									     \
 	(CODE) = swap_condition (CODE);					\
       }									\
     if (((CODE) == LT || (CODE) == LTU)					\
-	&& GET_CODE (OP1) == CONST_INT && INTVAL (OP1) == 256)		\
+	&& CONST_INT_P (OP1) && INTVAL (OP1) == 256)			\
       {									\
 	(CODE) = (CODE) == LT ? LE : LEU;				\
 	(OP1) = GEN_INT (255);						\
@@ -1335,10 +1288,6 @@ do {						\
 
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR) \
   print_operand_address((FILE), (ADDR))
-
-/* Implement `va_start' for varargs and stdarg.  */
-#define EXPAND_BUILTIN_VA_START(valist, nextarg) \
-  alpha_va_start (valist, nextarg)
 
 /* Tell collect that the object format is ECOFF.  */
 #define OBJECT_FORMAT_COFF

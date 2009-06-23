@@ -1,0 +1,35 @@
+2009-06-22  Tobias Grosser  <grosser@fim.uni-passau.de>
+
+	* automatic_tester/graphite_env.sh.example: Add EMAIL_REALNAME and
+	EMAIL_FROM. Add gcc-graphite mailing list.
+	* automatic_tester/run_build.sh: Allow to change mail FROM:.
+	* automatic_tester/git_run.sh: Fix a little bug.
+
+2009-06-17  Tobias Grosser  <grosser@fim.uni-passau.de>
+
+	* automatic_tester/git_run.sh: Mark build as running in git.
+
+2009-05-14  Tobias Grosser  <grosser@fim.uni-passau.de>
+
+	* automatic_tester/graphite_env.sh: Removed.
+	* automatic_tester/graphite_env.sh.example: New.
+
+2009-05-14  Tobias Grosser  <grosser@fim.uni-passau.de>
+
+	* automatic_tester/git_run.sh: Enable update of SRC_DIR to latest
+	svn commit.
+
+2009-05-14  Tobias Grosser  <grosser@fim.uni-passau.de>
+
+	* automatic_tester/git_run.sh: Enable usage of git-svn for the
+	branch we track.
+
+2009-05-14  Tobias Grosser  <grosser@fim.uni-passau.de>
+
+	* automatic_tester.sh: Rename to automatic_tester/run_build.sh
+	* automatic_tester/git_run.sh: New.
+	* automatic_tester/graphite_env.sh: New.
+
+2009-05-14  Tobias Grosser  <grosser@fim.uni-passau.de>
+
+	* automatic_tester.sh: New.

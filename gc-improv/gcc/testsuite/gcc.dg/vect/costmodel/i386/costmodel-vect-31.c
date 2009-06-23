@@ -18,10 +18,11 @@ struct s{
   struct t e;   /* unaligned (offset 2N+4N+4 B) */
 };
  
+struct s tmp;
+
 int main1 ()
 {  
   int i;
-  struct s tmp;
 
   /* unaligned */
   for (i = 0; i < N/2; i++)
@@ -85,7 +86,8 @@ int main (void)
   return main1 ();
 } 
 
-/* { dg-final { scan-tree-dump-times "vectorization not profitable" 1 "vect" } }
+/* { dg-final { scan-tree-dump-times "vectorization not profitable" 1 "vect" { xfail vect_hw_misalign } } }
  */
-/* { dg-final { scan-tree-dump-times "vectorized 3 loops" 1 "vect" } } */
+/* { dg-final { scan-tree-dump-times "vectorized 3 loops" 1 "vect" { xfail vect_hw_misalign } } } */
+/* { dg-final { scan-tree-dump-times "vectorized 4 loops" 1 "vect" { target vect_hw_misalign } } } */
 /* { dg-final { cleanup-tree-dump "vect" } } */

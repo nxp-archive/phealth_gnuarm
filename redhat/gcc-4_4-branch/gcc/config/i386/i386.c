@@ -1036,6 +1036,79 @@ struct processor_costs core2_cost = {
   1,                                    /* cond_not_taken_branch_cost.  */
 };
 
+static const
+struct processor_costs atom_cost = {
+  COSTS_N_INSNS (1),			/* cost of an add instruction */
+  COSTS_N_INSNS (1) + 1,		/* cost of a lea instruction */
+  COSTS_N_INSNS (1),			/* variable shift costs */
+  COSTS_N_INSNS (1),			/* constant shift costs */
+  {COSTS_N_INSNS (3),			/* cost of starting multiply for QI */
+   COSTS_N_INSNS (4),			/*                               HI */
+   COSTS_N_INSNS (3),			/*                               SI */
+   COSTS_N_INSNS (4),			/*                               DI */
+   COSTS_N_INSNS (2)},			/*                               other */
+  0,					/* cost of multiply per each bit set */
+  {COSTS_N_INSNS (18),			/* cost of a divide/mod for QI */
+   COSTS_N_INSNS (26),			/*                          HI */
+   COSTS_N_INSNS (42),			/*                          SI */
+   COSTS_N_INSNS (74),			/*                          DI */
+   COSTS_N_INSNS (74)},			/*                          other */
+  COSTS_N_INSNS (1),			/* cost of movsx */
+  COSTS_N_INSNS (1),			/* cost of movzx */
+  8,					/* "large" insn */
+  17,					/* MOVE_RATIO */
+  2,					/* cost for loading QImode using movzbl */
+  {4, 4, 4},				/* cost of loading integer registers
+					   in QImode, HImode and SImode.
+					   Relative to reg-reg move (2).  */
+  {4, 4, 4},				/* cost of storing integer registers */
+  4,					/* cost of reg,reg fld/fst */
+  {12, 12, 12},				/* cost of loading fp registers
+					   in SFmode, DFmode and XFmode */
+  {6, 6, 8},				/* cost of storing fp registers
+					   in SFmode, DFmode and XFmode */
+  2,					/* cost of moving MMX register */
+  {8, 8},				/* cost of loading MMX registers
+					   in SImode and DImode */
+  {8, 8},				/* cost of storing MMX registers
+					   in SImode and DImode */
+  2,					/* cost of moving SSE register */
+  {8, 8, 8},				/* cost of loading SSE registers
+					   in SImode, DImode and TImode */
+  {8, 8, 8},				/* cost of storing SSE registers
+					   in SImode, DImode and TImode */
+  5,					/* MMX or SSE register to integer */
+  32,					/* size of l1 cache.  */
+  256,					/* size of l2 cache.  */
+  64,					/* size of prefetch block */
+  6,					/* number of parallel prefetches */
+  3,					/* Branch cost */
+  COSTS_N_INSNS (8),			/* cost of FADD and FSUB insns.  */
+  COSTS_N_INSNS (8),			/* cost of FMUL instruction.  */
+  COSTS_N_INSNS (20),			/* cost of FDIV instruction.  */
+  COSTS_N_INSNS (8),			/* cost of FABS instruction.  */
+  COSTS_N_INSNS (8),			/* cost of FCHS instruction.  */
+  COSTS_N_INSNS (40),			/* cost of FSQRT instruction.  */
+  {{libcall, {{11, loop}, {-1, rep_prefix_4_byte}}},
+   {libcall, {{32, loop}, {64, rep_prefix_4_byte},
+          {8192, rep_prefix_8_byte}, {-1, libcall}}}},
+  {{libcall, {{8, loop}, {15, unrolled_loop},
+          {2048, rep_prefix_4_byte}, {-1, libcall}}},
+   {libcall, {{24, loop}, {32, unrolled_loop},
+          {8192, rep_prefix_8_byte}, {-1, libcall}}}},
+  1,                                    /* scalar_stmt_cost.  */
+  1,                                    /* scalar load_cost.  */
+  1,                                    /* scalar_store_cost.  */
+  1,                                    /* vec_stmt_cost.  */
+  1,                                    /* vec_to_scalar_cost.  */
+  1,                                    /* scalar_to_vec_cost.  */
+  1,                                    /* vec_align_load_cost.  */
+  2,                                    /* vec_unalign_load_cost.  */
+  1,                                    /* vec_store_cost.  */
+  3,                                    /* cond_taken_branch_cost.  */
+  1,                                    /* cond_not_taken_branch_cost.  */
+};
+
 /* Generic64 should produce code tuned for Nocona and K8.  */
 static const
 struct processor_costs generic64_cost = {
@@ -1194,6 +1267,7 @@ const struct processor_costs *ix86_cost = &pentium_cost;
 #define m_PENT4  (1<<PROCESSOR_PENTIUM4)
 #define m_NOCONA  (1<<PROCESSOR_NOCONA)
 #define m_CORE2  (1<<PROCESSOR_CORE2)
+#define m_ATOM  (1<<PROCESSOR_ATOM)
 
 #define m_GEODE  (1<<PROCESSOR_GEODE)
 #define m_K6  (1<<PROCESSOR_K6)
@@ -1231,10 +1305,11 @@ static unsigned int initial_ix86_tune_features[X86_TUNE_LAST] = {
   m_486 | m_PENT,
 
   /* X86_TUNE_UNROLL_STRLEN */
-  m_486 | m_PENT | m_PPRO | m_AMD_MULTIPLE | m_K6 | m_CORE2 | m_GENERIC,
+  m_486 | m_PENT | m_ATOM | m_PPRO | m_AMD_MULTIPLE | m_K6
+  | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_DEEP_BRANCH_PREDICTION */
-  m_PPRO | m_K6_GEODE | m_AMD_MULTIPLE | m_PENT4 | m_GENERIC,
+  m_ATOM | m_PPRO | m_K6_GEODE | m_AMD_MULTIPLE | m_PENT4 | m_GENERIC,
 
   /* X86_TUNE_BRANCH_PREDICTION_HINTS: Branch hints were put in P4 based
      on simulation result. But after P4 was made, no performance benefit
@@ -1246,12 +1321,12 @@ static unsigned int initial_ix86_tune_features[X86_TUNE_LAST] = {
   ~m_386,
 
   /* X86_TUNE_USE_SAHF */
-  m_PPRO | m_K6_GEODE | m_K8 | m_AMDFAM10 | m_PENT4
+  m_ATOM | m_PPRO | m_K6_GEODE | m_K8 | m_AMDFAM10 | m_PENT4
   | m_NOCONA | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_MOVX: Enable to zero extend integer registers to avoid
      partial dependencies.  */
-  m_AMD_MULTIPLE | m_PPRO | m_PENT4 | m_NOCONA
+  m_AMD_MULTIPLE | m_ATOM | m_PPRO | m_PENT4 | m_NOCONA
   | m_CORE2 | m_GENERIC | m_GEODE /* m_386 | m_K6 */,
 
   /* X86_TUNE_PARTIAL_REG_STALL: We probably ought to watch for partial
@@ -1271,13 +1346,13 @@ static unsigned int initial_ix86_tune_features[X86_TUNE_LAST] = {
   m_386 | m_486 | m_K6_GEODE,
 
   /* X86_TUNE_USE_SIMODE_FIOP */
-  ~(m_PPRO | m_AMD_MULTIPLE | m_PENT | m_CORE2 | m_GENERIC),
+  ~(m_PPRO | m_AMD_MULTIPLE | m_PENT | m_ATOM | m_CORE2 | m_GENERIC),
 
   /* X86_TUNE_USE_MOV0 */
   m_K6,
 
   /* X86_TUNE_USE_CLTD */
-  ~(m_PENT | m_K6 | m_CORE2 | m_GENERIC),
+  ~(m_PENT | m_ATOM | m_K6 | m_CORE2 | m_GENERIC),
 
   /* X86_TUNE_USE_XCHGB: Use xchgb %rh,%rl instead of rolw/rorw $8,rx.  */
   m_PENT4,
@@ -1292,8 +1367,8 @@ static unsigned int initial_ix86_tune_features[X86_TUNE_LAST] = {
   ~(m_PENT | m_PPRO),
 
   /* X86_TUNE_PROMOTE_QIMODE */
-  m_K6_GEODE | m_PENT | m_386 | m_486 | m_AMD_MULTIPLE | m_CORE2
-  | m_GENERIC /* | m_PENT4 ? */,
+  m_K6_GEODE | m_PENT | m_ATOM | m_386 | m_486 | m_AMD_MULTIPLE
+  | m_CORE2 | m_GENERIC /* | m_PENT4 ? */,
 
   /* X86_TUNE_FAST_PREFIX */
   ~(m_PENT | m_486 | m_386),
@@ -1317,26 +1392,28 @@ static unsigned int initial_ix86_tune_features[X86_TUNE_LAST] = {
   m_PPRO,
 
   /* X86_TUNE_ADD_ESP_4: Enable if add/sub is preferred over 1/2 push/pop.  */
-  m_AMD_MULTIPLE | m_K6_GEODE | m_PENT4 | m_NOCONA | m_CORE2 | m_GENERIC,
+  m_ATOM | m_AMD_MULTIPLE | m_K6_GEODE | m_PENT4 | m_NOCONA
+  | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_ADD_ESP_8 */
-  m_AMD_MULTIPLE | m_PPRO | m_K6_GEODE | m_386
+  m_AMD_MULTIPLE | m_ATOM | m_PPRO | m_K6_GEODE | m_386
   | m_486 | m_PENT4 | m_NOCONA | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_SUB_ESP_4 */
-  m_AMD_MULTIPLE | m_PPRO | m_PENT4 | m_NOCONA | m_CORE2 | m_GENERIC,
+  m_AMD_MULTIPLE | m_ATOM | m_PPRO | m_PENT4 | m_NOCONA | m_CORE2
+  | m_GENERIC,
 
   /* X86_TUNE_SUB_ESP_8 */
-  m_AMD_MULTIPLE | m_PPRO | m_386 | m_486
+  m_AMD_MULTIPLE | m_ATOM | m_PPRO | m_386 | m_486
   | m_PENT4 | m_NOCONA | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_INTEGER_DFMODE_MOVES: Enable if integer moves are preferred
      for DFmode copies */
-  ~(m_AMD_MULTIPLE | m_PENT4 | m_NOCONA | m_PPRO | m_CORE2
+  ~(m_AMD_MULTIPLE | m_ATOM | m_PENT4 | m_NOCONA | m_PPRO | m_CORE2
     | m_GENERIC | m_GEODE),
 
   /* X86_TUNE_PARTIAL_REG_DEPENDENCY */
-  m_AMD_MULTIPLE | m_PENT4 | m_NOCONA | m_CORE2 | m_GENERIC,
+  m_AMD_MULTIPLE | m_ATOM | m_PENT4 | m_NOCONA | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_SSE_PARTIAL_REG_DEPENDENCY: In the Generic model we have a
      conflict here in between PPro/Pentium4 based chips that thread 128bit
@@ -1347,7 +1424,8 @@ static unsigned int initial_ix86_tune_features[X86_TUNE_LAST] = {
      shows that disabling this option on P4 brings over 20% SPECfp regression,
      while enabling it on K8 brings roughly 2.4% regression that can be partly
      masked by careful scheduling of moves.  */
-  m_PENT4 | m_NOCONA | m_PPRO | m_CORE2 | m_GENERIC | m_AMDFAM10,
+  m_ATOM | m_PENT4 | m_NOCONA | m_PPRO | m_CORE2 | m_GENERIC
+  | m_AMDFAM10,
 
   /* X86_TUNE_SSE_UNALIGNED_MOVE_OPTIMAL */
   m_AMDFAM10,
@@ -1365,13 +1443,13 @@ static unsigned int initial_ix86_tune_features[X86_TUNE_LAST] = {
   m_PPRO | m_PENT4 | m_NOCONA,
 
   /* X86_TUNE_MEMORY_MISMATCH_STALL */
-  m_AMD_MULTIPLE | m_PENT4 | m_NOCONA | m_CORE2 | m_GENERIC,
+  m_AMD_MULTIPLE | m_ATOM | m_PENT4 | m_NOCONA | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_PROLOGUE_USING_MOVE */
-  m_ATHLON_K8 | m_PPRO | m_CORE2 | m_GENERIC,
+  m_ATHLON_K8 | m_ATOM | m_PPRO | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_EPILOGUE_USING_MOVE */
-  m_ATHLON_K8 | m_PPRO | m_CORE2 | m_GENERIC,
+  m_ATHLON_K8 | m_ATOM | m_PPRO | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_SHIFT1 */
   ~m_486,
@@ -1380,29 +1458,32 @@ static unsigned int initial_ix86_tune_features[X86_TUNE_LAST] = {
   m_AMD_MULTIPLE,
 
   /* X86_TUNE_INTER_UNIT_MOVES */
-  ~(m_AMD_MULTIPLE | m_GENERIC),
+  ~(m_AMD_MULTIPLE | m_ATOM | m_GENERIC),
 
   /* X86_TUNE_INTER_UNIT_CONVERSIONS */
   ~(m_AMDFAM10),
 
   /* X86_TUNE_FOUR_JUMP_LIMIT: Some CPU cores are not able to predict more
      than 4 branch instructions in the 16 byte window.  */
-  m_PPRO | m_AMD_MULTIPLE | m_PENT4 | m_NOCONA | m_CORE2 | m_GENERIC,
+  m_ATOM | m_PPRO | m_AMD_MULTIPLE | m_PENT4 | m_NOCONA | m_CORE2
+  | m_GENERIC,
 
   /* X86_TUNE_SCHEDULE */
-  m_PPRO | m_AMD_MULTIPLE | m_K6_GEODE | m_PENT | m_CORE2 | m_GENERIC,
+  m_PPRO | m_AMD_MULTIPLE | m_K6_GEODE | m_PENT | m_ATOM | m_CORE2
+  | m_GENERIC,
 
   /* X86_TUNE_USE_BT */
-  m_AMD_MULTIPLE | m_CORE2 | m_GENERIC,
+  m_AMD_MULTIPLE | m_ATOM | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_USE_INCDEC */
-  ~(m_PENT4 | m_NOCONA | m_GENERIC),
+  ~(m_PENT4 | m_NOCONA | m_GENERIC | m_ATOM),
 
   /* X86_TUNE_PAD_RETURNS */
   m_AMD_MULTIPLE | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_EXT_80387_CONSTANTS */
-  m_K6_GEODE | m_ATHLON_K8 | m_PENT4 | m_NOCONA | m_PPRO | m_CORE2 | m_GENERIC,
+  m_K6_GEODE | m_ATHLON_K8 | m_ATOM | m_PENT4 | m_NOCONA | m_PPRO
+  | m_CORE2 | m_GENERIC,
 
   /* X86_TUNE_SHORTEN_X87_SSE */
   ~m_K8,
@@ -1447,6 +1528,10 @@ static unsigned int initial_ix86_tune_features[X86_TUNE_LAST] = {
      with a subsequent conditional jump instruction into a single
      compare-and-branch uop.  */
   m_CORE2,
+
+  /* X86_TUNE_OPT_AGU: Optimize for Address Generation Unit. This flag
+     will impact LEA instruction selection. */
+  m_ATOM,
 };
 
 /* Feature tests against the various architecture variations.  */
@@ -1472,10 +1557,11 @@ static unsigned int initial_ix86_arch_features[X86_ARCH_LAST] = {
 };
 
 static const unsigned int x86_accumulate_outgoing_args
-  = m_AMD_MULTIPLE | m_PENT4 | m_NOCONA | m_PPRO | m_CORE2 | m_GENERIC;
+  = m_AMD_MULTIPLE | m_ATOM | m_PENT4 | m_NOCONA | m_PPRO | m_CORE2
+    | m_GENERIC;
 
 static const unsigned int x86_arch_always_fancy_math_387
-  = m_PENT | m_PPRO | m_AMD_MULTIPLE | m_PENT4
+  = m_PENT | m_ATOM | m_PPRO | m_AMD_MULTIPLE | m_PENT4
     | m_NOCONA | m_CORE2 | m_GENERIC;
 
 static enum stringop_alg stringop_alg = no_stringop;
@@ -1533,24 +1619,8 @@ int const dbx_register_map[FIRST_PSEUDO_REGISTER] =
   -1, -1, -1, -1, -1, -1, -1, -1,	/* extended SSE registers */
 };
 
-static int const x86_64_int_parameter_registers[6] =
-{
-  5 /*RDI*/, 4 /*RSI*/, 1 /*RDX*/, 2 /*RCX*/,
-  FIRST_REX_INT_REG /*R8 */, FIRST_REX_INT_REG + 1 /*R9 */
-};
-
-static int const x86_64_ms_abi_int_parameter_registers[4] =
-{
-  2 /*RCX*/, 1 /*RDX*/,
-  FIRST_REX_INT_REG /*R8 */, FIRST_REX_INT_REG + 1 /*R9 */
-};
-
-static int const x86_64_int_return_registers[4] =
-{
-  0 /*RAX*/, 1 /*RDX*/, 5 /*RDI*/, 4 /*RSI*/
-};
-
 /* The "default" register map used in 64bit mode.  */
+
 int const dbx64_register_map[FIRST_PSEUDO_REGISTER] =
 {
   0, 1, 2, 3, 4, 5, 6, 7,		/* general regs */
@@ -1633,6 +1703,23 @@ int const svr4_dbx_register_map[FIRST_PSEUDO_REGISTER] =
 rtx ix86_compare_op0 = NULL_RTX;
 rtx ix86_compare_op1 = NULL_RTX;
 rtx ix86_compare_emitted = NULL_RTX;
+
+/* Define parameter passing and return registers.  */
+
+static int const x86_64_int_parameter_registers[6] =
+{
+  DI_REG, SI_REG, DX_REG, CX_REG, R8_REG, R9_REG
+};
+
+static int const x86_64_ms_abi_int_parameter_registers[4] =
+{
+  CX_REG, DX_REG, R8_REG, R9_REG
+};
+
+static int const x86_64_int_return_registers[4] =
+{
+  AX_REG, DX_REG, DI_REG, SI_REG
+};
 
 /* Define the structure for the machine field in struct function.  */
 
@@ -1876,9 +1963,12 @@ static int ix86_isa_flags_explicit;
 
 #define OPTION_MASK_ISA_ABM_SET \
   (OPTION_MASK_ISA_ABM | OPTION_MASK_ISA_POPCNT)
+
 #define OPTION_MASK_ISA_POPCNT_SET OPTION_MASK_ISA_POPCNT
 #define OPTION_MASK_ISA_CX16_SET OPTION_MASK_ISA_CX16
 #define OPTION_MASK_ISA_SAHF_SET OPTION_MASK_ISA_SAHF
+#define OPTION_MASK_ISA_MOVBE_SET OPTION_MASK_ISA_MOVBE
+#define OPTION_MASK_ISA_CRC32_SET OPTION_MASK_ISA_CRC32
 
 /* Define a set of ISAs which aren't available when a given ISA is
    disabled.  MMX and SSE ISAs are handled separately.  */
@@ -1920,6 +2010,8 @@ static int ix86_isa_flags_explicit;
 #define OPTION_MASK_ISA_POPCNT_UNSET OPTION_MASK_ISA_POPCNT
 #define OPTION_MASK_ISA_CX16_UNSET OPTION_MASK_ISA_CX16
 #define OPTION_MASK_ISA_SAHF_UNSET OPTION_MASK_ISA_SAHF
+#define OPTION_MASK_ISA_MOVBE_UNSET OPTION_MASK_ISA_MOVBE
+#define OPTION_MASK_ISA_CRC32_UNSET OPTION_MASK_ISA_CRC32
 
 /* Vectorization library interface and handlers.  */
 tree (*ix86_veclib_handler)(enum built_in_function, tree, tree) = NULL;
@@ -1952,7 +2044,8 @@ static const struct ptt processor_target_table[PROCESSOR_max] =
   {&core2_cost, 16, 10, 16, 10, 16},
   {&generic32_cost, 16, 7, 16, 7, 16},
   {&generic64_cost, 16, 10, 16, 10, 16},
-  {&amdfam10_cost, 32, 24, 32, 7, 32}
+  {&amdfam10_cost, 32, 24, 32, 7, 32},
+  {&atom_cost, 16, 7, 16, 7, 16}
 };
 
 static const char *const cpu_names[TARGET_CPU_DEFAULT_max] =
@@ -1970,6 +2063,7 @@ static const char *const cpu_names[TARGET_CPU_DEFAULT_max] =
   "prescott",
   "nocona",
   "core2",
+  "atom",
   "geode",
   "k6",
   "k6-2",
@@ -2208,6 +2302,32 @@ ix86_handle_option (size_t code, const char *arg ATTRIBUTE_UNUSED, int value)
 	}
       return true;
 
+    case OPT_mmovbe:
+      if (value)
+	{
+	  ix86_isa_flags |= OPTION_MASK_ISA_MOVBE_SET;
+	  ix86_isa_flags_explicit |= OPTION_MASK_ISA_MOVBE_SET;
+	}
+      else
+	{
+	  ix86_isa_flags &= ~OPTION_MASK_ISA_MOVBE_UNSET;
+	  ix86_isa_flags_explicit |= OPTION_MASK_ISA_MOVBE_UNSET;
+	}
+      return true;
+
+    case OPT_mcrc32:
+      if (value)
+	{
+	  ix86_isa_flags |= OPTION_MASK_ISA_CRC32_SET;
+	  ix86_isa_flags_explicit |= OPTION_MASK_ISA_CRC32_SET;
+	}
+      else
+	{
+	  ix86_isa_flags &= ~OPTION_MASK_ISA_CRC32_UNSET;
+	  ix86_isa_flags_explicit |= OPTION_MASK_ISA_CRC32_UNSET;
+	}
+      return true;
+
     case OPT_maes:
       if (value)
 	{
@@ -2270,6 +2390,8 @@ ix86_target_string (int isa, int flags, const char *arch, const char *tune,
     { "-mmmx",		OPTION_MASK_ISA_MMX },
     { "-mabm",		OPTION_MASK_ISA_ABM },
     { "-mpopcnt",	OPTION_MASK_ISA_POPCNT },
+    { "-mmovbe",	OPTION_MASK_ISA_MOVBE },
+    { "-mcrc32",	OPTION_MASK_ISA_CRC32 },
     { "-maes",		OPTION_MASK_ISA_AES },
     { "-mpclmul",	OPTION_MASK_ISA_PCLMUL },
   };
@@ -2486,7 +2608,8 @@ override_options (bool main_args_p)
       PTA_AES = 1 << 17,
       PTA_PCLMUL = 1 << 18,
       PTA_AVX = 1 << 19,
-      PTA_FMA = 1 << 20 
+      PTA_FMA = 1 << 20,
+      PTA_MOVBE = 1 << 21
     };
 
   static struct pta
@@ -2528,6 +2651,9 @@ override_options (bool main_args_p)
       {"core2", PROCESSOR_CORE2, CPU_CORE2,
 	PTA_64BIT | PTA_MMX | PTA_SSE | PTA_SSE2 | PTA_SSE3
 	| PTA_SSSE3 | PTA_CX16},
+      {"atom", PROCESSOR_ATOM, CPU_ATOM,
+	PTA_64BIT | PTA_MMX | PTA_SSE | PTA_SSE2 | PTA_SSE3
+	| PTA_SSSE3 | PTA_CX16 | PTA_MOVBE},
       {"geode", PROCESSOR_GEODE, CPU_GEODE,
 	PTA_MMX | PTA_3DNOW | PTA_3DNOW_A |PTA_PREFETCH_SSE},
       {"k6", PROCESSOR_K6, CPU_K6, PTA_MMX},
@@ -2827,6 +2953,9 @@ override_options (bool main_args_p)
 	if (!(TARGET_64BIT && (processor_alias_table[i].flags & PTA_NO_SAHF))
 	    && !(ix86_isa_flags_explicit & OPTION_MASK_ISA_SAHF))
 	  ix86_isa_flags |= OPTION_MASK_ISA_SAHF;
+	if (processor_alias_table[i].flags & PTA_MOVBE
+	    && !(ix86_isa_flags_explicit & OPTION_MASK_ISA_MOVBE))
+	  ix86_isa_flags |= OPTION_MASK_ISA_MOVBE;
 	if (processor_alias_table[i].flags & PTA_AES
 	    && !(ix86_isa_flags_explicit & OPTION_MASK_ISA_AES))
 	  ix86_isa_flags |= OPTION_MASK_ISA_AES;
@@ -2914,8 +3043,8 @@ override_options (bool main_args_p)
      Remove this code in GCC 3.2 or later.  */
   if (ix86_align_loops_string)
     {
-      warning (0, "%salign-loops%s is obsolete, use %salign-loops%s",
-	       prefix, suffix, prefix, suffix);
+      warning (0, "%salign-loops%s is obsolete, use -falign-loops%s",
+	       prefix, suffix, suffix);
       if (align_loops == 0)
 	{
 	  i = atoi (ix86_align_loops_string);
@@ -2929,8 +3058,8 @@ override_options (bool main_args_p)
 
   if (ix86_align_jumps_string)
     {
-      warning (0, "%salign-jumps%s is obsolete, use %salign-jumps%s",
-	       prefix, suffix, prefix, suffix);
+      warning (0, "%salign-jumps%s is obsolete, use -falign-jumps%s",
+	       prefix, suffix, suffix);
       if (align_jumps == 0)
 	{
 	  i = atoi (ix86_align_jumps_string);
@@ -2944,8 +3073,8 @@ override_options (bool main_args_p)
 
   if (ix86_align_funcs_string)
     {
-      warning (0, "%salign-functions%s is obsolete, use %salign-functions%s",
-	       prefix, suffix, prefix, suffix);
+      warning (0, "%salign-functions%s is obsolete, use -falign-functions%s",
+	       prefix, suffix, suffix);
       if (align_functions == 0)
 	{
 	  i = atoi (ix86_align_funcs_string);
@@ -4272,17 +4401,15 @@ static int
 ix86_function_regparm (const_tree type, const_tree decl)
 {
   tree attr;
-  int regparm = ix86_regparm;
+  int regparm;
 
   static bool error_issued;
 
   if (TARGET_64BIT)
-    {
-      if (ix86_function_type_abi (type) == DEFAULT_ABI)
-        return regparm;
-      return DEFAULT_ABI != SYSV_ABI ? X86_64_REGPARM_MAX : X64_REGPARM_MAX;
-    }
+    return (ix86_function_type_abi (type) == SYSV_ABI
+	    ? X86_64_REGPARM_MAX : X64_REGPARM_MAX);
 
+  regparm = ix86_regparm;
   attr = lookup_attribute ("regparm", TYPE_ATTRIBUTES (type));
   if (attr)
     {
@@ -4310,7 +4437,9 @@ ix86_function_regparm (const_tree type, const_tree decl)
     return 2;
 
   /* Use register calling convention for local functions when possible.  */
-  if (decl && TREE_CODE (decl) == FUNCTION_DECL
+  if (decl
+      && TREE_CODE (decl) == FUNCTION_DECL
+      && optimize
       && !profile_flag)
     {
       /* FIXME: remove this CONST_CAST when cgraph.[ch] is constified.  */
@@ -4395,7 +4524,7 @@ ix86_function_sseregparm (const_tree type, const_tree decl, bool warn)
 
   /* For local functions, pass up to SSE_REGPARM_MAX SFmode
      (and DFmode for SSE2) arguments in SSE registers.  */
-  if (decl && TARGET_SSE_MATH && !profile_flag)
+  if (decl && TARGET_SSE_MATH && optimize && !profile_flag)
     {
       /* FIXME: remove this CONST_CAST when cgraph.[ch] is constified.  */
       struct cgraph_local_info *i = cgraph_local_info (CONST_CAST_TREE(decl));
@@ -4617,7 +4746,7 @@ static void
 ix86_maybe_switch_abi (void)
 {
   if (TARGET_64BIT &&
-      call_used_regs[4 /*RSI*/] ==  (cfun->machine->call_abi == MS_ABI))
+      call_used_regs[SI_REG] == (cfun->machine->call_abi == MS_ABI))
     reinit_regs ();
 }
 
@@ -4719,17 +4848,21 @@ init_cumulative_args (CUMULATIVE_ARGS *cum,  /* Argument info to initialize */
    modes, the generic vector support in gcc will choose some non-vector mode
    in order to implement the type.  By computing the natural mode, we'll
    select the proper ABI location for the operand and not depend on whatever
-   the middle-end decides to do with these vector types.  */
+   the middle-end decides to do with these vector types.
+
+   The midde-end can't deal with the vector types > 16 bytes.  In this
+   case, we return the original mode and warn ABI change if CUM isn't
+   NULL.  */
 
 static enum machine_mode
-type_natural_mode (const_tree type)
+type_natural_mode (const_tree type, CUMULATIVE_ARGS *cum)
 {
   enum machine_mode mode = TYPE_MODE (type);
 
   if (TREE_CODE (type) == VECTOR_TYPE && !VECTOR_MODE_P (mode))
     {
       HOST_WIDE_INT size = int_size_in_bytes (type);
-      if ((size == 8 || size == 16)
+      if ((size == 8 || size == 16 || size == 32)
 	  /* ??? Generic code allows us to create width 1 vectors.  Ignore.  */
 	  && TYPE_VECTOR_SUBPARTS (type) > 1)
 	{
@@ -4744,7 +4877,24 @@ type_natural_mode (const_tree type)
 	  for (; mode != VOIDmode; mode = GET_MODE_WIDER_MODE (mode))
 	    if (GET_MODE_NUNITS (mode) == TYPE_VECTOR_SUBPARTS (type)
 		&& GET_MODE_INNER (mode) == innermode)
-	      return mode;
+	      {
+		if (size == 32 && !TARGET_AVX)
+		  {
+		    static bool warnedavx;
+
+		    if (cum
+			&& !warnedavx 
+			&& cum->warn_avx)
+		      {
+			warnedavx = true;
+			warning (0, "AVX vector argument without AVX "
+				 "enabled changes the ABI");
+		      }
+		    return TYPE_MODE (type);
+		  }
+		else
+		  return mode;
+	      }
 
 	  gcc_unreachable ();
 	}
@@ -4901,8 +5051,30 @@ classify_argument (enum machine_mode mode, const_tree type,
 		    }
 		  else
 		    {
-		      num = classify_argument (TYPE_MODE (TREE_TYPE (field)),
-					       TREE_TYPE (field), subclasses,
+		      type = TREE_TYPE (field);
+
+		      /* Flexible array member is ignored.  */
+		      if (TYPE_MODE (type) == BLKmode
+			  && TREE_CODE (type) == ARRAY_TYPE
+			  && TYPE_SIZE (type) == NULL_TREE
+			  && TYPE_DOMAIN (type) != NULL_TREE
+			  && (TYPE_MAX_VALUE (TYPE_DOMAIN (type))
+			      == NULL_TREE))
+			{
+			  static bool warned;
+			  
+			  if (!warned && warn_psabi)
+			    {
+			      warned = true;
+			      inform (input_location,
+				      "The ABI of passing struct with"
+				      " a flexible array member has"
+				      " changed in GCC 4.4");
+			    }
+			  continue;
+			}
+		      num = classify_argument (TYPE_MODE (type), type,
+					       subclasses,
 					       (int_bit_position (field)
 						+ bit_offset) % 256);
 		      if (!num)
@@ -5001,10 +5173,24 @@ classify_argument (enum machine_mode mode, const_tree type,
 	      classes[i] = X86_64_SSE_CLASS;
 	    }
 
-	  /*  X86_64_X87UP_CLASS should be preceded by X86_64_X87_CLASS.  */
+	  /*  If X86_64_X87UP_CLASS isn't preceded by X86_64_X87_CLASS,
+	       everything should be passed in memory.  */
 	  if (classes[i] == X86_64_X87UP_CLASS
-	      && (i == 0 || classes[i - 1] != X86_64_X87_CLASS))
-	    classes[i] = X86_64_SSE_CLASS;
+	      && (classes[i - 1] != X86_64_X87_CLASS))
+	    {
+	      static bool warned;
+
+	      /* The first one should never be X86_64_X87UP_CLASS.  */
+	      gcc_assert (i != 0);
+	      if (!warned && warn_psabi)
+		{
+		  warned = true;
+		  inform (input_location,
+			  "The ABI of passing union with long double"
+			  " has changed in GCC 4.4");
+		}
+	      return 0;
+	    }
 	}
       return words;
     }
@@ -5080,9 +5266,11 @@ classify_argument (enum machine_mode mode, const_tree type,
     case TImode:
       classes[0] = classes[1] = X86_64_INTEGER_CLASS;
       return 2;
-    case CTImode:
     case COImode:
     case OImode:
+      /* OImode shouldn't be used directly.  */
+      gcc_unreachable ();
+    case CTImode:
       return 0;
     case SFmode:
       if (!(bit_offset % 64))
@@ -5103,7 +5291,22 @@ classify_argument (enum machine_mode mode, const_tree type,
       return 2;
     case SCmode:
       classes[0] = X86_64_SSE_CLASS;
-      return 1;
+      if (!(bit_offset % 64))
+	return 1;
+      else
+	{
+	  static bool warned;
+
+	  if (!warned && warn_psabi)
+	    {
+	      warned = true;
+	      inform (input_location,
+		      "The ABI of passing structure with complex float"
+		      " member has changed in GCC 4.4");
+	    }
+	  classes[1] = X86_64_SSESF_CLASS;
+	  return 2;
+	}
     case DCmode:
       classes[0] = X86_64_SSEDF_CLASS;
       classes[1] = X86_64_SSEDF_CLASS;
@@ -5282,7 +5485,10 @@ construct_container (enum machine_mode mode, enum machine_mode orig_mode,
       case X86_64_SSE_CLASS:
       case X86_64_SSESF_CLASS:
       case X86_64_SSEDF_CLASS:
-	return gen_reg_or_parallel (mode, orig_mode, SSE_REGNO (sse_regno));
+	if (mode != BLKmode)
+	  return gen_reg_or_parallel (mode, orig_mode, 
+				      SSE_REGNO (sse_regno));
+	break;
       case X86_64_X87_CLASS:
       case X86_64_COMPLEX_X87_CLASS:
 	return gen_rtx_REG (mode, FIRST_STACK_REG);
@@ -5315,6 +5521,8 @@ construct_container (enum machine_mode mode, enum machine_mode orig_mode,
   /* Otherwise figure out the entries of the PARALLEL.  */
   for (i = 0; i < n; i++)
     {
+      int pos;
+
       switch (regclass[i])
         {
 	  case X86_64_NO_CLASS:
@@ -5351,24 +5559,36 @@ construct_container (enum machine_mode mode, enum machine_mode orig_mode,
 	    sse_regno++;
 	    break;
 	  case X86_64_SSE_CLASS:
-	    if (i < n - 1 && regclass[i + 1] == X86_64_SSEUP_CLASS)
+	    pos = i;
+	    switch (n)
 	      {
-		if (regclass[i + 2] == X86_64_SSEUP_CLASS
-		    || regclass[i + 3] == X86_64_SSEUP_CLASS)
-		  tmpmode = OImode;
+	      case 1:
+		tmpmode = DImode;
+		break;
+	      case 2:
+		if (i == 0 && regclass[1] == X86_64_SSEUP_CLASS)
+		  {
+		    tmpmode = TImode;
+		    i++;
+		  }
 		else
-		  tmpmode = TImode;
+		  tmpmode = DImode;
+		break;
+	      case 4:
+		gcc_assert (i == 0
+			    && regclass[1] == X86_64_SSEUP_CLASS
+			    && regclass[2] == X86_64_SSEUP_CLASS
+			    && regclass[3] == X86_64_SSEUP_CLASS);
+		tmpmode = OImode;
+		i += 3;
+		break;
+	      default:
+		gcc_unreachable ();
 	      }
-	    else
-	      tmpmode = DImode;
 	    exp [nexps++] = gen_rtx_EXPR_LIST (VOIDmode,
 					       gen_rtx_REG (tmpmode,
 							    SSE_REGNO (sse_regno)),
-					       GEN_INT (i*8));
-	    if (tmpmode == OImode)
-	      i += 3;
-	    else if (tmpmode == TImode)
-	      i++;
+					       GEN_INT (pos*8));
 	    sse_regno++;
 	    break;
 	  default:
@@ -5419,6 +5639,10 @@ function_arg_advance_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 	}
       break;
 
+    case OImode:
+      /* OImode shouldn't be used directly.  */
+      gcc_unreachable ();
+
     case DFmode:
       if (cum->float_in_sse < 2)
 	break;
@@ -5427,7 +5651,6 @@ function_arg_advance_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 	break;
       /* FALLTHRU */
 
-    case OImode:
     case V8SFmode:
     case V8SImode:
     case V32QImode:
@@ -5525,7 +5748,7 @@ function_arg_advance (CUMULATIVE_ARGS *cum, enum machine_mode mode,
   words = (bytes + UNITS_PER_WORD - 1) / UNITS_PER_WORD;
 
   if (type)
-    mode = type_natural_mode (type);
+    mode = type_natural_mode (type, NULL);
 
   if (TARGET_64BIT && (cum ? cum->call_abi : DEFAULT_ABI) == MS_ABI)
     function_arg_advance_ms_64 (cum, bytes, words);
@@ -5553,7 +5776,7 @@ function_arg_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 		 enum machine_mode orig_mode, tree type,
 		 HOST_WIDE_INT bytes, HOST_WIDE_INT words)
 {
-  static bool warnedavx, warnedsse, warnedmmx;
+  static bool warnedsse, warnedmmx;
 
   /* Avoid the AL settings for the Unix64 ABI.  */
   if (mode == VOIDmode)
@@ -5624,7 +5847,9 @@ function_arg_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
       break;
 
     case OImode:
-      /* In 32bit, we pass OImode in ymm registers.  */
+      /* OImode shouldn't be used directly.  */
+      gcc_unreachable ();
+
     case V8SFmode:
     case V8SImode:
     case V32QImode:
@@ -5633,12 +5858,6 @@ function_arg_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
     case V4DImode:
       if (!type || !AGGREGATE_TYPE_P (type))
 	{
-	  if (!TARGET_AVX && !warnedavx && cum->warn_avx)
-	    {
-	      warnedavx = true;
-	      warning (0, "AVX vector argument without AVX enabled "
-		       "changes the ABI");
-	    }
 	  if (cum->sse_nregs)
 	    return gen_reg_or_parallel (mode, orig_mode,
 				        cum->sse_regno + FIRST_SSE_REG);
@@ -5672,8 +5891,6 @@ static rtx
 function_arg_64 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 		 enum machine_mode orig_mode, tree type, int named)
 {
-  static bool warnedavx;
-
   /* Handle a hidden AL argument containing number of registers
      for varargs x86-64 functions.  */
   if (mode == VOIDmode)
@@ -5697,18 +5914,6 @@ function_arg_64 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
     case V16HImode:
     case V4DFmode:
     case V4DImode:
-      /* In 64bit, we pass TImode in interger registers and OImode on
-	 stack.  */
-      if (!type || !AGGREGATE_TYPE_P (type))
-	{
-	  if (!TARGET_AVX && !warnedavx && cum->warn_avx)
-	    {
-	      warnedavx = true;
-	      warning (0, "AVX vector argument without AVX enabled "
-		       "changes the ABI");
-	    }
-	}
-
       /* Unnamed 256bit vector mode parameters are passed on stack.  */
       if (!named)
 	return NULL;
@@ -5785,7 +5990,7 @@ function_arg (CUMULATIVE_ARGS *cum, enum machine_mode omode,
   /* To simplify the code below, represent vector types with a vector mode
      even if MMX/SSE are not active.  */
   if (type && TREE_CODE (type) == VECTOR_TYPE)
-    mode = type_natural_mode (type);
+    mode = type_natural_mode (type, cum);
 
   if (TARGET_64BIT && (cum ? cum->call_abi : DEFAULT_ABI) == MS_ABI)
     return function_arg_ms_64 (cum, mode, omode, named, bytes);
@@ -5987,6 +6192,10 @@ function_value_32 (enum machine_mode orig_mode, enum machine_mode mode,
 	   || (VECTOR_MODE_P (mode) && GET_MODE_SIZE (mode) == 16))
     regno = TARGET_SSE ? FIRST_SSE_REG : 0;
 
+  /* 32-byte vector modes in %ymm0.   */
+  else if (VECTOR_MODE_P (mode) && GET_MODE_SIZE (mode) == 32)
+    regno = TARGET_AVX ? FIRST_SSE_REG : 0;
+
   /* Floating point return values in %st(0) (unless -mno-fp-ret-in-387).  */
   else if (X87_FLOAT_MODE_P (mode) && TARGET_FLOAT_RETURNS_IN_80387)
     regno = FIRST_FLOAT_REG;
@@ -6003,6 +6212,9 @@ function_value_32 (enum machine_mode orig_mode, enum machine_mode mode,
 	  || (sse_level == 2 && mode == DFmode))
 	regno = FIRST_SSE_REG;
     }
+
+  /* OImode shouldn't be used directly.  */
+  gcc_assert (mode != OImode);
 
   return gen_rtx_REG (orig_mode, regno);
 }
@@ -6101,7 +6313,7 @@ ix86_function_value (const_tree valtype, const_tree fntype_or_decl,
   enum machine_mode mode, orig_mode;
 
   orig_mode = TYPE_MODE (valtype);
-  mode = type_natural_mode (valtype);
+  mode = type_natural_mode (valtype, NULL);
   return ix86_function_value_1 (valtype, fntype_or_decl, orig_mode, mode);
 }
 
@@ -6140,6 +6352,10 @@ return_in_memory_32 (const_tree type, enum machine_mode mode)
       /* SSE values are returned in XMM0, except when it doesn't exist.  */
       if (size == 16)
 	return (TARGET_SSE ? 0 : 1);
+
+      /* AVX values are returned in YMM0, except when it doesn't exist.  */
+      if (size == 32)
+	return TARGET_AVX ? 0 : 1;
     }
 
   if (mode == XFmode)
@@ -6147,6 +6363,10 @@ return_in_memory_32 (const_tree type, enum machine_mode mode)
 
   if (size > 12)
     return 1;
+
+  /* OImode shouldn't be used directly.  */
+  gcc_assert (mode != OImode);
+
   return 0;
 }
 
@@ -6177,14 +6397,17 @@ ix86_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 #ifdef SUBTARGET_RETURN_IN_MEMORY
   return SUBTARGET_RETURN_IN_MEMORY (type, fntype);
 #else
-   const enum machine_mode mode = type_natural_mode (type);
+  const enum machine_mode mode = type_natural_mode (type, NULL);
  
-  if (TARGET_64BIT_MS_ABI)
-     return return_in_memory_ms_64 (type, mode);
-   else if (TARGET_64BIT)
-     return return_in_memory_64 (type, mode);
-   else
-     return return_in_memory_32 (type, mode);
+  if (TARGET_64BIT)
+    {
+      if (ix86_function_type_abi (fntype) == MS_ABI)
+	return return_in_memory_ms_64 (type, mode);
+      else
+	return return_in_memory_64 (type, mode);
+    }
+  else
+    return return_in_memory_32 (type, mode);
 #endif
 }
 
@@ -6197,7 +6420,7 @@ bool
 ix86_sol10_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 {
   int size;
-  enum machine_mode mode = type_natural_mode (type);
+  enum machine_mode mode = type_natural_mode (type, NULL);
 
   if (TARGET_64BIT)
     return return_in_memory_64 (type, mode);
@@ -6651,7 +6874,7 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   size = int_size_in_bytes (type);
   rsize = (size + UNITS_PER_WORD - 1) / UNITS_PER_WORD;
 
-  nat_mode = type_natural_mode (type);
+  nat_mode = type_natural_mode (type, NULL);
   switch (nat_mode)
     {
     case V8SFmode:
@@ -7209,10 +7432,12 @@ ix86_setup_frame_addresses (void)
   cfun->machine->accesses_prev_frame = 1;
 }
 
-#if (defined(HAVE_GAS_HIDDEN) && (SUPPORTS_ONE_ONLY - 0)) || TARGET_MACHO
-# define USE_HIDDEN_LINKONCE 1
-#else
-# define USE_HIDDEN_LINKONCE 0
+#ifndef USE_HIDDEN_LINKONCE
+# if (defined(HAVE_GAS_HIDDEN) && (SUPPORTS_ONE_ONLY - 0)) || TARGET_MACHO
+#  define USE_HIDDEN_LINKONCE 1
+# else
+#  define USE_HIDDEN_LINKONCE 0
+# endif
 #endif
 
 static int pic_labels_used;
@@ -7383,6 +7608,9 @@ output_set_got (rtx dest, rtx label ATTRIBUTE_UNUSED)
 static rtx
 gen_push (rtx arg)
 {
+  if (ix86_cfa_state->reg == stack_pointer_rtx)
+    ix86_cfa_state->offset += UNITS_PER_WORD;
+
   return gen_rtx_SET (VOIDmode,
 		      gen_rtx_MEM (Pmode,
 				   gen_rtx_PRE_DEC (Pmode,
@@ -7442,8 +7670,7 @@ ix86_save_reg (unsigned int regno, int maybe_eh_return)
 	}
     }
 
-  if (crtl->drap_reg
-      && regno == REGNO (crtl->drap_reg))
+  if (crtl->drap_reg && regno == REGNO (crtl->drap_reg))
     return 1;
 
   return (df_regs_ever_live_p (regno)
@@ -7772,6 +7999,49 @@ ix86_emit_save_sse_regs_using_mov (rtx pointer, HOST_WIDE_INT offset)
       }
 }
 
+static GTY(()) rtx queued_cfa_restores;
+
+/* Add a REG_CFA_RESTORE REG note to INSN or queue them until next stack
+   manipulation insn.  Don't add it if the previously
+   saved value will be left untouched within stack red-zone till return,
+   as unwinders can find the same value in the register and
+   on the stack.  */
+
+static void
+ix86_add_cfa_restore_note (rtx insn, rtx reg, HOST_WIDE_INT red_offset)
+{
+  if (TARGET_RED_ZONE
+      && !TARGET_64BIT_MS_ABI
+      && red_offset + RED_ZONE_SIZE >= 0
+      && crtl->args.pops_args < 65536)
+    return;
+
+  if (insn)
+    {
+      add_reg_note (insn, REG_CFA_RESTORE, reg);
+      RTX_FRAME_RELATED_P (insn) = 1;
+    }
+  else
+    queued_cfa_restores
+      = alloc_EXPR_LIST (REG_CFA_RESTORE, reg, queued_cfa_restores);
+}
+
+/* Add queued REG_CFA_RESTORE notes if any to INSN.  */
+
+static void
+ix86_add_queued_cfa_restore_notes (rtx insn)
+{
+  rtx last;
+  if (!queued_cfa_restores)
+    return;
+  for (last = queued_cfa_restores; XEXP (last, 1); last = XEXP (last, 1))
+    ;
+  XEXP (last, 1) = REG_NOTES (insn);
+  REG_NOTES (insn) = queued_cfa_restores;
+  queued_cfa_restores = NULL_RTX;
+  RTX_FRAME_RELATED_P (insn) = 1;
+}
+
 /* Expand prologue or epilogue stack adjustment.
    The pattern exist to put a dependency on all ebp-based memory accesses.
    STYLE should be negative if instructions should be marked as frame related,
@@ -7779,7 +8049,8 @@ ix86_emit_save_sse_regs_using_mov (rtx pointer, HOST_WIDE_INT offset)
    otherwise.  */
 
 static void
-pro_epilogue_adjust_stack (rtx dest, rtx src, rtx offset, int style)
+pro_epilogue_adjust_stack (rtx dest, rtx src, rtx offset,
+			   int style, bool set_cfa)
 {
   rtx insn;
 
@@ -7802,7 +8073,24 @@ pro_epilogue_adjust_stack (rtx dest, rtx src, rtx offset, int style)
       insn = emit_insn (gen_pro_epilogue_adjust_stack_rex64_2 (dest, src, r11,
 							       offset));
     }
-  if (style < 0)
+
+  if (style >= 0)
+    ix86_add_queued_cfa_restore_notes (insn);
+
+  if (set_cfa)
+    {
+      rtx r;
+
+      gcc_assert (ix86_cfa_state->reg == src);
+      ix86_cfa_state->offset += INTVAL (offset);
+      ix86_cfa_state->reg = dest;
+    
+      r = gen_rtx_PLUS (Pmode, src, offset);
+      r = gen_rtx_SET (VOIDmode, dest, r);
+      add_reg_note (insn, REG_CFA_ADJUST_CFA, r);
+      RTX_FRAME_RELATED_P (insn) = 1;
+    }
+  else if (style < 0)
     RTX_FRAME_RELATED_P (insn) = 1;
 }
 
@@ -7938,30 +8226,6 @@ ix86_internal_arg_pointer (void)
   return virtual_incoming_args_rtx;
 }
 
-/* Handle the TARGET_DWARF_HANDLE_FRAME_UNSPEC hook.
-   This is called from dwarf2out.c to emit call frame instructions
-   for frame-related insns containing UNSPECs and UNSPEC_VOLATILEs. */
-static void
-ix86_dwarf_handle_frame_unspec (const char *label, rtx pattern, int index)
-{
-  rtx unspec = SET_SRC (pattern);
-  gcc_assert (GET_CODE (unspec) == UNSPEC);
-
-  switch (index)
-    {
-    case UNSPEC_REG_SAVE:
-      dwarf2out_reg_save_reg (label, XVECEXP (unspec, 0, 0),
-			      SET_DEST (pattern));
-      break;
-    case UNSPEC_DEF_CFA:
-      dwarf2out_def_cfa (label, REGNO (SET_DEST (pattern)),
-			 INTVAL (XVECEXP (unspec, 0, 0)));
-      break;
-    default:
-      gcc_unreachable ();
-    }
-}
-
 /* Finalize stack_realign_needed flag, which will guide prologue/epilogue
    to be generated in correct form.  */
 static void 
@@ -8005,6 +8269,10 @@ ix86_expand_prologue (void)
   /* DRAP should not coexist with stack_realign_fp */
   gcc_assert (!(crtl->drap_reg && stack_realign_fp));
 
+  /* Initialize CFA state for before the prologue.  */
+  ix86_cfa_state->reg = stack_pointer_rtx;
+  ix86_cfa_state->offset = INCOMING_FRAME_SP_OFFSET;
+
   ix86_compute_frame_layout (&frame);
 
   /* Emit prologue code to adjust stack alignment and setup DRAP, in case
@@ -8034,6 +8302,7 @@ ix86_expand_prologue (void)
 
       insn = emit_insn (gen_rtx_SET (VOIDmode, y, x));
       RTX_FRAME_RELATED_P (insn) = 1; 
+      ix86_cfa_state->reg = crtl->drap_reg;
 
       /* Align the stack.  */
       insn = emit_insn ((*ix86_gen_andsp) (stack_pointer_rtx,
@@ -8062,6 +8331,9 @@ ix86_expand_prologue (void)
 
       insn = emit_move_insn (hard_frame_pointer_rtx, stack_pointer_rtx);
       RTX_FRAME_RELATED_P (insn) = 1;
+
+      if (ix86_cfa_state->reg == stack_pointer_rtx)
+        ix86_cfa_state->reg = hard_frame_pointer_rtx;
     }
 
   if (stack_realign_fp)
@@ -8100,7 +8372,8 @@ ix86_expand_prologue (void)
     ;
   else if (! TARGET_STACK_PROBE || allocate < CHECK_STACK_LIMIT)
     pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
-			       GEN_INT (-allocate), -1);
+			       GEN_INT (-allocate), -1,
+			       ix86_cfa_state->reg == stack_pointer_rtx);
   else
     {
       /* Only valid for Win32.  */
@@ -8128,11 +8401,15 @@ ix86_expand_prologue (void)
       else
 	insn = gen_allocate_stack_worker_32 (eax, eax);
       insn = emit_insn (insn);
-      RTX_FRAME_RELATED_P (insn) = 1;
-      t = gen_rtx_PLUS (Pmode, stack_pointer_rtx, GEN_INT (-allocate));
-      t = gen_rtx_SET (VOIDmode, stack_pointer_rtx, t);
-      REG_NOTES (insn) = gen_rtx_EXPR_LIST (REG_FRAME_RELATED_EXPR,
-					    t, REG_NOTES (insn));
+
+      if (ix86_cfa_state->reg == stack_pointer_rtx)
+	{
+	  ix86_cfa_state->offset += allocate;
+	  t = gen_rtx_PLUS (Pmode, stack_pointer_rtx, GEN_INT (-allocate));
+	  t = gen_rtx_SET (VOIDmode, stack_pointer_rtx, t);
+	  add_reg_note (insn, REG_CFA_ADJUST_CFA, t);
+	  RTX_FRAME_RELATED_P (insn) = 1;
+	}
 
       if (eax_live)
 	{
@@ -8239,18 +8516,104 @@ ix86_expand_prologue (void)
     emit_insn (gen_cld ());
 }
 
+/* Emit code to restore REG using a POP insn.  */
+
+static void
+ix86_emit_restore_reg_using_pop (rtx reg, HOST_WIDE_INT red_offset)
+{
+  rtx insn = emit_insn (ix86_gen_pop1 (reg));
+
+  if (ix86_cfa_state->reg == crtl->drap_reg
+      && REGNO (reg) == REGNO (crtl->drap_reg))
+    {
+      /* Previously we'd represented the CFA as an expression
+	 like *(%ebp - 8).  We've just popped that value from
+	 the stack, which means we need to reset the CFA to
+	 the drap register.  This will remain until we restore
+	 the stack pointer.  */
+      add_reg_note (insn, REG_CFA_DEF_CFA, reg);
+      RTX_FRAME_RELATED_P (insn) = 1;
+      return;
+    }
+
+  if (ix86_cfa_state->reg == stack_pointer_rtx)
+    {
+      ix86_cfa_state->offset -= UNITS_PER_WORD;
+      add_reg_note (insn, REG_CFA_ADJUST_CFA,
+		    copy_rtx (XVECEXP (PATTERN (insn), 0, 1)));
+      RTX_FRAME_RELATED_P (insn) = 1;
+    }
+
+  /* When the frame pointer is the CFA, and we pop it, we are
+     swapping back to the stack pointer as the CFA.  This happens
+     for stack frames that don't allocate other data, so we assume
+     the stack pointer is now pointing at the return address, i.e.
+     the function entry state, which makes the offset be 1 word.  */
+  else if (ix86_cfa_state->reg == hard_frame_pointer_rtx
+	   && reg == hard_frame_pointer_rtx)
+    {
+      ix86_cfa_state->reg = stack_pointer_rtx;
+      ix86_cfa_state->offset = UNITS_PER_WORD;
+
+      add_reg_note (insn, REG_CFA_DEF_CFA,
+		    gen_rtx_PLUS (Pmode, stack_pointer_rtx,
+				  GEN_INT (UNITS_PER_WORD)));
+      RTX_FRAME_RELATED_P (insn) = 1;
+    }
+
+  ix86_add_cfa_restore_note (insn, reg, red_offset);
+}
+
+/* Emit code to restore saved registers using POP insns.  */
+
+static void
+ix86_emit_restore_regs_using_pop (HOST_WIDE_INT red_offset)
+{
+  int regno;
+
+  for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
+    if (!SSE_REGNO_P (regno) && ix86_save_reg (regno, false))
+      {
+	ix86_emit_restore_reg_using_pop (gen_rtx_REG (Pmode, regno),
+					 red_offset);
+	red_offset += UNITS_PER_WORD;
+      }
+}
+
+/* Emit code and notes for the LEAVE instruction.  */
+
+static void
+ix86_emit_leave (HOST_WIDE_INT red_offset)
+{
+  rtx insn = emit_insn (ix86_gen_leave ());
+
+  ix86_add_queued_cfa_restore_notes (insn);
+
+  if (ix86_cfa_state->reg == hard_frame_pointer_rtx)
+    {
+      add_reg_note (insn, REG_CFA_ADJUST_CFA, 
+		    copy_rtx (XVECEXP (PATTERN (insn), 0, 0)));
+      RTX_FRAME_RELATED_P (insn) = 1;
+      ix86_add_cfa_restore_note (insn, hard_frame_pointer_rtx, red_offset);
+    }
+}
+
 /* Emit code to restore saved registers using MOV insns.  First register
    is restored from POINTER + OFFSET.  */
 static void
 ix86_emit_restore_regs_using_mov (rtx pointer, HOST_WIDE_INT offset,
+				  HOST_WIDE_INT red_offset,
 				  int maybe_eh_return)
 {
-  int regno;
+  unsigned int regno;
   rtx base_address = gen_rtx_MEM (Pmode, pointer);
+  rtx insn;
 
   for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
     if (!SSE_REGNO_P (regno) && ix86_save_reg (regno, maybe_eh_return))
       {
+	rtx reg = gen_rtx_REG (Pmode, regno);
+
 	/* Ensure that adjust_address won't be forced to produce pointer
 	   out of range allowed by x86-64 instruction set.  */
 	if (TARGET_64BIT && offset != trunc_int_for_mode (offset, SImode))
@@ -8263,9 +8626,25 @@ ix86_emit_restore_regs_using_mov (rtx pointer, HOST_WIDE_INT offset,
 	    base_address = gen_rtx_MEM (Pmode, r11);
 	    offset = 0;
 	  }
-	emit_move_insn (gen_rtx_REG (Pmode, regno),
-	                adjust_address (base_address, Pmode, offset));
+	insn = emit_move_insn (reg,
+			       adjust_address (base_address, Pmode, offset));
 	offset += UNITS_PER_WORD;
+
+        if (ix86_cfa_state->reg == crtl->drap_reg
+	    && regno == REGNO (crtl->drap_reg))
+	  {
+	    /* Previously we'd represented the CFA as an expression
+	       like *(%ebp - 8).  We've just popped that value from
+	       the stack, which means we need to reset the CFA to
+	       the drap register.  This will remain until we restore
+	       the stack pointer.  */
+	    add_reg_note (insn, REG_CFA_DEF_CFA, reg);
+	    RTX_FRAME_RELATED_P (insn) = 1;
+	  }
+	else
+	  ix86_add_cfa_restore_note (NULL_RTX, reg, red_offset);
+
+	red_offset += UNITS_PER_WORD;
       }
 }
 
@@ -8273,15 +8652,18 @@ ix86_emit_restore_regs_using_mov (rtx pointer, HOST_WIDE_INT offset,
    is restored from POINTER + OFFSET.  */
 static void
 ix86_emit_restore_sse_regs_using_mov (rtx pointer, HOST_WIDE_INT offset,
+				      HOST_WIDE_INT red_offset,
 				      int maybe_eh_return)
 {
   int regno;
   rtx base_address = gen_rtx_MEM (TImode, pointer);
-  rtx mem;
+  rtx mem, insn;
 
   for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
     if (SSE_REGNO_P (regno) && ix86_save_reg (regno, maybe_eh_return))
       {
+	rtx reg = gen_rtx_REG (TImode, regno);
+
 	/* Ensure that adjust_address won't be forced to produce pointer
 	   out of range allowed by x86-64 instruction set.  */
 	if (TARGET_64BIT && offset != trunc_int_for_mode (offset, SImode))
@@ -8296,8 +8678,12 @@ ix86_emit_restore_sse_regs_using_mov (rtx pointer, HOST_WIDE_INT offset,
 	  }
 	mem = adjust_address (base_address, TImode, offset);
 	set_mem_align (mem, 128);
-	emit_move_insn (gen_rtx_REG (TImode, regno), mem);
+	insn = emit_move_insn (reg, mem);
 	offset += 16;
+
+	ix86_add_cfa_restore_note (NULL_RTX, reg, red_offset);
+
+	red_offset += 16;
       }
 }
 
@@ -8306,10 +8692,11 @@ ix86_emit_restore_sse_regs_using_mov (rtx pointer, HOST_WIDE_INT offset,
 void
 ix86_expand_epilogue (int style)
 {
-  int regno;
   int sp_valid;
   struct ix86_frame frame;
-  HOST_WIDE_INT offset;
+  HOST_WIDE_INT offset, red_offset;
+  struct machine_cfa_state cfa_state_save = *ix86_cfa_state;
+  bool using_drap;
 
   ix86_finalize_stack_realign_flags ();
 
@@ -8325,6 +8712,9 @@ ix86_expand_epilogue (int style)
   if (frame_pointer_needed && frame.red_zone_size)
     emit_insn (gen_memory_blockage ()); 
 
+  using_drap = crtl->drap_reg && crtl->stack_realign_needed;
+  gcc_assert (!using_drap || ix86_cfa_state->reg == crtl->drap_reg);
+
   /* Calculate start of saved registers relative to ebp.  Special care
      must be taken for the normal return case of a function using
      eh_return: the eax and edx registers are marked as saved, but not
@@ -8334,6 +8724,19 @@ ix86_expand_epilogue (int style)
     offset -= 2;
   offset *= -UNITS_PER_WORD;
   offset -= frame.nsseregs * 16 + frame.padding0;
+
+  /* Calculate start of saved registers relative to esp on entry of the
+     function.  When realigning stack, this needs to be the most negative
+     value possible at runtime.  */
+  red_offset = offset;
+  if (using_drap)
+    red_offset -= crtl->stack_alignment_needed / BITS_PER_UNIT
+		  + UNITS_PER_WORD;
+  else if (stack_realign_fp)
+    red_offset -= crtl->stack_alignment_needed / BITS_PER_UNIT
+		  - UNITS_PER_WORD;
+  if (frame_pointer_needed)
+    red_offset -= UNITS_PER_WORD;
 
   /* If we're only restoring one register and sp is not valid then
      using a move instruction to restore the register since it's
@@ -8349,7 +8752,8 @@ ix86_expand_epilogue (int style)
       || (TARGET_EPILOGUE_USING_MOVE
 	  && cfun->machine->use_fast_prologue_epilogue
 	  && ((frame.nregs + frame.nsseregs) > 1 || frame.to_allocate))
-      || (frame_pointer_needed && !(frame.nregs + frame.nsseregs) && frame.to_allocate)
+      || (frame_pointer_needed && !(frame.nregs + frame.nsseregs)
+	  && frame.to_allocate)
       || (frame_pointer_needed && TARGET_USE_LEAVE
 	  && cfun->machine->use_fast_prologue_epilogue
 	  && (frame.nregs + frame.nsseregs) == 1)
@@ -8369,21 +8773,31 @@ ix86_expand_epilogue (int style)
 	  || stack_realign_fp)
 	{
 	  ix86_emit_restore_sse_regs_using_mov (stack_pointer_rtx,
-					        frame.to_allocate, style == 2);
+						frame.to_allocate, red_offset,
+						style == 2);
 	  ix86_emit_restore_regs_using_mov (stack_pointer_rtx,
 					    frame.to_allocate
+					    + frame.nsseregs * 16
+					    + frame.padding0,
+					    red_offset
 					    + frame.nsseregs * 16
 					    + frame.padding0, style == 2);
 	}
       else
         {
 	  ix86_emit_restore_sse_regs_using_mov (hard_frame_pointer_rtx,
-					        offset, style == 2);
+						offset, red_offset,
+						style == 2);
 	  ix86_emit_restore_regs_using_mov (hard_frame_pointer_rtx,
 					    offset
 					    + frame.nsseregs * 16
+					    + frame.padding0,
+					    red_offset
+					    + frame.nsseregs * 16
 					    + frame.padding0, style == 2);
         }
+
+      red_offset -= offset;
 
       /* eh_return epilogues need %ecx added to the stack pointer.  */
       if (style == 2)
@@ -8397,13 +8811,29 @@ ix86_expand_epilogue (int style)
 	    {
 	      tmp = gen_rtx_PLUS (Pmode, hard_frame_pointer_rtx, sa);
 	      tmp = plus_constant (tmp, UNITS_PER_WORD);
-	      emit_insn (gen_rtx_SET (VOIDmode, sa, tmp));
+	      tmp = emit_insn (gen_rtx_SET (VOIDmode, sa, tmp));
 
 	      tmp = gen_rtx_MEM (Pmode, hard_frame_pointer_rtx);
-	      emit_move_insn (hard_frame_pointer_rtx, tmp);
+	      tmp = emit_move_insn (hard_frame_pointer_rtx, tmp);
+
+	      /* Note that we use SA as a temporary CFA, as the return
+		 address is at the proper place relative to it.  We
+		 pretend this happens at the FP restore insn because
+		 prior to this insn the FP would be stored at the wrong
+		 offset relative to SA, and after this insn we have no
+		 other reasonable register to use for the CFA.  We don't
+		 bother resetting the CFA to the SP for the duration of
+		 the return insn.  */
+	      add_reg_note (tmp, REG_CFA_DEF_CFA,
+			    plus_constant (sa, UNITS_PER_WORD));
+	      ix86_add_queued_cfa_restore_notes (tmp);
+	      add_reg_note (tmp, REG_CFA_RESTORE, hard_frame_pointer_rtx);
+	      RTX_FRAME_RELATED_P (tmp) = 1;
+	      ix86_cfa_state->reg = sa;
+	      ix86_cfa_state->offset = UNITS_PER_WORD;
 
 	      pro_epilogue_adjust_stack (stack_pointer_rtx, sa,
-					 const0_rtx, style);
+					 const0_rtx, style, false);
 	    }
 	  else
 	    {
@@ -8412,7 +8842,18 @@ ix86_expand_epilogue (int style)
                                          + frame.nregs * UNITS_PER_WORD
 					 + frame.nsseregs * 16
 					 + frame.padding0));
-	      emit_insn (gen_rtx_SET (VOIDmode, stack_pointer_rtx, tmp));
+	      tmp = emit_insn (gen_rtx_SET (VOIDmode, stack_pointer_rtx, tmp));
+	      ix86_add_queued_cfa_restore_notes (tmp);
+
+	      gcc_assert (ix86_cfa_state->reg == stack_pointer_rtx);
+	      if (ix86_cfa_state->offset != UNITS_PER_WORD)
+		{
+		  ix86_cfa_state->offset = UNITS_PER_WORD;
+		  add_reg_note (tmp, REG_CFA_DEF_CFA,
+				plus_constant (stack_pointer_rtx,
+					       UNITS_PER_WORD));
+		  RTX_FRAME_RELATED_P (tmp) = 1;
+		}
 	    }
 	}
       else if (!frame_pointer_needed)
@@ -8421,18 +8862,18 @@ ix86_expand_epilogue (int style)
 					    + frame.nregs * UNITS_PER_WORD
 					    + frame.nsseregs * 16
 					    + frame.padding0),
-				   style);
+				   style, !using_drap);
       /* If not an i386, mov & pop is faster than "leave".  */
       else if (TARGET_USE_LEAVE || optimize_function_for_size_p (cfun)
 	       || !cfun->machine->use_fast_prologue_epilogue)
-	emit_insn ((*ix86_gen_leave) ());
+	ix86_emit_leave (red_offset);
       else
 	{
 	  pro_epilogue_adjust_stack (stack_pointer_rtx,
 				     hard_frame_pointer_rtx,
-				     const0_rtx, style);
+				     const0_rtx, style, !using_drap);
 
-	  emit_insn ((*ix86_gen_pop1) (hard_frame_pointer_rtx));
+	  ix86_emit_restore_reg_using_pop (hard_frame_pointer_rtx, red_offset);
 	}
     }
   else
@@ -8450,32 +8891,36 @@ ix86_expand_epilogue (int style)
           gcc_assert (!stack_realign_fp);
 	  pro_epilogue_adjust_stack (stack_pointer_rtx,
 				     hard_frame_pointer_rtx,
-				     GEN_INT (offset), style);
+				     GEN_INT (offset), style, false);
           ix86_emit_restore_sse_regs_using_mov (stack_pointer_rtx,
-					        frame.to_allocate, style == 2);
+						frame.to_allocate, red_offset,
+						style == 2);
 	  pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
-				     GEN_INT (frame.nsseregs * 16), style);
+				     GEN_INT (frame.nsseregs * 16),
+				     style, false);
 	}
       else if (frame.to_allocate || frame.nsseregs)
 	{
           ix86_emit_restore_sse_regs_using_mov (stack_pointer_rtx,
-					        frame.to_allocate,
+						frame.to_allocate, red_offset,
 						style == 2);
 	  pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
 				     GEN_INT (frame.to_allocate
 				     	      + frame.nsseregs * 16
-					      + frame.padding0), style);
+					      + frame.padding0), style,
+				     !using_drap && !frame_pointer_needed);
 	}
 
-      for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
-	if (!SSE_REGNO_P (regno) && ix86_save_reg (regno, false))
-	  emit_insn ((*ix86_gen_pop1) (gen_rtx_REG (Pmode, regno)));
+      ix86_emit_restore_regs_using_pop (red_offset + frame.nsseregs * 16
+					+ frame.padding0);
+      red_offset -= offset;
+
       if (frame_pointer_needed)
 	{
 	  /* Leave results in shorter dependency chains on CPUs that are
 	     able to grok it fast.  */
 	  if (TARGET_USE_LEAVE)
-	    emit_insn ((*ix86_gen_leave) ());
+	    ix86_emit_leave (red_offset);
 	  else
             {
               /* For stack realigned really happens, recover stack 
@@ -8484,47 +8929,71 @@ ix86_expand_epilogue (int style)
               if (stack_realign_fp)
 		pro_epilogue_adjust_stack (stack_pointer_rtx,
 					   hard_frame_pointer_rtx,
-					   const0_rtx, style);
-	      emit_insn ((*ix86_gen_pop1) (hard_frame_pointer_rtx));
+					   const0_rtx, style, !using_drap);
+	      ix86_emit_restore_reg_using_pop (hard_frame_pointer_rtx,
+					       red_offset);
             }
 	}
     }
 
-  if (crtl->drap_reg && crtl->stack_realign_needed)
+  if (using_drap)
     {
       int param_ptr_offset = (call_used_regs[REGNO (crtl->drap_reg)]
 			      ? 0 : UNITS_PER_WORD);
+      rtx insn;
+
       gcc_assert (stack_realign_drap);
-      emit_insn ((*ix86_gen_add3) (stack_pointer_rtx,
-				   crtl->drap_reg,
-				   GEN_INT (-(UNITS_PER_WORD
-					      + param_ptr_offset))));
-      if (!call_used_regs[REGNO (crtl->drap_reg)])
-	emit_insn ((*ix86_gen_pop1) (crtl->drap_reg));
-      
+
+      insn = emit_insn ((*ix86_gen_add3) (stack_pointer_rtx,
+					  crtl->drap_reg,
+					  GEN_INT (-(UNITS_PER_WORD
+						     + param_ptr_offset))));
+
+      ix86_cfa_state->reg = stack_pointer_rtx;
+      ix86_cfa_state->offset = UNITS_PER_WORD + param_ptr_offset;
+
+      add_reg_note (insn, REG_CFA_DEF_CFA,
+		    gen_rtx_PLUS (Pmode, ix86_cfa_state->reg,
+				  GEN_INT (ix86_cfa_state->offset)));
+      RTX_FRAME_RELATED_P (insn) = 1;
+
+      if (param_ptr_offset)
+	ix86_emit_restore_reg_using_pop (crtl->drap_reg, -UNITS_PER_WORD);
     }
 
   /* Sibcall epilogues don't want a return instruction.  */
   if (style == 0)
-    return;
+    {
+      *ix86_cfa_state = cfa_state_save;
+      return;
+    }
 
   if (crtl->args.pops_args && crtl->args.size)
     {
       rtx popc = GEN_INT (crtl->args.pops_args);
 
-      /* i386 can only pop 64K bytes.  If asked to pop more, pop
-	 return address, do explicit add, and jump indirectly to the
-	 caller.  */
+      /* i386 can only pop 64K bytes.  If asked to pop more, pop return
+	 address, do explicit add, and jump indirectly to the caller.  */
 
       if (crtl->args.pops_args >= 65536)
 	{
 	  rtx ecx = gen_rtx_REG (SImode, CX_REG);
+	  rtx insn;
 
 	  /* There is no "pascal" calling convention in any 64bit ABI.  */
 	  gcc_assert (!TARGET_64BIT);
 
-	  emit_insn (gen_popsi1 (ecx));
-	  emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx, popc));
+	  insn = emit_insn (gen_popsi1 (ecx));
+	  ix86_cfa_state->offset -= UNITS_PER_WORD;
+
+	  add_reg_note (insn, REG_CFA_ADJUST_CFA,
+			copy_rtx (XVECEXP (PATTERN (insn), 0, 1)));
+	  add_reg_note (insn, REG_CFA_REGISTER,
+			gen_rtx_SET (VOIDmode, ecx, pc_rtx));
+	  RTX_FRAME_RELATED_P (insn) = 1;
+
+	  pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
+				     popc, -1, true);
 	  emit_jump_insn (gen_return_indirect_internal (ecx));
 	}
       else
@@ -8532,6 +9001,10 @@ ix86_expand_epilogue (int style)
     }
   else
     emit_jump_insn (gen_return_internal ());
+
+  /* Restore the state back to the state from the prologue,
+     so that it's correct for the next epilogue.  */
+  *ix86_cfa_state = cfa_state_save;
 }
 
 /* Reset from the function's potential modifications.  */
@@ -8675,6 +9148,10 @@ ix86_decompose_address (rtx addr, struct ix86_address *out)
   base_reg = base && GET_CODE (base) == SUBREG ? SUBREG_REG (base) : base;
   index_reg = index && GET_CODE (index) == SUBREG ? SUBREG_REG (index) : index;
 
+  /* Avoid useless 0 displacement.  */
+  if (disp == const0_rtx && (base || index))
+    disp = NULL_RTX;
+
   /* Allow arg pointer and stack pointer as index if there is not scaling.  */
   if (base_reg && index_reg && scale == 1
       && (index_reg == arg_pointer_rtx
@@ -8686,10 +9163,16 @@ ix86_decompose_address (rtx addr, struct ix86_address *out)
       tmp = base_reg, base_reg = index_reg, index_reg = tmp;
     }
 
-  /* Special case: %ebp cannot be encoded as a base without a displacement.  */
-  if ((base_reg == hard_frame_pointer_rtx
-       || base_reg == frame_pointer_rtx
-       || base_reg == arg_pointer_rtx) && !disp)
+  /* Special case: %ebp cannot be encoded as a base without a displacement.
+     Similarly %r13.  */
+  if (!disp
+      && base_reg
+      && (base_reg == hard_frame_pointer_rtx
+	  || base_reg == frame_pointer_rtx
+	  || base_reg == arg_pointer_rtx
+	  || (REG_P (base_reg)
+	      && (REGNO (base_reg) == HARD_FRAME_POINTER_REGNUM
+		  || REGNO (base_reg) == R13_REG))))
     disp = const0_rtx;
 
   /* Special case: on K6, [%esi] makes the instruction vector decoded.
@@ -8703,7 +9186,7 @@ ix86_decompose_address (rtx addr, struct ix86_address *out)
     disp = const0_rtx;
 
   /* Special case: encode reg+reg instead of reg*2.  */
-  if (!base && index && scale && scale == 2)
+  if (!base && index && scale == 2)
     base = index, base_reg = index_reg, scale = 1;
 
   /* Special case: scaling cannot be encoded without base or displacement.  */
@@ -12576,6 +13059,11 @@ ix86_expand_push (enum machine_mode mode, rtx x)
     emit_move_insn (stack_pointer_rtx, tmp);
 
   tmp = gen_rtx_MEM (mode, stack_pointer_rtx);
+
+  /* When we push an operand onto stack, it has to be aligned at least
+     at the function argument boundary.  However since we don't have
+     the argument type, we can't determine the actual argument
+     boundary.  */
   emit_move_insn (tmp, x);
 }
 
@@ -12804,6 +13292,263 @@ ix86_expand_unary_operator (enum rtx_code code, enum machine_mode mode,
   /* Fix up the destination if needed.  */
   if (dst != operands[0])
     emit_move_insn (operands[0], dst);
+}
+
+#define LEA_SEARCH_THRESHOLD 12
+
+/* Reach non-agu definition of op1 and op2 in insn's basic block. 
+   Search backward until 1. passed LEA_SEARCH_THRESHOLD instructions, 
+   or 2. reach BB boundary, or reach agu definition. 
+   Returns the distance between the non-agu definition point and insn.
+   If no definition point, returns -1 
+   TODO: Currently we have no way to distinguish if definition insn is a LEA. 
+   We just assume all definitions are non-lea. */
+static int
+distance_non_agu_define (rtx op1, rtx op2, rtx insn)
+{
+  rtx reg_op1 = REG_P (op1) ? op1 : NULL;
+  rtx reg_op2 = REG_P (op2) ? op2 : NULL;
+  basic_block bb = BLOCK_FOR_INSN (insn);
+  int distance = 0;
+
+  if (insn != BB_HEAD (bb))
+    {
+
+      rtx prev = PREV_INSN (insn);
+      while (prev && distance < LEA_SEARCH_THRESHOLD)
+	{
+	  if (INSN_P (prev))
+	    {
+	      distance++;
+	      if ((reg_op1 && reg_set_p (reg_op1, prev))
+		  || (reg_op2 && reg_set_p (reg_op2, prev)))
+		return distance ;
+	    }
+	  if (prev == BB_HEAD (bb))
+	    break;
+	  prev = PREV_INSN (prev);
+	}
+    }
+  
+  if (distance < LEA_SEARCH_THRESHOLD)
+    {
+      edge e;
+      edge_iterator ei;
+      bool simple_loop = false;
+  
+      FOR_EACH_EDGE (e, ei, bb->preds)
+	if (e->src == bb)
+	  {
+	    simple_loop = true;
+	    break;
+	  }
+  
+      if (simple_loop)
+	{
+	  rtx prev = BB_END (bb);
+	  while (prev
+		 && prev != insn
+		 && distance < LEA_SEARCH_THRESHOLD)
+	    {
+	      if (INSN_P (prev))
+		{
+		  distance++;
+		  if ((reg_op1 && reg_set_p (reg_op1, prev))
+		      || (reg_op2 && reg_set_p (reg_op2, prev)))
+		    return distance;
+		}
+	      prev = PREV_INSN (prev);
+	    }
+	}
+    }
+
+  return -1;
+}
+
+/* Return the distance between this insn and the next insn that uses 
+   result of this insn as memory address. 
+   Return -1 if not found such a use within LEA_SEARCH_THRESHOLD. */
+static int
+distance_agu_use (rtx op0, rtx insn)
+{
+  basic_block bb = BLOCK_FOR_INSN (insn);
+  int distance = 0;
+
+  if (insn != BB_END(bb))
+    {
+      rtx next = NEXT_INSN (insn);
+
+      while (next && distance < LEA_SEARCH_THRESHOLD)
+	{
+	  if (INSN_P (next))
+	    {
+	      distance++;
+	      if (reg_mentioned_by_mem_p (op0, next))
+		return distance;
+	      if (reg_set_p (op0, next))
+		return -1;
+	    }
+	  if (next == BB_END (bb))
+	    break;
+	  next = NEXT_INSN (next);
+	}
+    }
+
+  if (distance < LEA_SEARCH_THRESHOLD)
+    {
+      edge e;
+      edge_iterator ei;
+      bool simple_loop = false;
+  
+      FOR_EACH_EDGE (e, ei, bb->succs)
+        if (e->dest == bb)
+	  {
+	    simple_loop = true;
+	    break;
+	  }
+  
+      if (simple_loop)
+	{
+	  rtx next = BB_HEAD (bb);
+	  while (next && distance < LEA_SEARCH_THRESHOLD)
+	    {
+	      if (next == insn)
+		break;
+	      if (INSN_P (next))
+		{
+		  distance++;
+		  if (reg_mentioned_by_mem_p (op0, next))
+		    return distance;
+		  if (reg_set_p (op0, next))
+		    return -1;
+		}
+	      next = NEXT_INSN (next);
+	    }
+	}
+    }  
+
+  return -1;
+}
+
+/* Define this macro to tune LEA priority vs ADD, it take effect when
+   there is a dilemma of choicing LEA or ADD
+   Negative value: ADD is more preferred than LEA
+   Zero: Netrual
+   Positive value: LEA is more preferred than ADD*/
+#define IX86_LEA_PRIORITY 2
+
+/* Return true if it is ok to optimize an ADD operation to LEA
+   operation to avoid flag register consumation.  For the processors
+   like ATOM, if the destination register of LEA holds an actual
+   address which will be used soon, LEA is better and otherwise ADD
+   is better.  */
+
+bool
+ix86_lea_for_add_ok (enum rtx_code code ATTRIBUTE_UNUSED,
+                     rtx insn,
+                     rtx operands[])
+{
+  gcc_assert (REG_P (operands[0]));
+  gcc_assert (operands[1] && operands[2]);
+
+  if (!TARGET_OPT_AGU || optimize_function_for_size_p (cfun))
+    {
+      if (true_regnum (operands[0]) != true_regnum (operands[1]))
+        return true;
+      else
+        return false;
+    }
+
+  /* If a = b + c, (a!=b && a!=c), must use lea form. */
+  if (true_regnum (operands[0]) != true_regnum (operands[1])
+      && true_regnum (operands[0]) != true_regnum (operands[2]))
+    return true;
+  else    
+    {
+      int dist_define, dist_use;
+      dist_define = distance_non_agu_define (operands[1],
+					     operands[2], insn);
+      if (dist_define <= 0)
+        return true;
+
+      /* If this insn has both backward non-agu dependence and forward
+         agu dependence, the one with short distance take effect. */
+      dist_use = distance_agu_use (operands[0], insn);
+      if (dist_use <= 0
+	  || (dist_define + IX86_LEA_PRIORITY) < dist_use)
+        return false;
+
+      return true;
+    }
+}
+
+/* Return true if destination reg of SET_INSN is shift count of
+   USE_INSN.  */
+
+bool
+ix86_dep_by_shift_count (const_rtx set_insn, const_rtx use_insn)
+{
+  rtx set_pattern = PATTERN (set_insn);
+  rtx set_dest;
+  rtx shift_rtx;
+  rtx use_pattern;
+
+  /* Retrieve destination of set_insn */
+  switch (GET_CODE (set_pattern))
+    {
+    case SET:
+      set_dest = SET_DEST (set_pattern);
+      break;
+    case PARALLEL:
+      set_pattern = XVECEXP (set_pattern, 0, 0);
+      if (GET_CODE (set_pattern ) == SET)
+	{
+	  set_dest = SET_DEST (set_pattern);
+	  break;
+	}
+    default:
+      set_dest = NULL;
+      break;
+    }
+  if (!set_dest || !REG_P (set_dest))
+    return false;
+
+  /* Retrieve shift count of use_insn */
+  use_pattern = PATTERN (use_insn);
+  switch (GET_CODE (use_pattern))
+    {
+    case SET:
+      shift_rtx = XEXP (use_pattern, 1);
+      break;
+    case PARALLEL:
+      set_pattern = XVECEXP (use_pattern, 0, 0);
+      if (GET_CODE (set_pattern) == SET)
+	{
+	  shift_rtx = XEXP (set_pattern, 1);
+	  break;
+	}
+    default:
+      shift_rtx = NULL;
+      break;
+    }
+
+  if (shift_rtx 
+      && (GET_CODE (shift_rtx) == ASHIFT
+	  || GET_CODE (shift_rtx) == LSHIFTRT
+	  || GET_CODE (shift_rtx) == ASHIFTRT
+	  || GET_CODE (shift_rtx) == ROTATE
+	  || GET_CODE (shift_rtx) == ROTATERT))
+    {
+      rtx shift_count = XEXP (shift_rtx, 1);
+      gcc_assert (shift_count);
+
+      /* Return true if shift count is dest of set_insn */
+      if (REG_P (shift_count)
+	  && true_regnum (set_dest) == true_regnum (shift_count))
+	return true;
+    }
+
+  return false;
 }
 
 /* Return TRUE or FALSE depending on whether the unary operator meets the
@@ -18557,12 +19302,7 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
 		  rtx pop, int sibcall)
 {
   rtx use = NULL, call;
-  enum calling_abi function_call_abi;
 
-  if (callarg2 && INTVAL (callarg2) == -2)
-    function_call_abi = MS_ABI;
-  else
-    function_call_abi = SYSV_ABI;
   if (pop == const0_rtx)
     pop = NULL;
   gcc_assert (!TARGET_64BIT || !pop);
@@ -18618,14 +19358,19 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
       pop = gen_rtx_PLUS (Pmode, stack_pointer_rtx, pop);
       pop = gen_rtx_SET (VOIDmode, stack_pointer_rtx, pop);
       call = gen_rtx_PARALLEL (VOIDmode, gen_rtvec (2, call, pop));
-      gcc_assert (ix86_cfun_abi () != MS_ABI || function_call_abi != SYSV_ABI);
     }
-  /* We need to represent that SI and DI registers are clobbered
-     by SYSV calls.  */
-  if (ix86_cfun_abi () == MS_ABI && function_call_abi == SYSV_ABI)
+  if (TARGET_64BIT
+      && ix86_cfun_abi () == MS_ABI
+      && (!callarg2 || INTVAL (callarg2) != -2))
     {
-      static int clobbered_registers[] = {27, 28, 45, 46, 47, 48, 49, 50, 51,
-      					  52, SI_REG, DI_REG};
+      /* We need to represent that SI and DI registers are clobbered
+	 by SYSV calls.  */
+      static int clobbered_registers[] = {
+	XMM6_REG, XMM7_REG, XMM8_REG,
+	XMM9_REG, XMM10_REG, XMM11_REG,
+	XMM12_REG, XMM13_REG, XMM14_REG,
+	XMM15_REG, SI_REG, DI_REG
+      };
       unsigned int i;
       rtx vec[ARRAY_SIZE (clobbered_registers) + 2];
       rtx unspec = gen_rtx_UNSPEC (VOIDmode, gen_rtvec (1, const0_rtx),
@@ -18769,23 +19514,53 @@ memory_address_length (rtx addr)
 
   /* Rule of thumb:
        - esp as the base always wants an index,
-       - ebp as the base always wants a displacement.  */
+       - ebp as the base always wants a displacement,
+       - r12 as the base always wants an index,
+       - r13 as the base always wants a displacement.  */
 
   /* Register Indirect.  */
   if (base && !index && !disp)
     {
       /* esp (for its index) and ebp (for its displacement) need
-	 the two-byte modrm form.  */
-      if (addr == stack_pointer_rtx
-	  || addr == arg_pointer_rtx
-	  || addr == frame_pointer_rtx
-	  || addr == hard_frame_pointer_rtx)
+	 the two-byte modrm form.  Similarly for r12 and r13 in 64-bit
+	 code.  */
+      if (REG_P (addr)
+	  && (addr == arg_pointer_rtx
+	      || addr == frame_pointer_rtx
+	      || REGNO (addr) == SP_REG
+	      || REGNO (addr) == BP_REG
+	      || REGNO (addr) == R12_REG
+	      || REGNO (addr) == R13_REG))
 	len = 1;
     }
 
-  /* Direct Addressing.  */
+  /* Direct Addressing.  In 64-bit mode mod 00 r/m 5
+     is not disp32, but disp32(%rip), so for disp32
+     SIB byte is needed, unless print_operand_address
+     optimizes it into disp32(%rip) or (%rip) is implied
+     by UNSPEC.  */
   else if (disp && !base && !index)
-    len = 4;
+    {
+      len = 4;
+      if (TARGET_64BIT)
+	{
+	  rtx symbol = disp;
+
+	  if (GET_CODE (disp) == CONST)
+	    symbol = XEXP (disp, 0);
+	  if (GET_CODE (symbol) == PLUS
+	      && CONST_INT_P (XEXP (symbol, 1)))
+	    symbol = XEXP (symbol, 0);
+
+	  if (GET_CODE (symbol) != LABEL_REF
+	      && (GET_CODE (symbol) != SYMBOL_REF
+		  || SYMBOL_REF_TLS_MODEL (symbol) != 0)
+	      && (GET_CODE (symbol) != UNSPEC
+		  || (XINT (symbol, 1) != UNSPEC_GOTPCREL
+		      && XINT (symbol, 1) != UNSPEC_GOTNTPOFF)))
+	    len += 1;
+	}
+    }
 
   else
     {
@@ -18797,17 +19572,29 @@ memory_address_length (rtx addr)
 	  else
 	    len = 4;
 	}
-      /* ebp always wants a displacement.  */
-      else if (base == hard_frame_pointer_rtx)
-        len = 1;
+      /* ebp always wants a displacement.  Similarly r13.  */
+      else if (REG_P (base)
+	       && (REGNO (base) == BP_REG || REGNO (base) == R13_REG))
+	len = 1;
 
       /* An index requires the two-byte modrm form....  */
       if (index
-	  /* ...like esp, which always wants an index.  */
-	  || base == stack_pointer_rtx
+	  /* ...like esp (or r12), which always wants an index.  */
 	  || base == arg_pointer_rtx
-	  || base == frame_pointer_rtx)
+	  || base == frame_pointer_rtx
+	  || (REG_P (base)
+	      && (REGNO (base) == SP_REG || REGNO (base) == R12_REG)))
 	len += 1;
+    }
+
+  switch (parts.seg)
+    {
+    case SEG_FS:
+    case SEG_GS:
+      len += 1;
+      break;
+    default:
+      break;
     }
 
   return len;
@@ -18824,30 +19611,50 @@ ix86_attr_length_immediate_default (rtx insn, int shortform)
   for (i = recog_data.n_operands - 1; i >= 0; --i)
     if (CONSTANT_P (recog_data.operand[i]))
       {
+        enum attr_mode mode = get_attr_mode (insn);
+
 	gcc_assert (!len);
-	if (shortform && satisfies_constraint_K (recog_data.operand[i]))
-	  len = 1;
-	else
+	if (shortform && CONST_INT_P (recog_data.operand[i]))
 	  {
-	    switch (get_attr_mode (insn))
+	    HOST_WIDE_INT ival = INTVAL (recog_data.operand[i]);
+	    switch (mode)
 	      {
-		case MODE_QI:
-		  len+=1;
-		  break;
-		case MODE_HI:
-		  len+=2;
-		  break;
-		case MODE_SI:
-		  len+=4;
-		  break;
-		/* Immediates for DImode instructions are encoded as 32bit sign extended values.  */
-		case MODE_DI:
-		  len+=4;
-		  break;
-		default:
-		  fatal_insn ("unknown insn mode", insn);
+	      case MODE_QI:
+		len = 1;
+		continue;
+	      case MODE_HI:
+		ival = trunc_int_for_mode (ival, HImode);
+		break;
+	      case MODE_SI:
+		ival = trunc_int_for_mode (ival, SImode);
+		break;
+	      default:
+		break;
+	      }
+	    if (IN_RANGE (ival, -128, 127))
+	      {
+		len = 1;
+		continue;
 	      }
 	  }
+	switch (mode)
+	  {
+	  case MODE_QI:
+	    len = 1;
+	    break;
+	  case MODE_HI:
+	    len = 2;
+	    break;
+	  case MODE_SI:
+	    len = 4;
+	    break;
+	  /* Immediates for DImode instructions are encoded as 32bit sign extended values.  */
+	  case MODE_DI:
+	    len = 4;
+	    break;
+	  default:
+	    fatal_insn ("unknown insn mode", insn);
+	}
       }
   return len;
 }
@@ -18859,22 +19666,45 @@ ix86_attr_length_address_default (rtx insn)
 
   if (get_attr_type (insn) == TYPE_LEA)
     {
-      rtx set = PATTERN (insn);
+      rtx set = PATTERN (insn), addr;
 
       if (GET_CODE (set) == PARALLEL)
 	set = XVECEXP (set, 0, 0);
 
       gcc_assert (GET_CODE (set) == SET);
 
-      return memory_address_length (SET_SRC (set));
+      addr = SET_SRC (set);
+      if (TARGET_64BIT && get_attr_mode (insn) == MODE_SI)
+	{
+	  if (GET_CODE (addr) == ZERO_EXTEND)
+	    addr = XEXP (addr, 0);
+	  if (GET_CODE (addr) == SUBREG)
+	    addr = SUBREG_REG (addr);
+	}
+
+      return memory_address_length (addr);
     }
 
   extract_insn_cached (insn);
   for (i = recog_data.n_operands - 1; i >= 0; --i)
     if (MEM_P (recog_data.operand[i]))
       {
+        constrain_operands_cached (reload_completed);
+        if (which_alternative != -1)
+	  {
+	    const char *constraints = recog_data.constraints[i];
+	    int alt = which_alternative;
+
+	    while (*constraints == '=' || *constraints == '+')
+	      constraints++;
+	    while (alt-- > 0)
+	      while (*constraints++ != ',')
+		;
+	    /* Skip ignored operands.  */
+	    if (*constraints == 'X')
+	      continue;
+	  }
 	return memory_address_length (XEXP (recog_data.operand[i], 0));
-	break;
       }
   return 0;
 }
@@ -18903,7 +19733,8 @@ ix86_attr_length_vex_default (rtx insn, int has_0f_opcode,
     if (REG_P (recog_data.operand[i]))
       {
 	/* REX.W bit uses 3 byte VEX prefix.  */
-	if (GET_MODE (recog_data.operand[i]) == DImode)
+	if (GET_MODE (recog_data.operand[i]) == DImode
+	    && GENERAL_REG_P (recog_data.operand[i]))
 	  return 3 + 1;
       }
     else
@@ -18925,6 +19756,7 @@ ix86_issue_rate (void)
   switch (ix86_tune)
     {
     case PROCESSOR_PENTIUM:
+    case PROCESSOR_ATOM:
     case PROCESSOR_K6:
       return 2;
 
@@ -18991,41 +19823,21 @@ ix86_flags_dependent (rtx insn, rtx dep_insn, enum attr_type insn_type)
   return 1;
 }
 
-/* A subroutine of ix86_adjust_cost -- return true iff INSN has a memory
-   address with operands set by DEP_INSN.  */
+/* Return true iff USE_INSN has a memory address with operands set by
+   SET_INSN.  */
 
-static int
-ix86_agi_dependent (rtx insn, rtx dep_insn, enum attr_type insn_type)
+bool
+ix86_agi_dependent (rtx set_insn, rtx use_insn)
 {
-  rtx addr;
-
-  if (insn_type == TYPE_LEA
-      && TARGET_PENTIUM)
-    {
-      addr = PATTERN (insn);
-
-      if (GET_CODE (addr) == PARALLEL)
-	addr = XVECEXP (addr, 0, 0);
-
-      gcc_assert (GET_CODE (addr) == SET);
-
-      addr = SET_SRC (addr);
-    }
-  else
-    {
-      int i;
-      extract_insn_cached (insn);
-      for (i = recog_data.n_operands - 1; i >= 0; --i)
-	if (MEM_P (recog_data.operand[i]))
-	  {
-	    addr = XEXP (recog_data.operand[i], 0);
-	    goto found;
-	  }
-      return 0;
-    found:;
-    }
-
-  return modified_in_p (addr, dep_insn);
+  int i;
+  extract_insn_cached (use_insn);
+  for (i = recog_data.n_operands - 1; i >= 0; --i)
+    if (MEM_P (recog_data.operand[i]))
+      {
+	rtx addr = XEXP (recog_data.operand[i], 0);
+	return modified_in_p (addr, set_insn) != 0;
+      }
+  return false;
 }
 
 static int
@@ -19053,8 +19865,19 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
     {
     case PROCESSOR_PENTIUM:
       /* Address Generation Interlock adds a cycle of latency.  */
-      if (ix86_agi_dependent (insn, dep_insn, insn_type))
-	cost += 1;
+      if (insn_type == TYPE_LEA)
+	{
+	  rtx addr = PATTERN (insn);
+
+	  if (GET_CODE (addr) == PARALLEL)
+	    addr = XVECEXP (addr, 0, 0);
+
+	  gcc_assert (GET_CODE (addr) == SET);
+
+	  addr = SET_SRC (addr);
+	  if (modified_in_p (addr, dep_insn))
+	    cost += 1;
+	}
 
       /* ??? Compares pair with jump/setcc.  */
       if (ix86_flags_dependent (insn, dep_insn, insn_type))
@@ -19063,7 +19886,7 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
       /* Floating point stores require value to be ready one cycle earlier.  */
       if (insn_type == TYPE_FMOV
 	  && get_attr_memory (insn) == MEMORY_STORE
-	  && !ix86_agi_dependent (insn, dep_insn, insn_type))
+	  && !ix86_agi_dependent (dep_insn, insn))
 	cost += 1;
       break;
 
@@ -19086,7 +19909,7 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
 	 in parallel with previous instruction in case
 	 previous instruction is not needed to compute the address.  */
       if ((memory == MEMORY_LOAD || memory == MEMORY_BOTH)
-	  && !ix86_agi_dependent (insn, dep_insn, insn_type))
+	  && !ix86_agi_dependent (dep_insn, insn))
 	{
 	  /* Claim moves to take one cycle, as core can issue one load
 	     at time and the next load can start cycle later.  */
@@ -19115,7 +19938,7 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
 	 in parallel with previous instruction in case
 	 previous instruction is not needed to compute the address.  */
       if ((memory == MEMORY_LOAD || memory == MEMORY_BOTH)
-	  && !ix86_agi_dependent (insn, dep_insn, insn_type))
+	  && !ix86_agi_dependent (dep_insn, insn))
 	{
 	  /* Claim moves to take one cycle, as core can issue one load
 	     at time and the next load can start cycle later.  */
@@ -19132,6 +19955,7 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
     case PROCESSOR_ATHLON:
     case PROCESSOR_K8:
     case PROCESSOR_AMDFAM10:
+    case PROCESSOR_ATOM:
     case PROCESSOR_GENERIC32:
     case PROCESSOR_GENERIC64:
       memory = get_attr_memory (insn);
@@ -19140,7 +19964,7 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
 	 in parallel with previous instruction in case
 	 previous instruction is not needed to compute the address.  */
       if ((memory == MEMORY_LOAD || memory == MEMORY_BOTH)
-	  && !ix86_agi_dependent (insn, dep_insn, insn_type))
+	  && !ix86_agi_dependent (dep_insn, insn))
 	{
 	  enum attr_unit unit = get_attr_unit (insn);
 	  int loadcost = 3;
@@ -19282,15 +20106,39 @@ ix86_data_alignment (tree type, int align)
   return align;
 }
 
-/* Compute the alignment for a local variable or a stack slot.  TYPE is
-   the data type, MODE is the widest mode available and ALIGN is the
-   alignment that the object would ordinarily have.  The value of this
-   macro is used instead of that alignment to align the object.  */
+/* Compute the alignment for a local variable or a stack slot.  EXP is
+   the data type or decl itself, MODE is the widest mode available and
+   ALIGN is the alignment that the object would ordinarily have.  The
+   value of this macro is used instead of that alignment to align the
+   object.  */
 
 unsigned int
-ix86_local_alignment (tree type, enum machine_mode mode,
+ix86_local_alignment (tree exp, enum machine_mode mode,
 		      unsigned int align)
 {
+  tree type, decl;
+
+  if (exp && DECL_P (exp))
+    {
+      type = TREE_TYPE (exp);
+      decl = exp;
+    }
+  else
+    {
+      type = exp;
+      decl = NULL;
+    }
+
+  /* Don't do dynamic stack realignment for long long objects with
+     -mpreferred-stack-boundary=2.  */
+  if (!TARGET_64BIT
+      && align == 64
+      && ix86_preferred_stack_boundary < 64
+      && (mode == DImode || (type && TYPE_MODE (type) == DImode))
+      && (!type || !TYPE_USER_ALIGN (type))
+      && (!decl || !DECL_USER_ALIGN (decl)))
+    align = 32;
+
   /* If TYPE is NULL, we are allocating a stack slot for caller-save
      register in MODE.  We will return the largest alignment of XF
      and DF.  */
@@ -21249,10 +22097,10 @@ static const struct builtin_description bdesc_args[] =
 
   /* SSE4.2 */
   { OPTION_MASK_ISA_SSE4_2, CODE_FOR_sse4_2_gtv2di3, "__builtin_ia32_pcmpgtq", IX86_BUILTIN_PCMPGTQ, UNKNOWN, (int) V2DI_FTYPE_V2DI_V2DI },
-  { OPTION_MASK_ISA_SSE4_2, CODE_FOR_sse4_2_crc32qi, "__builtin_ia32_crc32qi", IX86_BUILTIN_CRC32QI, UNKNOWN, (int) UINT_FTYPE_UINT_UCHAR },
-  { OPTION_MASK_ISA_SSE4_2, CODE_FOR_sse4_2_crc32hi, "__builtin_ia32_crc32hi", IX86_BUILTIN_CRC32HI, UNKNOWN, (int) UINT_FTYPE_UINT_USHORT },
-  { OPTION_MASK_ISA_SSE4_2, CODE_FOR_sse4_2_crc32si, "__builtin_ia32_crc32si", IX86_BUILTIN_CRC32SI, UNKNOWN, (int) UINT_FTYPE_UINT_UINT },
-  { OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_64BIT, CODE_FOR_sse4_2_crc32di, "__builtin_ia32_crc32di", IX86_BUILTIN_CRC32DI, UNKNOWN, (int) UINT64_FTYPE_UINT64_UINT64 },
+  { OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_CRC32, CODE_FOR_sse4_2_crc32qi, "__builtin_ia32_crc32qi", IX86_BUILTIN_CRC32QI, UNKNOWN, (int) UINT_FTYPE_UINT_UCHAR },
+  { OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_CRC32, CODE_FOR_sse4_2_crc32hi, "__builtin_ia32_crc32hi", IX86_BUILTIN_CRC32HI, UNKNOWN, (int) UINT_FTYPE_UINT_USHORT },
+  { OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_CRC32, CODE_FOR_sse4_2_crc32si, "__builtin_ia32_crc32si", IX86_BUILTIN_CRC32SI, UNKNOWN, (int) UINT_FTYPE_UINT_UINT },
+  { OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_CRC32 | OPTION_MASK_ISA_64BIT, CODE_FOR_sse4_2_crc32di, "__builtin_ia32_crc32di", IX86_BUILTIN_CRC32DI, UNKNOWN, (int) UINT64_FTYPE_UINT64_UINT64 },
 
   /* SSE4A */
   { OPTION_MASK_ISA_SSE4A, CODE_FOR_sse4a_extrqi, "__builtin_ia32_extrqi", IX86_BUILTIN_EXTRQI, UNKNOWN, (int) V2DI_FTYPE_V2DI_UINT_UINT },
@@ -25697,7 +26545,7 @@ ix86_hard_regno_mode_ok (int regno, enum machine_mode mode)
     {
       /* Take care for QImode values - they can be in non-QI regs,
 	 but then they do cause partial register stalls.  */
-      if (regno < 4 || TARGET_64BIT)
+      if (regno <= BX_REG || TARGET_64BIT)
 	return 1;
       if (!TARGET_PARTIAL_REG_STALL)
 	return 1;
@@ -26624,6 +27472,7 @@ x86_function_profiler (FILE *file, int labelno ATTRIBUTE_UNUSED)
     }
 }
 
+#ifdef ASM_OUTPUT_MAX_SKIP_PAD
 /* We don't have exact information about the insn sizes, but we may assume
    quite safely that we are informed about all 1 byte insns and memory
    address sizes.  This is enough to eliminate unnecessary padding in
@@ -26632,7 +27481,7 @@ x86_function_profiler (FILE *file, int labelno ATTRIBUTE_UNUSED)
 static int
 min_insn_size (rtx insn)
 {
-  int l = 0;
+  int l = 0, len;
 
   if (!INSN_P (insn) || !active_insn_p (insn))
     return 0;
@@ -26652,14 +27501,31 @@ min_insn_size (rtx insn)
       && symbolic_reference_mentioned_p (PATTERN (insn))
       && !SIBLING_CALL_P (insn))
     return 5;
-  if (get_attr_length (insn) <= 1)
+  len = get_attr_length (insn);
+  if (len <= 1)
     return 1;
 
-  /* For normal instructions we may rely on the sizes of addresses
-     and the presence of symbol to require 4 bytes of encoding.
-     This is not the case for jumps where references are PC relative.  */
+  /* For normal instructions we rely on get_attr_length being exact,
+     with a few exceptions.  */
   if (!JUMP_P (insn))
     {
+      enum attr_type type = get_attr_type (insn);
+
+      switch (type)
+	{
+	case TYPE_MULTI:
+	  if (GET_CODE (PATTERN (insn)) == ASM_INPUT
+	      || asm_noperands (PATTERN (insn)) >= 0)
+	    return 0;
+	  break;
+	case TYPE_OTHER:
+	case TYPE_FCMP:
+	  break;
+	default:
+	  /* Otherwise trust get_attr_length.  */
+	  return len;
+	}
+
       l = get_attr_length_address (insn);
       if (l < 4 && symbolic_reference_mentioned_p (PATTERN (insn)))
 	l = 4;
@@ -26674,7 +27540,7 @@ min_insn_size (rtx insn)
    window.  */
 
 static void
-ix86_avoid_jump_misspredicts (void)
+ix86_avoid_jump_mispredicts (void)
 {
   rtx insn, start = get_insns ();
   int nbytes = 0, njumps = 0;
@@ -26688,15 +27554,52 @@ ix86_avoid_jump_misspredicts (void)
 
      The smallest offset in the page INSN can start is the case where START
      ends on the offset 0.  Offset of INSN is then NBYTES - sizeof (INSN).
-     We add p2align to 16byte window with maxskip 17 - NBYTES + sizeof (INSN).
+     We add p2align to 16byte window with maxskip 15 - NBYTES + sizeof (INSN).
      */
-  for (insn = get_insns (); insn; insn = NEXT_INSN (insn))
+  for (insn = start; insn; insn = NEXT_INSN (insn))
     {
+      int min_size;
 
-      nbytes += min_insn_size (insn);
+      if (GET_CODE (insn) == CODE_LABEL)
+	{
+	  int align = label_to_alignment (insn);
+	  int max_skip = label_to_max_skip (insn);
+
+	  if (max_skip > 15)
+	    max_skip = 15;
+	  /* If align > 3, only up to 16 - max_skip - 1 bytes can be
+	     already in the current 16 byte page, because otherwise
+	     ASM_OUTPUT_MAX_SKIP_ALIGN could skip max_skip or fewer
+	     bytes to reach 16 byte boundary.  */
+	  if (align <= 0
+	      || (align <= 3 && max_skip != (1 << align) - 1))
+	    max_skip = 0;
+	  if (dump_file)
+	    fprintf (dump_file, "Label %i with max_skip %i\n",
+		     INSN_UID (insn), max_skip);
+	  if (max_skip)
+	    {
+	      while (nbytes + max_skip >= 16)
+		{
+		  start = NEXT_INSN (start);
+		  if ((JUMP_P (start)
+		       && GET_CODE (PATTERN (start)) != ADDR_VEC
+		       && GET_CODE (PATTERN (start)) != ADDR_DIFF_VEC)
+		      || CALL_P (start))
+		    njumps--, isjump = 1;
+		  else
+		    isjump = 0;
+		  nbytes -= min_insn_size (start);
+		}
+	    }
+	  continue;
+	}
+
+      min_size = min_insn_size (insn);
+      nbytes += min_size;
       if (dump_file)
-        fprintf(dump_file, "Insn %i estimated to %i bytes\n",
-		INSN_UID (insn), min_insn_size (insn));
+	fprintf (dump_file, "Insn %i estimated to %i bytes\n",
+		 INSN_UID (insn), min_size);
       if ((JUMP_P (insn)
 	   && GET_CODE (PATTERN (insn)) != ADDR_VEC
 	   && GET_CODE (PATTERN (insn)) != ADDR_DIFF_VEC)
@@ -26720,7 +27623,7 @@ ix86_avoid_jump_misspredicts (void)
       gcc_assert (njumps >= 0);
       if (dump_file)
         fprintf (dump_file, "Interval %i to %i has %i bytes\n",
-		INSN_UID (start), INSN_UID (insn), nbytes);
+		 INSN_UID (start), INSN_UID (insn), nbytes);
 
       if (njumps == 3 && isjump && nbytes < 16)
 	{
@@ -26729,10 +27632,11 @@ ix86_avoid_jump_misspredicts (void)
 	  if (dump_file)
 	    fprintf (dump_file, "Padding insn %i by %i bytes!\n",
 		     INSN_UID (insn), padsize);
-          emit_insn_before (gen_align (GEN_INT (padsize)), insn);
+          emit_insn_before (gen_pad (GEN_INT (padsize)), insn);
 	}
     }
 }
+#endif
 
 /* AMD Athlon works faster
    when RET is not destination of conditional jump or directly preceded
@@ -26781,7 +27685,7 @@ ix86_pad_returns (void)
 	}
       if (replace)
 	{
-	  emit_insn_before (gen_return_internal_long (), ret);
+	  emit_jump_insn_before (gen_return_internal_long (), ret);
 	  delete_insn (ret);
 	}
     }
@@ -26792,12 +27696,15 @@ ix86_pad_returns (void)
 static void
 ix86_reorg (void)
 {
-  if (TARGET_PAD_RETURNS && optimize
-      && optimize_function_for_speed_p (cfun))
-    ix86_pad_returns ();
-  if (TARGET_FOUR_JUMP_LIMIT && optimize
-      && optimize_function_for_speed_p (cfun))
-    ix86_avoid_jump_misspredicts ();
+  if (optimize && optimize_function_for_speed_p (cfun))
+    {
+      if (TARGET_PAD_RETURNS)
+	ix86_pad_returns ();
+#ifdef ASM_OUTPUT_MAX_SKIP_PAD
+      if (TARGET_FOUR_JUMP_LIMIT)
+	ix86_avoid_jump_mispredicts ();
+#endif
+    }
 }
 
 /* Return nonzero when QImode register that must be represented via REX prefix
@@ -26809,7 +27716,7 @@ x86_extended_QIreg_mentioned_p (rtx insn)
   extract_insn_cached (insn);
   for (i = 0; i < recog_data.n_operands; i++)
     if (REG_P (recog_data.operand[i])
-	&& REGNO (recog_data.operand[i]) >= 4)
+	&& REGNO (recog_data.operand[i]) > BX_REG)
        return true;
   return false;
 }
@@ -27079,9 +27986,12 @@ ix86_expand_vector_init_one_nonzero (bool mmx_ok, enum machine_mode mode,
     case V16HImode:
     case V8SImode:
     case V8SFmode:
-    case V4DImode:
     case V4DFmode:
       use_vector_set = TARGET_AVX;
+      break;
+    case V4DImode:
+      /* Use ix86_expand_vector_set in 64bit mode only.  */
+      use_vector_set = TARGET_AVX && TARGET_64BIT;
       break;
     default:
       break;
@@ -27221,8 +28131,11 @@ ix86_expand_vector_init_one_var (bool mmx_ok, enum machine_mode mode,
 	 the general case.  */
       return false;
 
-    case V4DFmode:
     case V4DImode:
+      /* Use ix86_expand_vector_set in 64bit mode only.  */
+      if (!TARGET_64BIT)
+	return false;
+    case V4DFmode:
     case V8SFmode:
     case V8SImode:
     case V16HImode:
@@ -29628,8 +30541,6 @@ ix86_enum_va_list (int idx, const char **pname, tree *ptree)
 #define TARGET_UPDATE_STACK_BOUNDARY ix86_update_stack_boundary
 #undef TARGET_GET_DRAP_RTX
 #define TARGET_GET_DRAP_RTX ix86_get_drap_rtx
-#undef TARGET_DWARF_HANDLE_FRAME_UNSPEC
-#define TARGET_DWARF_HANDLE_FRAME_UNSPEC ix86_dwarf_handle_frame_unspec
 #undef TARGET_STRICT_ARGUMENT_NAMING
 #define TARGET_STRICT_ARGUMENT_NAMING hook_bool_CUMULATIVE_ARGS_true
 

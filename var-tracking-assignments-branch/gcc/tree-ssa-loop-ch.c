@@ -1,5 +1,5 @@
 /* Loop header copying on trees.
-   Copyright (C) 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
    
 This file is part of GCC.
    
@@ -90,7 +90,7 @@ should_duplicate_loop_header_p (basic_block header, struct loop *loop,
       if (gimple_code (last) == GIMPLE_LABEL)
 	continue;
 
-      if (IS_DEBUG_STMT (last))
+      if (is_gimple_debug (last))
 	continue;
 
       if (is_gimple_call (last))

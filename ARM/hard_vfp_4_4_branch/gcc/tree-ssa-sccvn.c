@@ -1,5 +1,5 @@
 /* SCC value numbering for trees
-   Copyright (C) 2006, 2007, 2008
+   Copyright (C) 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dan@dberlin.org>
 
@@ -257,9 +257,10 @@ vn_get_expr_for (tree name)
   switch (TREE_CODE_CLASS (gimple_assign_rhs_code (def_stmt)))
     {
     case tcc_reference:
-      if (gimple_assign_rhs_code (def_stmt) == VIEW_CONVERT_EXPR
-	  || gimple_assign_rhs_code (def_stmt) == REALPART_EXPR
-	  || gimple_assign_rhs_code (def_stmt) == IMAGPART_EXPR)
+      if ((gimple_assign_rhs_code (def_stmt) == VIEW_CONVERT_EXPR
+	   || gimple_assign_rhs_code (def_stmt) == REALPART_EXPR
+	   || gimple_assign_rhs_code (def_stmt) == IMAGPART_EXPR)
+	  && TREE_CODE (gimple_assign_rhs1 (def_stmt)) == SSA_NAME)
 	expr = fold_build1 (gimple_assign_rhs_code (def_stmt),
 			    gimple_expr_type (def_stmt),
 			    TREE_OPERAND (gimple_assign_rhs1 (def_stmt), 0));
@@ -315,6 +316,9 @@ vn_constant_eq (const void *p1, const void *p2)
 {
   const struct vn_constant_s *vc1 = (const struct vn_constant_s *) p1;
   const struct vn_constant_s *vc2 = (const struct vn_constant_s *) p2;
+
+  if (vc1->hashcode != vc2->hashcode)
+    return false;
 
   return vn_constant_eq_with_type (vc1->constant, vc2->constant);
 }
@@ -386,6 +390,7 @@ vn_reference_op_eq (const void *p1, const void *p2)
 {
   const_vn_reference_op_t const vro1 = (const_vn_reference_op_t) p1;
   const_vn_reference_op_t const vro2 = (const_vn_reference_op_t) p2;
+
   return vro1->opcode == vro2->opcode
     && types_compatible_p (vro1->type, vro2->type)
     && expressions_equal_p (vro1->op0, vro2->op0)
@@ -398,9 +403,14 @@ vn_reference_op_eq (const void *p1, const void *p2)
 static hashval_t
 vn_reference_op_compute_hash (const vn_reference_op_t vro1)
 {
-  return iterative_hash_expr (vro1->op0, vro1->opcode)
-    + iterative_hash_expr (vro1->op1, vro1->opcode)
-    + iterative_hash_expr (vro1->op2, vro1->opcode);
+  hashval_t result = 0;
+  if (vro1->op0)
+    result += iterative_hash_expr (vro1->op0, vro1->opcode);
+  if (vro1->op1)
+    result += iterative_hash_expr (vro1->op1, vro1->opcode);
+  if (vro1->op2)
+    result += iterative_hash_expr (vro1->op2, vro1->opcode);
+  return result;
 }
 
 /* Return the hashcode for a given reference operation P1.  */
@@ -442,6 +452,8 @@ vn_reference_eq (const void *p1, const void *p2)
 
   const_vn_reference_t const vr1 = (const_vn_reference_t) p1;
   const_vn_reference_t const vr2 = (const_vn_reference_t) p2;
+  if (vr1->hashcode != vr2->hashcode)
+    return false;
 
   if (vr1->vuses == vr2->vuses
       && vr1->operands == vr2->operands)
@@ -1183,6 +1195,9 @@ vn_nary_op_eq (const void *p1, const void *p2)
   const_vn_nary_op_t const vno2 = (const_vn_nary_op_t) p2;
   unsigned i;
 
+  if (vno1->hashcode != vno2->hashcode)
+    return false;
+
   if (vno1->opcode != vno2->opcode
       || !types_compatible_p (vno1->type, vno2->type))
     return false;
@@ -1278,7 +1293,7 @@ vn_nary_op_lookup_stmt (gimple stmt, vn_nary_op_t *vnresult)
     *vnresult = NULL;
   vno1.opcode = gimple_assign_rhs_code (stmt);
   vno1.length = gimple_num_ops (stmt) - 1;
-  vno1.type = TREE_TYPE (gimple_assign_lhs (stmt));
+  vno1.type = gimple_expr_type (stmt);
   for (i = 0; i < vno1.length; ++i)
     vno1.op[i] = gimple_op (stmt, i + 1);
   if (vno1.opcode == REALPART_EXPR
@@ -1386,7 +1401,7 @@ vn_nary_op_insert_stmt (gimple stmt, tree result)
   vno1->value_id = VN_INFO (result)->value_id;
   vno1->opcode = gimple_assign_rhs_code (stmt);
   vno1->length = length;
-  vno1->type = TREE_TYPE (gimple_assign_lhs (stmt));
+  vno1->type = gimple_expr_type (stmt);
   for (i = 0; i < vno1->length; ++i)
     vno1->op[i] = gimple_op (stmt, i + 1);
   if (vno1->opcode == REALPART_EXPR
@@ -1448,6 +1463,9 @@ vn_phi_eq (const void *p1, const void *p2)
 {
   const_vn_phi_t const vp1 = (const_vn_phi_t) p1;
   const_vn_phi_t const vp2 = (const_vn_phi_t) p2;
+
+  if (vp1->hashcode != vp2->hashcode)
+    return false;
 
   if (vp1->block == vp2->block)
     {
@@ -2124,7 +2142,7 @@ simplify_binary_expression (gimple stmt)
   fold_defer_overflow_warnings ();
 
   result = fold_binary (gimple_assign_rhs_code (stmt),
-		        TREE_TYPE (gimple_get_lhs (stmt)), op0, op1);
+		        gimple_expr_type (stmt), op0, op1);
   if (result)
     STRIP_USELESS_TYPE_CONVERSION (result);
 
@@ -2350,14 +2368,19 @@ visit_use (tree use)
 	      VN_INFO (lhs)->expr = NULL_TREE;
 	    }
 
-	  if (TREE_CODE (lhs) == SSA_NAME
-	      /* We can substitute SSA_NAMEs that are live over
-		 abnormal edges with their constant value.  */
-	      && !(gimple_assign_copy_p (stmt)
-		   && is_gimple_min_invariant (gimple_assign_rhs1 (stmt)))
-	      && !(simplified
-		   && is_gimple_min_invariant (simplified))
-	      && SSA_NAME_OCCURS_IN_ABNORMAL_PHI (lhs))
+	  if ((TREE_CODE (lhs) == SSA_NAME
+	       /* We can substitute SSA_NAMEs that are live over
+		  abnormal edges with their constant value.  */
+	       && !(gimple_assign_copy_p (stmt)
+		    && is_gimple_min_invariant (gimple_assign_rhs1 (stmt)))
+	       && !(simplified
+		    && is_gimple_min_invariant (simplified))
+	       && SSA_NAME_OCCURS_IN_ABNORMAL_PHI (lhs))
+	      /* Stores or copies from SSA_NAMEs that are live over
+		 abnormal edges are a problem.  */
+	      || (gimple_assign_single_p (stmt)
+		  && TREE_CODE (gimple_assign_rhs1 (stmt)) == SSA_NAME
+		  && SSA_NAME_OCCURS_IN_ABNORMAL_PHI (gimple_assign_rhs1 (stmt))))
 	    changed = defs_to_varying (stmt);
 	  else if (REFERENCE_CLASS_P (lhs) || DECL_P (lhs))
 	    {

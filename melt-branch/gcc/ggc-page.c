@@ -1,5 +1,5 @@
 /* "Bag-of-pages" garbage collector for the GNU compiler.
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -31,6 +31,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "timevar.h"
 #include "params.h"
 #include "tree-flow.h"
+#include "plugin.h"
 
 /* Prefer MAP_ANON(YMOUS) to /dev/zero, since we don't need to keep a
    file open.  Prefer either to valloc.  */
@@ -1904,11 +1905,10 @@ validate_free_objects (void)
 #define validate_free_objects()
 #endif
 
+/* Top level mark-and-sweep routine.  */
 
-
-/* Top level mark-and-sweep routine with extra marker  */
 void
-ggc_collect_extra_marking (gt_pointer_walker walkrout, void* walkdata)
+ggc_collect (void)
 {
   /* Avoid frequent unnecessary work by skipping collection if the
      total allocations haven't expanded much since the last
@@ -1938,8 +1938,10 @@ ggc_collect_extra_marking (gt_pointer_walker walkrout, void* walkdata)
   /* Indicate that we've seen collections at this context depth.  */
   G.context_depth_collections = ((unsigned long)1 << (G.context_depth + 1)) - 1;
 
+  invoke_plugin_callbacks (PLUGIN_GGC_START, NULL);
+
   clear_marks ();
-  ggc_mark_roots_extra_marking (walkrout, walkdata);
+  ggc_mark_roots ();
 #ifdef GATHER_STATISTICS
   ggc_prune_overhead_list ();
 #endif
@@ -1948,6 +1950,8 @@ ggc_collect_extra_marking (gt_pointer_walker walkrout, void* walkdata)
   sweep_pages ();
 
   G.allocated_last_gc = G.allocated;
+
+  invoke_plugin_callbacks (PLUGIN_GGC_END, NULL);
 
   timevar_pop (TV_GC);
 
@@ -2064,12 +2068,14 @@ ggc_print_statistics (void)
 #endif
 }
 
+struct ggc_pch_ondisk
+{
+  unsigned totals[NUM_ORDERS];
+};
+
 struct ggc_pch_data
 {
-  struct ggc_pch_ondisk
-  {
-    unsigned totals[NUM_ORDERS];
-  } d;
+  struct ggc_pch_ondisk d;
   size_t base[NUM_ORDERS];
   size_t written[NUM_ORDERS];
 };
@@ -2159,7 +2165,7 @@ ggc_pch_write_object (struct ggc_pch_data *d ATTRIBUTE_UNUSED,
 		      size_t size, bool is_string ATTRIBUTE_UNUSED)
 {
   unsigned order;
-  static const char emptyBytes[256];
+  static const char emptyBytes[256] = { 0 };
 
   if (size < NUM_SIZE_LOOKUP)
     order = size_lookup[size];

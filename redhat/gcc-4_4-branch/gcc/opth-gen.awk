@@ -1,4 +1,4 @@
-#  Copyright (C) 2003,2004,2005,2006,2007 Free Software Foundation, Inc.
+#  Copyright (C) 2003,2004,2005,2006,2007,2008 Free Software Foundation, Inc.
 #  Contributed by Kelley Cook, June 2004.
 #  Original code from Neil Booth, May 2003.
 #
@@ -333,6 +333,8 @@ for (i = 0; i < n_opts; i++) {
 	enum = "OPT_" opts[i]
 	if (opts[i] == "finline-limit=" || opts[i] == "Wlarger-than=")
 		enum = enum "eq"
+	if (opts[i] == "gdwarf+")
+		enum = "OPT_gdwarfplus"
 	gsub ("[^A-Za-z0-9]", "_", enum)
 
 	# If this switch takes joined arguments, back-chain all
@@ -348,7 +350,7 @@ for (i = 0; i < n_opts; i++) {
 		}
 	}
 
-	s = substr("                                     ", length (opts[i]))
+	s = substr("                                         ", length (enum))
 	if (i + 1 == n_opts)
 		comma = ""
 

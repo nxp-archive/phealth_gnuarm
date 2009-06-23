@@ -1,5 +1,5 @@
 /* Interprocedural analyses.
-   Copyright (C) 2005, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2005, 2007, 2008, 2009 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -134,6 +134,20 @@ ipa_populate_param_decls (struct cgraph_node *node,
     }
 }
 
+/* Return how many formal parameters FNDECL has.  */
+
+static inline int
+count_formal_params_1 (tree fndecl)
+{
+  tree parm;
+  int count = 0;
+
+  for (parm = DECL_ARGUMENTS (fndecl); parm; parm = TREE_CHAIN (parm))
+    count++;
+
+  return count;
+}
+
 /* Count number of formal parameters in NOTE. Store the result to the
    appropriate field of INFO.  */
 
@@ -141,16 +155,9 @@ static void
 ipa_count_formal_params (struct cgraph_node *node,
 			 struct ipa_node_params *info)
 {
-  tree fndecl;
-  tree fnargs;
-  tree parm;
   int param_num;
 
-  fndecl = node->decl;
-  fnargs = DECL_ARGUMENTS (fndecl);
-  param_num = 0;
-  for (parm = fnargs; parm; parm = TREE_CHAIN (parm))
-    param_num++;
+  param_num = count_formal_params_1 (node->decl);
   ipa_set_param_count (info, param_num);
 }
 
@@ -172,48 +179,32 @@ ipa_initialize_node_params (struct cgraph_node *node)
     }
 }
 
-/* Check STMT to detect whether a formal parameter is directly modified within
-   STMT, the appropriate entry is updated in the modified flags of INFO.
-   Directly means that this function does not check for modifications through
-   pointers or escaping addresses because all TREE_ADDRESSABLE parameters are
-   considered modified anyway.  */
+/* Callback of walk_stmt_load_store_addr_ops for the visit_store and visit_addr
+   parameters.  If OP is a parameter declaration, mark it as modified in the
+   info structure passed in DATA.  */
 
-static void
-ipa_check_stmt_modifications (struct ipa_node_params *info, gimple stmt)
+static bool
+visit_store_addr_for_mod_analysis (gimple stmt ATTRIBUTE_UNUSED,
+				   tree op, void *data)
 {
-  int j;
-  int index;
-  tree lhs;
+  struct ipa_node_params *info = (struct ipa_node_params *) data;
 
-  switch (gimple_code (stmt))
+  if (TREE_CODE (op) == PARM_DECL)
     {
-    case GIMPLE_ASSIGN:
-      lhs = gimple_assign_lhs (stmt);
-
-      while (handled_component_p (lhs))
-	lhs = TREE_OPERAND (lhs, 0);
-      if (TREE_CODE (lhs) == SSA_NAME)
-	lhs = SSA_NAME_VAR (lhs);
-      index = ipa_get_param_decl_index (info, lhs);
-      if (index >= 0)
-	info->params[index].modified = true;
-      break;
-
-    case GIMPLE_ASM:
-      /* Asm code could modify any of the parameters.  */
-      for (j = 0; j < ipa_get_param_count (info); j++)
-	info->params[j].modified = true;
-      break;
-
-    default:
-      break;
+      int index = ipa_get_param_decl_index (info, op);
+      gcc_assert (index >= 0);
+      info->params[index].modified = true;
     }
+
+  return false;
+
+  return false;
 }
 
 /* Compute which formal parameters of function associated with NODE are locally
-   modified.  Parameters may be modified in NODE if they are TREE_ADDRESSABLE,
-   if they appear on the left hand side of an assignment or if there is an
-   ASM_EXPR in the function.  */
+   modified or their address is taken.  Note that this does not apply on
+   parameters with SSA names but those can and should be analyzed
+   differently.  */
 
 void
 ipa_detect_param_modifications (struct cgraph_node *node)
@@ -222,27 +213,17 @@ ipa_detect_param_modifications (struct cgraph_node *node)
   basic_block bb;
   struct function *func;
   gimple_stmt_iterator gsi;
-  gimple stmt;
   struct ipa_node_params *info = IPA_NODE_REF (node);
-  int i, count;
 
   if (ipa_get_param_count (info) == 0 || info->modification_analysis_done)
     return;
 
   func = DECL_STRUCT_FUNCTION (decl);
   FOR_EACH_BB_FN (bb, func)
-    {
-      for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
-	{
-	  stmt = gsi_stmt (gsi);
-	  ipa_check_stmt_modifications (info, stmt);
-	}
-    }
-
-  count = ipa_get_param_count (info);
-  for (i = 0; i < count; i++)
-    if (TREE_ADDRESSABLE (ipa_get_param (info, i)))
-      info->params[i].modified = true;
+    for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
+      walk_stmt_load_store_addr_ops (gsi_stmt (gsi), info, NULL,
+				     visit_store_addr_for_mod_analysis,
+				     visit_store_addr_for_mod_analysis);
 
   info->modification_analysis_done = 1;
 }
@@ -456,6 +437,24 @@ fill_member_ptr_cst_jump_function (struct ipa_jump_func *jfunc,
   jfunc->value.member_cst.delta = delta;
 }
 
+/* If RHS is an SSA_NAMe and it is defined by a simple copy assign statement,
+   return the rhs of its defining statement.  */
+
+static inline tree
+get_ssa_def_if_simple_copy (tree rhs)
+{
+  while (TREE_CODE (rhs) == SSA_NAME && !SSA_NAME_IS_DEFAULT_DEF (rhs))
+    {
+      gimple def_stmt = SSA_NAME_DEF_STMT (rhs);
+
+      if (gimple_assign_single_p (def_stmt))
+	rhs = gimple_assign_rhs1 (def_stmt);
+      else
+	break;
+    }
+  return rhs;
+}
+
 /* Traverse statements from CALL backwards, scanning whether the argument ARG
    which is a member pointer is filled in with constant values.  If it is, fill
    the jump function JFUNC in appropriately.  METHOD_FIELD and DELTA_FIELD are
@@ -482,7 +481,7 @@ determine_cst_member_ptr (gimple call, tree arg, tree method_field,
       gimple stmt = gsi_stmt (gsi);
       tree lhs, rhs, fld;
 
-      if (!is_gimple_assign (stmt) || gimple_num_ops (stmt) != 2)
+      if (!gimple_assign_single_p (stmt))
 	return;
 
       lhs = gimple_assign_lhs (stmt);
@@ -495,6 +494,7 @@ determine_cst_member_ptr (gimple call, tree arg, tree method_field,
       fld = TREE_OPERAND (lhs, 1);
       if (!method && fld == method_field)
 	{
+	  rhs = get_ssa_def_if_simple_copy (rhs);
 	  if (TREE_CODE (rhs) == ADDR_EXPR
 	      && TREE_CODE (TREE_OPERAND (rhs, 0)) == FUNCTION_DECL
 	      && TREE_CODE (TREE_TYPE (TREE_OPERAND (rhs, 0))) == METHOD_TYPE)
@@ -512,6 +512,7 @@ determine_cst_member_ptr (gimple call, tree arg, tree method_field,
 
       if (!delta && fld == delta_field)
 	{
+	  rhs = get_ssa_def_if_simple_copy (rhs);
 	  if (TREE_CODE (rhs) == INTEGER_CST)
 	    {
 	      delta = rhs;
@@ -617,7 +618,7 @@ ipa_get_stmt_member_ptr_load_param (gimple stmt)
 {
   tree rhs;
 
-  if (!is_gimple_assign (stmt) || gimple_num_ops (stmt) != 2)
+  if (!gimple_assign_single_p (stmt))
     return NULL_TREE;
 
   rhs = gimple_assign_rhs1 (stmt);
@@ -797,7 +798,7 @@ ipa_analyze_call_uses (struct ipa_node_params *info, gimple call)
     return;
 
   def = SSA_NAME_DEF_STMT (cond);
-  if (!is_gimple_assign (def) || gimple_num_ops (def) != 3
+  if (!is_gimple_assign (def)
       || gimple_assign_rhs_code (def) != BIT_AND_EXPR
       || !integer_onep (gimple_assign_rhs2 (def)))
     return;
@@ -808,8 +809,8 @@ ipa_analyze_call_uses (struct ipa_node_params *info, gimple call)
 
   def = SSA_NAME_DEF_STMT (cond);
 
-  if (is_gimple_assign (def) && gimple_num_ops (def) == 2
-      && gimple_assign_rhs_code (def) == NOP_EXPR)
+  if (is_gimple_assign (def)
+      && CONVERT_EXPR_CODE_P (gimple_assign_rhs_code (def)))
     {
       cond = gimple_assign_rhs1 (def);
       if (!ipa_is_ssa_with_stmt_def (cond))
@@ -891,7 +892,7 @@ update_jump_functions_after_inlining (struct cgraph_edge *cs,
       /* We must check range due to calls with variable number of arguments:  */
       if (dst->value.formal_id >= (unsigned) ipa_get_cs_argument_count (top))
 	{
-	  dst->type = IPA_BOTTOM;
+	  dst->type = IPA_JF_UNKNOWN;
 	  continue;
 	}
 
@@ -1297,3 +1298,542 @@ ipa_print_all_params (FILE * f)
   for (node = cgraph_nodes; node; node = node->next)
     ipa_print_node_params (f, node);
 }
+
+/* Helper function for dump_aggregate, dumps a substructure type TYPE, indented
+   by INDENT.  */
+
+static void
+dump_aggregate_1 (tree type, int indent)
+{
+  tree fld;
+  static char buffer[100];
+
+  print_node_brief (dump_file, "type:", type, 1);
+
+  switch (TREE_CODE (type))
+    {
+    case RECORD_TYPE:
+    case UNION_TYPE:
+    case QUAL_UNION_TYPE:
+      fprintf (dump_file, " size in bytes: %i\n",
+	       (int) int_size_in_bytes (type));
+      for (fld = TYPE_FIELDS (type); fld; fld = TREE_CHAIN (fld))
+	{
+	  int i;
+	  if (TREE_CODE (fld) != FIELD_DECL)
+	    continue;
+
+	  for (i = 0; i < indent; i++)
+	    putc(' ', dump_file);
+
+	  snprintf (buffer, 100, "offset: %u",
+		    (unsigned) int_bit_position (fld));
+	  print_node_brief (dump_file, buffer, fld, indent);
+	  dump_aggregate_1 (TREE_TYPE (fld), indent + 2);
+	}
+
+      break;
+    case ARRAY_TYPE:
+      print_node_brief (dump_file, "element: ", TREE_TYPE (type), 1);
+
+      /* fall through */
+    default:
+      fprintf (dump_file, "\n");
+      break;
+    }
+  return;
+}
+
+/* Dump the type of tree T to dump_file in a way that makes it easy to find out
+   which offsets correspond to what fields/elements.  Indent by INDENT.  */
+
+static void
+dump_aggregate (tree t, int indent)
+{
+  tree type = TREE_TYPE (t);
+
+  print_generic_expr (dump_file, t, 0);
+  print_node_brief (dump_file, " - ", t, indent);
+
+  if (POINTER_TYPE_P (type))
+    {
+      fprintf (dump_file, " -> ");
+      dump_aggregate_1 (TREE_TYPE (type), indent + 2);
+    }
+  else
+    dump_aggregate_1 (type, indent);
+}
+
+/* Return a heap allocated vector containing formal parameters of FNDECL.  */
+
+VEC(tree, heap) *
+ipa_get_vector_of_formal_parms (tree fndecl)
+{
+  VEC(tree, heap) *args;
+  int count;
+  tree parm;
+
+  count = count_formal_params_1 (fndecl);
+  args = VEC_alloc (tree, heap, count);
+  for (parm = DECL_ARGUMENTS (fndecl); parm; parm = TREE_CHAIN (parm))
+    VEC_quick_push (tree, args, parm);
+
+  return args;
+}
+
+/* Return a heap allocated vector containing types of formal parameters of
+   function type FNTYPE.  */
+
+static inline VEC(tree, heap) *
+get_vector_of_formal_parm_types (tree fntype)
+{
+  VEC(tree, heap) *types;
+  int count = 0;
+  tree t;
+
+  for (t = TYPE_ARG_TYPES (fntype); t; t = TREE_CHAIN (t))
+    count++;
+
+  types = VEC_alloc (tree, heap, count);
+  for (t = TYPE_ARG_TYPES (fntype); t; t = TREE_CHAIN (t))
+    VEC_quick_push (tree, types, TREE_VALUE (t));
+
+  return types;
+}
+
+/* Modify the function declaration FNDECL and its type according to the plan in
+   NOTES.  It also sets base fields of notes to reflect the actual parameters
+   being modified which are determined by the base_index field.  */
+
+void
+ipa_modify_formal_parameters (tree fndecl, VEC (ipa_parm_note_t, heap) *notes,
+			      const char *synth_parm_prefix)
+{
+  VEC(tree, heap) *oparms, *otypes;
+  tree orig_type, new_type = NULL;
+  tree old_arg_types, t, new_arg_types = NULL;
+  tree parm, *link = &DECL_ARGUMENTS (fndecl);
+  int i, len = VEC_length (ipa_parm_note_t, notes);
+  tree new_reversed = NULL;
+  bool care_for_types, last_parm_void;
+
+  if (!synth_parm_prefix)
+    synth_parm_prefix = "SYNTH";
+
+  oparms = ipa_get_vector_of_formal_parms (fndecl);
+  orig_type = TREE_TYPE (fndecl);
+  old_arg_types = TYPE_ARG_TYPES (orig_type);
+
+  /* The following test is an ugly hack, some functions simply don't have any
+     arguments in their type.  This is probably a bug but well... */
+  care_for_types = (old_arg_types != NULL_TREE);
+  if (care_for_types)
+    {
+      last_parm_void = (TREE_VALUE (tree_last (old_arg_types))
+			== void_type_node);
+      otypes = get_vector_of_formal_parm_types (orig_type);
+      if (last_parm_void)
+	gcc_assert (VEC_length (tree, oparms) + 1 == VEC_length (tree, otypes));
+      else
+	gcc_assert (VEC_length (tree, oparms) == VEC_length (tree, otypes));
+    }
+  else
+    {
+      last_parm_void = false;
+      otypes = NULL;
+    }
+
+  for (i = 0; i < len; i++)
+    {
+      struct ipa_parm_note *note;
+      gcc_assert (link);
+
+      note = VEC_index (ipa_parm_note_t, notes, i);
+      parm = VEC_index (tree, oparms, note->base_index);
+      note->base = parm;
+
+      if (note->copy_param)
+	{
+	  if (care_for_types)
+	    new_arg_types = tree_cons (NULL_TREE, VEC_index (tree, otypes,
+							     note->base_index),
+				       new_arg_types);
+	  *link = parm;
+	  link = &TREE_CHAIN (parm);
+	}
+      else if (!note->remove_param)
+	{
+	  tree new_parm;
+	  tree ptype;
+
+	  if (note->by_ref)
+	    ptype = build_pointer_type (note->type);
+	  else
+	    ptype = note->type;
+
+	  if (care_for_types)
+	    new_arg_types = tree_cons (NULL_TREE, ptype, new_arg_types);
+
+	  new_parm = build_decl (PARM_DECL, NULL_TREE, ptype);
+	  DECL_NAME (new_parm) = create_tmp_var_name (synth_parm_prefix);
+
+	  DECL_ARTIFICIAL (new_parm) = 1;
+	  DECL_ARG_TYPE (new_parm) = ptype;
+	  DECL_CONTEXT (new_parm) = fndecl;
+	  TREE_USED (new_parm) = 1;
+	  DECL_IGNORED_P (new_parm) = 1;
+	  layout_decl (new_parm, 0);
+
+	  add_referenced_var (new_parm);
+	  mark_sym_for_renaming (new_parm);
+	  note->base = parm;
+	  note->reduction = new_parm;
+
+	  *link = new_parm;
+
+	  link = &TREE_CHAIN (new_parm);
+	}
+    }
+
+  *link = NULL_TREE;
+
+  if (care_for_types)
+    {
+      new_reversed = nreverse (new_arg_types);
+      if (last_parm_void)
+	{
+	  if (new_reversed)
+	    TREE_CHAIN (new_arg_types) = void_list_node;
+	  else
+	    new_reversed = void_list_node;
+	}
+    }
+
+  /* Use copy_node to preserve as much as possible from original type
+     (debug info, attribute lists etc.)
+     Exception is METHOD_TYPEs must have THIS argument.
+     When we are asked to remove it, we need to build new FUNCTION_TYPE
+     instead.  */
+  if (TREE_CODE (orig_type) != METHOD_TYPE
+       || (VEC_index (ipa_parm_note_t, notes, 0)->copy_param
+	  && VEC_index (ipa_parm_note_t, notes, 0)->base_index == 0))
+    {
+      new_type = copy_node (orig_type);
+      TYPE_ARG_TYPES (new_type) = new_reversed;
+    }
+  else
+    {
+      new_type
+        = build_distinct_type_copy (build_function_type (TREE_TYPE (orig_type),
+							 new_reversed));
+      TYPE_CONTEXT (new_type) = TYPE_CONTEXT (orig_type);
+      DECL_VINDEX (fndecl) = NULL_TREE;
+    }
+
+  /* This is a new type, not a copy of an old type.  Need to reassociate
+     variants.  We can handle everything except the main variant lazily.  */
+  t = TYPE_MAIN_VARIANT (orig_type);
+  if (orig_type != t)
+    {
+      TYPE_MAIN_VARIANT (new_type) = t;
+      TYPE_NEXT_VARIANT (new_type) = TYPE_NEXT_VARIANT (t);
+      TYPE_NEXT_VARIANT (t) = new_type;
+    }
+  else
+    {
+      TYPE_MAIN_VARIANT (new_type) = new_type;
+      TYPE_NEXT_VARIANT (new_type) = NULL;
+    }
+
+  TREE_TYPE (fndecl) = new_type;
+  if (otypes)
+    VEC_free (tree, heap, otypes);
+  VEC_free (tree, heap, oparms);
+
+  return;
+}
+
+/* Modify actual arguments of a function call CS as indicated in NOTES.  If
+   this is a directly recursive call, CS must be NULL.  Otherwise it must
+   contain the corresponding call graph edge.  */
+
+void
+ipa_modify_call_arguments (struct cgraph_edge *cs, gimple stmt,
+			   VEC (ipa_parm_note_t, heap) *notes)
+{
+  VEC(tree, heap) *vargs;
+  gimple new_stmt;
+  gimple_stmt_iterator gsi;
+  tree callee_decl;
+  int i, len;
+
+  len = VEC_length (ipa_parm_note_t, notes);
+  vargs = VEC_alloc (tree, heap, len);
+
+  gsi = gsi_for_stmt (stmt);
+  for (i = 0; i < len; i++)
+    {
+      struct ipa_parm_note *note = VEC_index (ipa_parm_note_t, notes, i);
+
+      if (note->copy_param)
+	{
+	  tree arg = gimple_call_arg (stmt, note->base_index);
+
+	  VEC_quick_push (tree, vargs, arg);
+	}
+      else if (!note->remove_param)
+	{
+	  tree expr, orig_expr;
+	  bool allow_ptr, repl_found;
+
+	  orig_expr = expr = gimple_call_arg (stmt, note->base_index);
+	  if (TREE_CODE (expr) == ADDR_EXPR)
+	    {
+	      allow_ptr = false;
+	      expr = TREE_OPERAND (expr, 0);
+	    }
+	  else
+	    allow_ptr = true;
+
+	  /* FIXME Either make dump_struct public and move it to a more
+	     appropriate place or remove the following dump.  */
+
+	  if (dump_file && (dump_flags & TDF_DETAILS))
+	    {
+	      fprintf (dump_file, "Searching for reduced component:\n");
+	      if (note->by_ref)
+		print_node_brief (dump_file, "ref to type: ", note->type, 0);
+	      else
+		print_node_brief (dump_file, "type: ", note->type, 0);
+	      print_node_brief (dump_file, "\nbase: ", expr, 0);
+	      fprintf (dump_file, "\noffset: %i\nin\n", (int) note->offset);
+	      dump_aggregate (expr, 2);
+	    }
+
+	  repl_found = build_ref_for_offset (&expr, TREE_TYPE (expr),
+					     note->offset, note->type,
+					     allow_ptr);
+	  if (repl_found)
+	    {
+	      if (note->by_ref)
+		expr = build_fold_addr_expr (expr);
+	    }
+	  else
+	    {
+	      tree type = build_pointer_type (note->type);
+	      expr = orig_expr;
+	      if (!POINTER_TYPE_P (TREE_TYPE (expr)))
+		expr = build_fold_addr_expr (expr);
+	      if (!useless_type_conversion_p (type, TREE_TYPE (expr)))
+	        expr = fold_convert (type, expr);
+	      expr = fold_build2 (POINTER_PLUS_EXPR, type, expr,
+				  build_int_cst (size_type_node,
+						 note->offset / BITS_PER_UNIT));
+	      if (!note->by_ref)
+		expr = fold_build1 (INDIRECT_REF, note->type, expr);
+	    }
+	  expr = force_gimple_operand_gsi (&gsi, expr,
+					   note->by_ref
+					   || is_gimple_reg_type (note->type),
+					   NULL, true, GSI_SAME_STMT);
+
+	  VEC_quick_push (tree, vargs, expr);
+	}
+    }
+
+  if (dump_file && (dump_flags & TDF_DETAILS))
+    {
+      fprintf (dump_file, "replacing stmt:");
+      print_gimple_stmt (dump_file, gsi_stmt (gsi), 0, 0);
+    }
+
+  callee_decl = !cs ? gimple_call_fndecl (stmt) : cs->callee->decl;
+  new_stmt = gimple_build_call_vec (callee_decl, vargs);
+  VEC_free (tree, heap, vargs);
+  if (gimple_call_lhs (stmt))
+    gimple_call_set_lhs (new_stmt, gimple_call_lhs (stmt));
+
+  gimple_set_block (new_stmt, gimple_block (stmt));
+  if (gimple_has_location (stmt))
+    gimple_set_location (new_stmt, gimple_location (stmt));
+
+  /* Carry all the flags to the new GIMPLE_CALL.  */
+  gimple_call_set_chain (new_stmt, gimple_call_chain (stmt));
+  gimple_call_set_tail (new_stmt, gimple_call_tail_p (stmt));
+  gimple_call_set_cannot_inline (new_stmt,
+				 gimple_call_cannot_inline_p (stmt));
+  gimple_call_set_return_slot_opt (new_stmt,
+				   gimple_call_return_slot_opt_p (stmt));
+  gimple_call_set_from_thunk (new_stmt, gimple_call_from_thunk_p (stmt));
+  gimple_call_set_va_arg_pack (new_stmt, gimple_call_va_arg_pack_p (stmt));
+
+  if (dump_file && (dump_flags & TDF_DETAILS))
+    {
+      fprintf (dump_file, "with stmt:");
+      print_gimple_stmt (dump_file, new_stmt, 0, 0);
+      fprintf (dump_file, "\n");
+    }
+  gsi_replace (&gsi, new_stmt, true);
+  if (cs)
+    cgraph_set_call_stmt (cs, new_stmt);
+
+  update_ssa (TODO_update_ssa);
+  free_dominance_info (CDI_DOMINATORS);
+
+  return;
+}
+
+/* Return true iff BASE_INDEX is in  NOTES twice or more times.  */
+
+static bool
+index_in_notes_multiple_times_p (int base_index,
+				 VEC (ipa_parm_note_t, heap) *notes)
+{
+  int i, len = VEC_length (ipa_parm_note_t, notes);
+  bool one = false;
+
+  for (i = 0; i < len; i++)
+    {
+      struct ipa_parm_note *note = VEC_index (ipa_parm_note_t, notes, i);
+
+      if (note->base_index == base_index)
+	{
+	  if (one)
+	    return true;
+	  else
+	    one = true;
+	}
+    }
+  return false;
+}
+
+
+/* Return notes that should have the same effect on function parameters and
+   call arguments as if they were first changed according to notes in INNER and
+   then by notes in OUTER.  */
+
+VEC (ipa_parm_note_t, heap) *
+ipa_combine_notes (VEC (ipa_parm_note_t, heap) *inner,
+		   VEC (ipa_parm_note_t, heap) *outer)
+{
+  int i, outlen = VEC_length (ipa_parm_note_t, outer);
+  int inlen = VEC_length (ipa_parm_note_t, inner);
+  int removals = 0;
+  VEC (ipa_parm_note_t, heap) *notes, *tmp;
+
+  tmp = VEC_alloc (ipa_parm_note_t, heap, inlen);
+  for (i = 0; i < inlen; i++)
+    {
+      struct ipa_parm_note *n = VEC_index (ipa_parm_note_t, inner, i);
+
+      if (n->remove_param)
+	removals++;
+      else
+	VEC_quick_push (ipa_parm_note_t, tmp, n);
+    }
+
+  notes = VEC_alloc (ipa_parm_note_t, heap, outlen + removals);
+  for (i = 0; i < outlen; i++)
+    {
+      struct ipa_parm_note *r;
+      struct ipa_parm_note *out = VEC_index (ipa_parm_note_t, outer, i);
+      struct ipa_parm_note *in = VEC_index (ipa_parm_note_t, tmp,
+					    out->base_index);
+
+      gcc_assert (!in->remove_param);
+      if (out->remove_param)
+	{
+	  if (!index_in_notes_multiple_times_p (in->base_index, tmp))
+	    {
+	      r = VEC_quick_push (ipa_parm_note_t, notes, NULL);
+	      memset (r, 0, sizeof (*r));
+	      r->remove_param = true;
+	    }
+	  continue;
+	}
+
+      r = VEC_quick_push (ipa_parm_note_t, notes, NULL);
+      memset (r, 0, sizeof (*r));
+      r->base_index = in->base_index;
+      r->type = out->type;
+
+      /* FIXME:  Create nonlocal value too.  */
+
+      if (in->copy_param && out->copy_param)
+	r->copy_param = true;
+      else if (in->copy_param)
+	r->offset = out->offset;
+      else if (out->copy_param)
+	r->offset = in->offset;
+      else
+	r->offset = in->offset + out->offset;
+    }
+
+  tmp = VEC_alloc (ipa_parm_note_t, heap, inlen);
+  for (i = 0; i < inlen; i++)
+    {
+      struct ipa_parm_note *n = VEC_index (ipa_parm_note_t, inner, i);
+
+      if (n->remove_param)
+	VEC_quick_push (ipa_parm_note_t, tmp, n);
+    }
+
+  VEC_free (ipa_parm_note_t, heap, tmp);
+  return notes;
+}
+
+
+/* Dump the notes in the vector NOTES to dump_file in a human friendly way,
+   assuming they are menat to be applied to FNDECL.  */
+
+void
+ipa_dump_param_notes (FILE *file, VEC (ipa_parm_note_t, heap) *notes,
+		      tree fndecl)
+{
+  int i, len = VEC_length (ipa_parm_note_t, notes);
+  bool first = true;
+  VEC(tree, heap) *parms = ipa_get_vector_of_formal_parms (fndecl);
+
+  fprintf (file, "IPA param notes: ");
+  for (i = 0; i < len; i++)
+    {
+      struct ipa_parm_note *note = VEC_index (ipa_parm_note_t, notes, i);
+
+      if (!first)
+	fprintf (file, "                 ");
+      else
+	first = false;
+
+      fprintf (file, "%i. base_index: %i - ", i, note->base_index);
+      print_generic_expr (file, VEC_index (tree, parms, note->base_index), 0);
+      if (note->base)
+	{
+	  fprintf (file, ", base: ");
+	  print_generic_expr (file, note->base, 0);
+	}
+      if (note->reduction)
+	{
+	  fprintf (file, ", reduction: ");
+	  print_generic_expr (file, note->reduction, 0);
+	}
+      if (note->new_ssa_base)
+	{
+	  fprintf (file, ", new_ssa_base: ");
+	  print_generic_expr (file, note->new_ssa_base, 0);
+	}
+
+      if (note->copy_param)
+	fprintf (file, ", copy_param");
+      else if (note->remove_param)
+	fprintf (file, ", remove_param");
+      else
+	fprintf (file, ", offset %li", (long) note->offset);
+      if (note->by_ref)
+	fprintf (file, ", by_ref");
+      print_node_brief (file, ", type: ", note->type, 0);
+      fprintf (file, "\n");
+    }
+  VEC_free (tree, heap, parms);
+  return;
+}
+

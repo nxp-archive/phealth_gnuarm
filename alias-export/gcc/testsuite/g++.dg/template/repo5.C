@@ -1,6 +1,8 @@
 // PR c++/25625
 // { dg-options "-frepo" } 
 // { dg-final { cleanup-repo-files } }
+// { dg-require-host-local "" }
+// { dg-skip-if "dkms are not final links" { vxworks_kernel } }
 
 template< typename T, T N > struct integral_c {
   static const T value = N;

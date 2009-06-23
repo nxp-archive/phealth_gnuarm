@@ -1488,6 +1488,11 @@ accept_statement (gfc_statement st)
 	  new_st.op = EXEC_RETURN;
 	  add_statement ();
 	}
+      else
+	{
+	  new_st.op = EXEC_END_PROCEDURE;
+	  add_statement ();
+	}
 
       break;
 
@@ -1978,27 +1983,18 @@ endType:
       /* Look for allocatable components.  */
       if (c->attr.allocatable
 	  || (c->ts.type == BT_DERIVED && c->ts.derived->attr.alloc_comp))
-	{
-	  sym->attr.alloc_comp = 1;
-	  break;
-	}
+	sym->attr.alloc_comp = 1;
 
       /* Look for pointer components.  */
       if (c->attr.pointer
 	  || (c->ts.type == BT_DERIVED && c->ts.derived->attr.pointer_comp))
-	{
-	  sym->attr.pointer_comp = 1;
-	  break;
-	}
+	sym->attr.pointer_comp = 1;
 
       /* Look for private components.  */
       if (sym->component_access == ACCESS_PRIVATE
 	  || c->attr.access == ACCESS_PRIVATE
 	  || (c->ts.type == BT_DERIVED && c->ts.derived->attr.private_comp))
-	{
-	  sym->attr.private_comp = 1;
-	  break;
-	}
+	sym->attr.private_comp = 1;
     }
 
   if (!seen_component)

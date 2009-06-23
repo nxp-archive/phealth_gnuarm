@@ -1,6 +1,7 @@
 /* Output sdb-format symbol table information from GNU compiler.
    Copyright (C) 1988, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+   2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -48,6 +49,9 @@ AT&T C compiler.  From the example below I would conclude the following:
 #include "tree.h"
 #include "ggc.h"
 #include "varray.h"
+#include "multi-target.h"
+
+START_TARGET_SPECIFIC
 
 static GTY(()) tree anonymous_types;
 
@@ -259,7 +263,7 @@ do { fprintf (asm_out_file, "\t.tag\t");	\
 /* Set the sdb tag identifier string for TYPE to NAME.  */
 
 #define SET_KNOWN_TYPE_TAG(TYPE, NAME) \
-  TYPE_SYMTAB_POINTER (TYPE) = (char *)(NAME)
+  TYPE_SYMTAB_POINTER (TYPE) = (const char *)(NAME)
 
 /* Return the name (a string) of the struct, union or enum tag
    described by the TREE_LIST node LINK.  This is 0 for an anonymous one.  */
@@ -312,7 +316,7 @@ const struct gcc_debug_hooks sdb_debug_hooks =
   sdbout_end_source_file,	         /* end_source_file */
   sdbout_begin_block,		         /* begin_block */
   sdbout_end_block,		         /* end_block */
-  debug_true_tree,		         /* ignore_block */
+  debug_true_const_tree,	         /* ignore_block */
   sdbout_source_line,		         /* source_line */
 #ifdef MIPS_DEBUGGING_INFO
   /* Defer on MIPS systems so that parameter descriptions follow
@@ -329,7 +333,7 @@ const struct gcc_debug_hooks sdb_debug_hooks =
   debug_nothing_tree,		         /* function_decl */
   sdbout_global_decl,		         /* global_decl */
   sdbout_symbol,			 /* type_decl */
-  debug_nothing_tree_tree,               /* imported_module_or_decl */
+  debug_nothing_tree_tree_tree_bool,	 /* imported_module_or_decl */
   debug_nothing_tree,		         /* deferred_inline_function */
   debug_nothing_tree,		         /* outlining_inline_function */
   sdbout_label,			         /* label */
@@ -580,7 +584,7 @@ plain_type_1 (tree type, int level)
     case QUAL_UNION_TYPE:
     case ENUMERAL_TYPE:
       {
-	char *tag;
+	const char *tag;
 #ifdef SDB_ALLOW_FORWARD_REFERENCES
 	sdbout_record_type_name (type);
 #endif
@@ -1177,14 +1181,21 @@ sdbout_one_type (tree type)
 	if (TREE_CODE (type) == ENUMERAL_TYPE)
 	  {
 	    for (tem = TYPE_VALUES (type); tem; tem = TREE_CHAIN (tem))
-	      if (host_integerp (TREE_VALUE (tem), 0))
-		{
-		  PUT_SDB_DEF (IDENTIFIER_POINTER (TREE_PURPOSE (tem)));
-		  PUT_SDB_INT_VAL (tree_low_cst (TREE_VALUE (tem), 0));
-		  PUT_SDB_SCL (C_MOE);
-		  PUT_SDB_TYPE (T_MOE);
-		  PUT_SDB_ENDEF;
-		}
+	      {
+	        tree value = TREE_VALUE (tem);
+
+	        if (TREE_CODE (value) == CONST_DECL)
+	          value = DECL_INITIAL (value);
+
+	        if (host_integerp (value, 0))
+		  {
+		    PUT_SDB_DEF (IDENTIFIER_POINTER (TREE_PURPOSE (tem)));
+		    PUT_SDB_INT_VAL (tree_low_cst (value, 0));
+		    PUT_SDB_SCL (C_MOE);
+		    PUT_SDB_TYPE (T_MOE);
+		    PUT_SDB_ENDEF;
+		  }
+	      }
 	  }
 	else			/* record or union type */
 	  for (tem = TYPE_FIELDS (type); tem; tem = TREE_CHAIN (tem))
@@ -1636,7 +1647,7 @@ sdbout_start_source_file (unsigned int line ATTRIBUTE_UNUSED,
 			  const char *filename ATTRIBUTE_UNUSED)
 {
 #ifdef MIPS_DEBUGGING_INFO
-  struct sdb_file *n = xmalloc (sizeof *n);
+  struct sdb_file *n = XNEW (struct sdb_file);
 
   n->next = current_file;
   n->name = filename;
@@ -1668,7 +1679,7 @@ sdbout_init (const char *input_file_name ATTRIBUTE_UNUSED)
   tree t;
 
 #ifdef MIPS_DEBUGGING_INFO
-  current_file = xmalloc (sizeof *current_file);
+  current_file = XNEW (struct sdb_file);
   current_file->next = NULL;
   current_file->name = input_file_name;
 #endif
@@ -1687,8 +1698,38 @@ sdbout_init (const char *input_file_name ATTRIBUTE_UNUSED)
 #else  /* SDB_DEBUGGING_INFO */
 
 /* This should never be used, but its address is needed for comparisons.  */
-const struct gcc_debug_hooks sdb_debug_hooks;
+const struct gcc_debug_hooks sdb_debug_hooks =
+{
+  0,					 /* init */
+  0,					 /* finish */
+  0,					 /* define */
+  0,					 /* undef */
+  0,					 /* start_source_file */
+  0,					 /* end_source_file */
+  0,					 /* begin_block */
+  0,					 /* end_block */
+  0,					 /* ignore_block */
+  0,					 /* source_line */
+  0,					 /* begin_prologue */
+  0,					 /* end_prologue */
+  0,					 /* end_epilogue */
+  0,					 /* begin_function */
+  0,					 /* end_function */
+  0,					 /* function_decl */
+  0,					 /* global_decl */
+  0,					 /* type_decl */
+  0,					 /* imported_module_or_decl */
+  0,					 /* deferred_inline_function */
+  0,					 /* outlining_inline_function */
+  0,					 /* label */
+  0,					 /* handle_pch */
+  0,					 /* var_location */
+  0,					 /* switch_text_section */
+  0                                      /* start_end_main_source_file */
+};
 
 #endif /* SDB_DEBUGGING_INFO */
 
 #include "gt-sdbout.h"
+
+END_TARGET_SPECIFIC

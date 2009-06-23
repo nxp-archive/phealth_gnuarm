@@ -1,5 +1,5 @@
 /* Inlining decision heuristics.
-   Copyright (C) 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -138,6 +138,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-flow.h"
 #include "rtl.h"
 #include "ipa-prop.h"
+#include "except.h"
 
 #define MAX_TIME 1000000000
 
@@ -154,6 +155,7 @@ along with GCC; see the file COPYING3.  If not see
 enum inlining_mode {
   INLINE_NONE = 0,
   INLINE_ALWAYS_INLINE,
+  INLINE_SIZE_NORECURSIVE,
   INLINE_SIZE,
   INLINE_ALL
 };
@@ -183,8 +185,8 @@ static int
 cgraph_estimate_time_after_inlining (int frequency, struct cgraph_node *to,
 				     struct cgraph_node *what)
 {
-  gcov_type time = (((gcov_type)what->global.time - inline_summary
-   		     (what)->time_inlining_benefit)
+  gcov_type time = (((gcov_type)what->global.time
+		     - inline_summary (what)->time_inlining_benefit)
   		    * frequency + CGRAPH_FREQ_BASE / 2) / CGRAPH_FREQ_BASE
 		    + to->global.time;
   if (time < 0)
@@ -272,9 +274,9 @@ cgraph_mark_inline_edge (struct cgraph_edge *e, bool update_original,
   int old_size = 0, new_size = 0;
   struct cgraph_node *to = NULL, *what;
   struct cgraph_edge *curr = e;
-
-  if (e->callee->inline_decl)
-    cgraph_redirect_edge_callee (e, cgraph_node (e->callee->inline_decl));
+  int freq;
+  bool duplicate = false;
+  int orig_size = e->callee->global.size;
 
   gcc_assert (e->inline_failed);
   e->inline_failed = CIF_OK;
@@ -283,10 +285,14 @@ cgraph_mark_inline_edge (struct cgraph_edge *e, bool update_original,
     DECL_POSSIBLY_INLINED (e->callee->decl) = true;
   e->callee->global.inlined = true;
 
+  if (e->callee->callers->next_caller
+      || e->callee->needed)
+    duplicate = true;
   cgraph_clone_inlined_nodes (e, true, update_original);
 
   what = e->callee;
 
+  freq = e->frequency;
   /* Now update size of caller and all functions caller is inlined into.  */
   for (;e && !e->inline_failed; e = e->caller->callers)
     {
@@ -294,11 +300,13 @@ cgraph_mark_inline_edge (struct cgraph_edge *e, bool update_original,
       old_size = e->caller->global.size;
       new_size = cgraph_estimate_size_after_inlining (1, to, what);
       to->global.size = new_size;
-      to->global.time = cgraph_estimate_time_after_inlining (e->frequency, to, what);
+      to->global.time = cgraph_estimate_time_after_inlining (freq, to, what);
     }
   gcc_assert (what->global.inlined_to == to);
   if (new_size > old_size)
     overall_size += new_size - old_size;
+  if (!duplicate)
+    overall_size -= orig_size;
   ncalls_inlined++;
 
   if (flag_indirect_inlining)
@@ -439,8 +447,6 @@ cgraph_default_inline_p (struct cgraph_node *n, cgraph_inline_failed_t *reason)
 {
   tree decl = n->decl;
 
-  if (n->inline_decl)
-    decl = n->inline_decl;
   if (!flag_inline_small_functions && !DECL_DECLARED_INLINE_P (decl))
     {
       if (reason)
@@ -448,7 +454,7 @@ cgraph_default_inline_p (struct cgraph_node *n, cgraph_inline_failed_t *reason)
       return false;
     }
 
-  if (!DECL_STRUCT_FUNCTION (decl)->cfg)
+  if (!n->analyzed)
     {
       if (reason)
 	*reason = CIF_BODY_NOT_AVAILABLE;
@@ -508,7 +514,7 @@ cgraph_recursive_inlining_p (struct cgraph_node *to,
 static int
 cgraph_edge_badness (struct cgraph_edge *edge)
 {
-  int badness;
+  gcov_type badness;
   int growth =
     cgraph_estimate_size_after_inlining (1, edge->caller, edge->callee);
 
@@ -536,20 +542,22 @@ cgraph_edge_badness (struct cgraph_edge *edge)
   else if (flag_guess_branch_prob)
     {
       int div = edge->frequency * 100 / CGRAPH_FREQ_BASE + 1;
-      badness = growth * 256;
+      badness = growth * 10000;
       div *= MIN (100 * inline_summary (edge->callee)->time_inlining_benefit
       	          / (edge->callee->global.time + 1) + 1, 100);
       
 
       /* Decrease badness if call is nested.  */
       /* Compress the range so we don't overflow.  */
-      if (div > 256)
-	div = 256 + ceil_log2 (div) - 8;
+      if (div > 10000)
+	div = 10000 + ceil_log2 (div) - 8;
       if (div < 1)
 	div = 1;
       if (badness > 0)
 	badness /= div;
       badness += cgraph_estimate_growth (edge->callee);
+      if (badness > INT_MAX)
+        badness = INT_MAX;
     }
   /* When function local profile is not available or it does not give
      useful information (ie frequency is zero), base the cost on
@@ -917,10 +925,12 @@ cgraph_decide_inlining_of_small_functions (void)
 		   cgraph_node_name (edge->callee),
 		   edge->callee->global.size);
 	  fprintf (dump_file, 
-		   " to be inlined into %s\n"
+		   " to be inlined into %s in %s:%i\n"
 		   " Estimated growth after inlined into all callees is %+i insns.\n"
 		   " Estimated badness is %i, frequency %.2f.\n",
 		   cgraph_node_name (edge->caller),
+		   gimple_filename ((const_gimple) edge->call_stmt),
+		   gimple_lineno ((const_gimple) edge->call_stmt),
 		   cgraph_estimate_growth (edge->callee),
 		   cgraph_edge_badness (edge),
 		   edge->frequency / (double)CGRAPH_FREQ_BASE);
@@ -1055,7 +1065,7 @@ cgraph_decide_inlining_of_small_functions (void)
       if (dump_file)
 	{
 	  fprintf (dump_file, 
-		   " Inlined into %s which now has sie %i and self time %i,"
+		   " Inlined into %s which now has size %i and self time %i,"
 		   "net change of %+i.\n",
 		   cgraph_node_name (edge->caller),
 		   edge->caller->global.time,
@@ -1221,6 +1231,7 @@ cgraph_decide_inlining (void)
 	      && !DECL_EXTERNAL (node->decl)
 	      && !DECL_COMDAT (node->decl))
 	    {
+	      old_size = overall_size;
 	      if (dump_file)
 		{
 		  fprintf (dump_file,
@@ -1287,6 +1298,7 @@ try_inline (struct cgraph_edge *e, enum inlining_mode mode, int depth)
   struct cgraph_node *callee = e->callee;
   enum inlining_mode callee_mode = (enum inlining_mode) (size_t) callee->aux;
   bool always_inline = e->callee->local.disregard_inline_limits;
+  bool inlined = false;
 
   /* We've hit cycle?  */
   if (callee_mode)
@@ -1330,17 +1342,34 @@ try_inline (struct cgraph_edge *e, enum inlining_mode mode, int depth)
 	       cgraph_node_name (e->caller));
     }
   if (e->inline_failed)
-    cgraph_mark_inline (e);
+    {
+      cgraph_mark_inline (e);
 
-  /* In order to fully inline always_inline functions, we need to
-     recurse here, since the inlined functions might not be processed by
-     incremental inlining at all yet.  
+      /* In order to fully inline always_inline functions, we need to
+	 recurse here, since the inlined functions might not be processed by
+	 incremental inlining at all yet.  
 
-     Also flattening needs to be done recursively.  */
+	 Also flattening needs to be done recursively.  */
 
-  if (mode == INLINE_ALL || always_inline)
-    cgraph_decide_inlining_incrementally (e->callee, mode, depth + 1);
+      if (mode == INLINE_ALL || always_inline)
+	cgraph_decide_inlining_incrementally (e->callee, mode, depth + 1);
+      inlined = true;
+    }
   callee->aux = (void *)(size_t) callee_mode;
+  return inlined;
+}
+
+/* Return true when N is leaf function.  Accept cheap (pure&const) builtins
+   in leaf functions.  */
+static bool
+leaf_node_p (struct cgraph_node *n)
+{
+  struct cgraph_edge *e;
+  for (e = n->callees; e; e = e->next_callee)
+    if (!DECL_BUILT_IN (e->callee->decl)
+	|| (!TREE_READONLY (e->callee->decl)
+	    || DECL_PURE_P (e->callee->decl)))
+      return false;
   return true;
 }
 
@@ -1364,7 +1393,7 @@ cgraph_decide_inlining_incrementally (struct cgraph_node *node,
 
   old_mode = (enum inlining_mode) (size_t)node->aux;
 
-  if (mode != INLINE_ALWAYS_INLINE
+  if (mode != INLINE_ALWAYS_INLINE && mode != INLINE_SIZE_NORECURSIVE
       && lookup_attribute ("flatten", DECL_ATTRIBUTES (node->decl)) != NULL)
     {
       if (dump_file)
@@ -1378,69 +1407,70 @@ cgraph_decide_inlining_incrementally (struct cgraph_node *node,
   node->aux = (void *)(size_t) mode;
 
   /* First of all look for always inline functions.  */
-  for (e = node->callees; e; e = e->next_callee)
-    {
-      if (!e->callee->local.disregard_inline_limits
-	  && (mode != INLINE_ALL || !e->callee->local.inlinable))
-	continue;
-      if (gimple_call_cannot_inline_p (e->call_stmt))
-	continue;
-      /* When the edge is already inlined, we just need to recurse into
-	 it in order to fully flatten the leaves.  */
-      if (!e->inline_failed && mode == INLINE_ALL)
-	{
-          inlined |= try_inline (e, mode, depth);
+  if (mode != INLINE_SIZE_NORECURSIVE)
+    for (e = node->callees; e; e = e->next_callee)
+      {
+	if (!e->callee->local.disregard_inline_limits
+	    && (mode != INLINE_ALL || !e->callee->local.inlinable))
 	  continue;
-	}
-      if (dump_file)
-	{
-	  indent_to (dump_file, depth);
-	  fprintf (dump_file,
-		   "Considering to always inline inline candidate %s.\n",
-		   cgraph_node_name (e->callee));
-	}
-      if (cgraph_recursive_inlining_p (node, e->callee, &e->inline_failed))
-	{
-	  if (dump_file)
-	    {
-	      indent_to (dump_file, depth);
-	      fprintf (dump_file, "Not inlining: recursive call.\n");
-	    }
+	if (gimple_call_cannot_inline_p (e->call_stmt))
 	  continue;
-	}
-      if (!tree_can_inline_p (node->decl, e->callee->decl))
-	{
-	  gimple_call_set_cannot_inline (e->call_stmt, true);
-	  if (dump_file)
-	    {
-	      indent_to (dump_file, depth);
-	      fprintf (dump_file,
-		       "Not inlining: Target specific option mismatch.\n");
-	    }
-	  continue;
-	}
-      if (gimple_in_ssa_p (DECL_STRUCT_FUNCTION (node->decl))
-	  != gimple_in_ssa_p (DECL_STRUCT_FUNCTION (e->callee->decl)))
-	{
-	  if (dump_file)
-	    {
-	      indent_to (dump_file, depth);
-	      fprintf (dump_file, "Not inlining: SSA form does not match.\n");
-	    }
-	  continue;
-	}
-      if (!e->callee->analyzed && !e->callee->inline_decl)
-	{
-	  if (dump_file)
-	    {
-	      indent_to (dump_file, depth);
-	      fprintf (dump_file,
-		       "Not inlining: Function body no longer available.\n");
-	    }
-	  continue;
-	}
-      inlined |= try_inline (e, mode, depth);
-    }
+	/* When the edge is already inlined, we just need to recurse into
+	   it in order to fully flatten the leaves.  */
+	if (!e->inline_failed && mode == INLINE_ALL)
+	  {
+	    inlined |= try_inline (e, mode, depth);
+	    continue;
+	  }
+	if (dump_file)
+	  {
+	    indent_to (dump_file, depth);
+	    fprintf (dump_file,
+		     "Considering to always inline inline candidate %s.\n",
+		     cgraph_node_name (e->callee));
+	  }
+	if (cgraph_recursive_inlining_p (node, e->callee, &e->inline_failed))
+	  {
+	    if (dump_file)
+	      {
+		indent_to (dump_file, depth);
+		fprintf (dump_file, "Not inlining: recursive call.\n");
+	      }
+	    continue;
+	  }
+	if (!tree_can_inline_p (node->decl, e->callee->decl))
+	  {
+	    gimple_call_set_cannot_inline (e->call_stmt, true);
+	    if (dump_file)
+	      {
+		indent_to (dump_file, depth);
+		fprintf (dump_file,
+			 "Not inlining: Target specific option mismatch.\n");
+	      }
+	    continue;
+	  }
+	if (gimple_in_ssa_p (DECL_STRUCT_FUNCTION (node->decl))
+	    != gimple_in_ssa_p (DECL_STRUCT_FUNCTION (e->callee->decl)))
+	  {
+	    if (dump_file)
+	      {
+		indent_to (dump_file, depth);
+		fprintf (dump_file, "Not inlining: SSA form does not match.\n");
+	      }
+	    continue;
+	  }
+	if (!e->callee->analyzed)
+	  {
+	    if (dump_file)
+	      {
+		indent_to (dump_file, depth);
+		fprintf (dump_file,
+			 "Not inlining: Function body no longer available.\n");
+	      }
+	    continue;
+	  }
+	inlined |= try_inline (e, mode, depth);
+      }
 
   /* Now do the automatic inlining.  */
   if (mode != INLINE_ALL && mode != INLINE_ALWAYS_INLINE)
@@ -1474,18 +1504,18 @@ cgraph_decide_inlining_incrementally (struct cgraph_node *node,
 	    continue;
 	  }
 
-	if (cgraph_maybe_hot_edge_p (e))
+	if (cgraph_maybe_hot_edge_p (e) && leaf_node_p (e->callee))
 	  allowed_growth = PARAM_VALUE (PARAM_EARLY_INLINING_INSNS);
 
 	/* When the function body would grow and inlining the function won't
 	   eliminate the need for offline copy of the function, don't inline.
 	 */
-	if ((mode == INLINE_SIZE
+	if (((mode == INLINE_SIZE || mode == INLINE_SIZE_NORECURSIVE)
 	     || (!flag_inline_functions
 		 && !DECL_DECLARED_INLINE_P (e->callee->decl)))
 	    && (cgraph_estimate_size_after_inlining (1, e->caller, e->callee)
-		>= e->caller->global.size + allowed_growth)
-	    && cgraph_estimate_growth (e->callee) >= allowed_growth)
+		> e->caller->global.size + allowed_growth)
+	    && cgraph_estimate_growth (e->callee) > allowed_growth)
 	  {
 	    if (dump_file)
 	      {
@@ -1499,7 +1529,7 @@ cgraph_decide_inlining_incrementally (struct cgraph_node *node,
 	    continue;
 	  }
 	if (!cgraph_check_inline_limits (node, e->callee, &e->inline_failed,
-				        false)
+				         false)
 	    || gimple_call_cannot_inline_p (e->call_stmt))
 	  {
 	    if (dump_file)
@@ -1510,7 +1540,7 @@ cgraph_decide_inlining_incrementally (struct cgraph_node *node,
 	      }
 	    continue;
 	  }
-	if (!e->callee->analyzed && !e->callee->inline_decl)
+	if (!e->callee->analyzed)
 	  {
 	    if (dump_file)
 	      {
@@ -1552,15 +1582,22 @@ cgraph_early_inlining (void)
 {
   struct cgraph_node *node = cgraph_node (current_function_decl);
   unsigned int todo = 0;
+  int iterations = 0;
 
   if (sorrycount || errorcount)
     return 0;
-  if (cgraph_decide_inlining_incrementally (node, INLINE_SIZE, 0))
+  while (cgraph_decide_inlining_incrementally (node,
+  					       iterations
+					       ? INLINE_SIZE_NORECURSIVE : INLINE_SIZE, 0)
+	 && iterations < PARAM_VALUE (PARAM_EARLY_INLINER_MAX_ITERATIONS))
     {
       timevar_push (TV_INTEGRATION);
-      todo = optimize_inline_calls (current_function_decl);
+      todo |= optimize_inline_calls (current_function_decl);
+      iterations++;
       timevar_pop (TV_INTEGRATION);
     }
+  if (dump_file)
+    fprintf (dump_file, "Iterations: %i\n", iterations);
   cfun->always_inline_functions_inlined = true;
   return todo;
 }
@@ -1584,7 +1621,7 @@ struct gimple_opt_pass pass_early_inline =
   0,					/* static_pass_number */
   TV_INLINE_HEURISTICS,			/* tv_id */
   0,	                                /* properties_required */
-  PROP_cfg,				/* properties_provided */
+  0,					/* properties_provided */
   0,					/* properties_destroyed */
   0,					/* todo_flags_start */
   TODO_dump_func    			/* todo_flags_finish */
@@ -1614,7 +1651,7 @@ struct simple_ipa_opt_pass pass_ipa_early_inline =
   0,					/* static_pass_number */
   TV_INLINE_HEURISTICS,			/* tv_id */
   0,	                                /* properties_required */
-  PROP_cfg,				/* properties_provided */
+  0,					/* properties_provided */
   0,					/* properties_destroyed */
   0,					/* todo_flags_start */
   TODO_dump_cgraph 		        /* todo_flags_finish */
@@ -1700,6 +1737,7 @@ estimate_function_body_sizes (struct cgraph_node *node)
   tree arg;
   int freq;
   tree funtype = TREE_TYPE (node->decl);
+  bitmap must_not_throw = must_not_throw_labels ();
 
   if (dump_file)
     {
@@ -1714,6 +1752,24 @@ estimate_function_body_sizes (struct cgraph_node *node)
 	{
 	  int this_size = estimate_num_insns (gsi_stmt (bsi), &eni_size_weights);
 	  int this_time = estimate_num_insns (gsi_stmt (bsi), &eni_time_weights);
+
+	  /* MUST_NOT_THROW is usually handled by runtime calling terminate and stopping
+	     stacking unwinding.  However when there is local cleanup that can resume
+	     to MUST_NOT_THROW then we generate explicit handler containing
+	     std::terminate () call.
+	     
+	     Because inlining of function can introduce new cleanup region, prior
+	     inlining we keep std::terinate () calls for every MUST_NOT_THROW containing
+	     function call.  Wast majority of these will be eliminated after inlining
+	     and crossjumping will inify possible duplicated calls.  So ignore
+	     the handlers for function body estimates.  */
+	  if (gimple_code (gsi_stmt (bsi)) == GIMPLE_LABEL
+	      && bitmap_bit_p (must_not_throw, 
+	      		       LABEL_DECL_UID (gimple_label_label (gsi_stmt (bsi)))))
+	    {
+	      if (dump_file)
+	        fprintf (dump_file, "  MUST_NOT_THROW landing pad.  Ignoring whole BB.\n");
+	    }
 	  if (dump_file)
 	    {
 	      fprintf (dump_file, "  freq:%6i size:%3i time:%3i ", freq, this_size, this_time);
@@ -1751,11 +1807,12 @@ estimate_function_body_sizes (struct cgraph_node *node)
       size_inlining_benefit += cost;
     }
   for (arg = DECL_ARGUMENTS (node->decl); arg; arg = TREE_CHAIN (arg))
-    {
-      int cost = estimate_move_cost (TREE_TYPE (arg));
-      time_inlining_benefit += cost;
-      size_inlining_benefit += cost;
-    }
+    if (!VOID_TYPE_P (TREE_TYPE (arg)))
+      {
+        int cost = estimate_move_cost (TREE_TYPE (arg));
+        time_inlining_benefit += cost;
+        size_inlining_benefit += cost;
+      }
   if (time_inlining_benefit > MAX_TIME)
     time_inlining_benefit = MAX_TIME;
   if (time > MAX_TIME)
@@ -1770,6 +1827,7 @@ estimate_function_body_sizes (struct cgraph_node *node)
     }
   inline_summary (node)->time_inlining_benefit = time_inlining_benefit;
   inline_summary (node)->size_inlining_benefit = size_inlining_benefit;
+  BITMAP_FREE (must_not_throw);
 }
 
 /* Compute parameters of functions used by inliner.  */
@@ -1821,7 +1879,7 @@ struct gimple_opt_pass pass_inline_parameters =
   0,					/* static_pass_number */
   TV_INLINE_HEURISTICS,			/* tv_id */
   0,	                                /* properties_required */
-  PROP_cfg,				/* properties_provided */
+  0,					/* properties_provided */
   0,					/* properties_destroyed */
   0,					/* todo_flags_start */
   0					/* todo_flags_finish */
@@ -1923,14 +1981,12 @@ inline_transform (struct cgraph_node *node)
       todo = optimize_inline_calls (current_function_decl);
       timevar_pop (TV_INTEGRATION);
     }
-
-  cfun->after_inlining = true;
   cfun->always_inline_functions_inlined = true;
-
+  cfun->after_inlining = true;
   return todo | execute_fixup_cfg ();
 }
 
-struct ipa_opt_pass pass_ipa_inline = 
+struct ipa_opt_pass_d pass_ipa_inline =
 {
  {
   IPA_PASS,
@@ -1942,7 +1998,7 @@ struct ipa_opt_pass pass_ipa_inline =
   0,					/* static_pass_number */
   TV_INLINE_HEURISTICS,			/* tv_id */
   0,	                                /* properties_required */
-  PROP_cfg,				/* properties_provided */
+  0,					/* properties_provided */
   0,					/* properties_destroyed */
   TODO_remove_functions,		/* todo_flags_finish */
   TODO_dump_cgraph | TODO_dump_func

@@ -1,5 +1,6 @@
 /* Lower complex number operations to scalar operations.
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
    
@@ -98,7 +99,10 @@ some_nonzerop (tree t)
 {
   int zerop = false;
 
-  if (TREE_CODE (t) == REAL_CST)
+  /* Operations with real or imaginary part of a complex number zero
+     cannot be treated the same as operations with a real or imaginary
+     operand if we care about the signs of zeros in the result.  */
+  if (TREE_CODE (t) == REAL_CST && !flag_signed_zeros)
     zerop = REAL_VALUES_IDENTICAL (TREE_REAL_CST (t), dconst0);
   else if (TREE_CODE (t) == FIXED_CST)
     zerop = fixed_zerop (t);
@@ -600,6 +604,7 @@ extract_component (gimple_stmt_iterator *gsi, tree t, bool imagpart_p,
     case INDIRECT_REF:
     case COMPONENT_REF:
     case ARRAY_REF:
+    case VIEW_CONVERT_EXPR:
       {
 	tree inner_type = TREE_TYPE (TREE_TYPE (t));
 
@@ -749,23 +754,6 @@ update_phi_components (basic_block bb)
     }
 }
 
-/* Mark each virtual op in STMT for ssa update.  */
-
-static void
-update_all_vops (gimple stmt)
-{
-  ssa_op_iter iter;
-  tree sym;
-
-  FOR_EACH_SSA_TREE_OPERAND (sym, stmt, iter, SSA_OP_ALL_VIRTUALS)
-    {
-      if (TREE_CODE (sym) == SSA_NAME)
-	sym = SSA_NAME_VAR (sym);
-      mark_sym_for_renaming (sym);
-    }
-}
-
-
 /* Expand a complex move to scalars.  */
 
 static void
@@ -821,7 +809,6 @@ expand_complex_move (gimple_stmt_iterator *gsi, tree type)
 	}
       else
 	{
-	  update_all_vops (stmt);
 	  if (gimple_assign_rhs_code (stmt) != COMPLEX_EXPR)
 	    {
 	      r = extract_component (gsi, rhs, 0, true);
@@ -864,7 +851,6 @@ expand_complex_move (gimple_stmt_iterator *gsi, tree type)
 	  gimple_return_set_retval (stmt, lhs);
 	}
 
-      update_all_vops (stmt);
       update_stmt (stmt);
     }
 }

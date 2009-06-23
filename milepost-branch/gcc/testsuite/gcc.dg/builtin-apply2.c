@@ -1,10 +1,12 @@
+/* { dg-do run } */
+/* { dg-skip-if "Variadic funcs have all args on stack. Normal funcs have args in registers." { "avr-*-*" } { "*" } { "" } } */
+
 /* PR target/12503 */
 /* Origin: <pierre.nguyen-tuong@asim.lip6.fr> */
 
 /* Verify that __builtin_apply behaves correctly on targets
    with pre-pushed arguments (e.g. SPARC).  */
 
-/* { dg-do run } */
    
 
 #define INTEGER_ARG  5
@@ -24,6 +26,7 @@ void bar(char *name, ...)
 
 int main(void)
 {
+  char dummy[64]; /* Make sure we have 64 bytes of stack to copy.  */
   bar("eeee", 5.444567, 8.90765, 4.567789, INTEGER_ARG);
 
   return 0;

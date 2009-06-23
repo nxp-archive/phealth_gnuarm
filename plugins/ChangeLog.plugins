@@ -1,0 +1,15 @@
+2009-04-15  Rafael Avila de Espindola  <espindola@google.com>
+
+	* Makefile.in: Regenerate.
+	* configure: Regenerate.
+	* Makefile.tpl (HOST_EXPORTS): Remove PLUGINLIBS.
+	(HOST_PLUGINLIBS): Remove.
+	* configure.ac: Remove --enable-plugin.
+
+2009-02-25  Le-Chun Wu  <lcwu@google.com>
+
+	* configure.ac: Add --enalbe-plugin support. Set pluginlibs only for
+	ELF targets.
+	* configure: Regenerate.
+	* Makefile.tpl: Define and export PLUGINLIBS.
+	* Makefile.in: Regenerate.

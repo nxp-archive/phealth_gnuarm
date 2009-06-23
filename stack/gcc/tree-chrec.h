@@ -1,5 +1,6 @@
 /* Chains of recurrences.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
 This file is part of GCC.
@@ -70,6 +71,7 @@ extern tree evolution_part_in_loop_num (tree, unsigned);
 extern tree hide_evolution_in_other_loops_than_loop (tree, unsigned);
 extern tree reset_evolution_in_loop (unsigned, tree, tree);
 extern tree chrec_merge (tree, tree);
+extern void for_each_scev_op (tree *, bool (*) (tree *, void *), void *);
 
 /* Observers.  */
 extern bool eq_evolutions_p (const_tree, const_tree);
@@ -83,6 +85,7 @@ extern bool evolution_function_is_affine_multivariate_p (const_tree, int);
 extern bool evolution_function_is_univariate_p (const_tree);
 extern unsigned nb_vars_in_chrec (tree);
 extern bool evolution_function_is_invariant_p (tree, int);
+extern bool scev_is_linear_expression (tree);
 
 /* Determines whether CHREC is equal to zero.  */
 

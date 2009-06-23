@@ -1,0 +1,1635 @@
+;; -*- Lisp -*-
+;; file ana-base.melt
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(comment "
+    Copyright 2008, 2009 Free Software Foundation, Inc.
+    Contributed by Basile Starynkevitch <basile@starynkevitch.net>
+
+    This file is part of GCC.
+
+    GCC is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 3, or (at your option)
+    any later version.
+
+    GCC is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with GCC; see the file COPYING3.  If not see
+    <http://www.gnu.org/licenses/>.
+")
+
+;; the copyright notice above apply both to ana-base.melt and 
+;; to the generated file  ana-base*.c
+
+;; a class containing the analysis state
+(defclass class_analysis_state
+  :super class_proped
+  :fields (
+))
+
+
+;;; primitive to access the gdbmstate
+
+(defprimitive fetch_gdbmstate_constr (:cstring keystr) :value
+  #{ (basilysgc_fetch_gdbmstate_const(($keystr))) }# )
+
+(defprimitive fetch_gdbmstate (key) :value
+   #{ (basilysgc_fetch_gdbmstate(($key))) }# )
+
+(defprimitive put_gdbmstate_constr (:cstring keystr :value data) :void
+  #{ basilysgc_put_gdbmstate_const(($keystr), (basilys_ptr_t) ($data)); 
+  }# )
+
+(defprimitive put_gdbmstate (key data) :void
+  #{ basilysgc_put_gdbmstate((basilys_ptr_t)($key), (basilys_ptr_t)($data)); 
+  }# )
+
+
+(defprimitive install_melt_gcc_pass 
+  (:value pass :cstring positioning refpassname :long refpassnum) :void
+  #{ basilysgc_register_pass ($pass, $positioning, $refpassname, $refpassnum); 
+  }#)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; gimple & tree related primitives
+
+(defprimitive is_gimple (v) :long
+   #{(basilys_magic_discr((basilys_ptr_t)($v)) == OBMAG_GIMPLE)}# )
+
+(defprimitive make_gimple (discr :gimple g) :value
+  #{(basilysgc_new_gimple((basilysobject_ptr_t)($discr),($g)))}# )
+
+(defprimitive gimple_content (v) :gimple
+  #{(basilys_gimple_content((basilys_ptr_t)($v)))}# )
+
+(defprimitive ==g (:gimple g1 g2) :long
+  #{(($g1) == ($g2))}#)
+
+;; match a gimple value & extract the gimple of it
+(defcmatcher gimpleval
+  (gv)					;match & no ins
+  (:gimple g) 				;outs
+  gimpsta				;statesymb
+  ;; test expansion
+  #{ (basilys_magic_discr((basilys_ptr_t)($gv)) == OBMAG_GIMPLE) }#
+  ;; fill expansion
+  #{ $g = basilys_gimple_content(((basilys_ptr_t)($gv)));
+  }#
+  ;; operator expansion
+  #{ (basilysgc_new_gimple((basilysobject_ptr_t)NULL, ($g))) }#
+)
+
+;; match a gimple single assign
+(defcmatcher gimple_assign_single
+  (:gimple ga)				;match
+  ;; outputs
+  (:tree lhs				;left hand side
+   :tree rhs				;first right operand
+  )					
+  gimpasg
+  ;; test expansion
+  #{($ga && gimple_assign_single_p ($ga))}#
+  ;;fill expansion
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs = gimple_assign_rhs1($ga);
+   }#
+)
+
+
+;; match a gimple cast assign
+(defcmatcher gimple_assign_cast
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs				;first right operand
+  )					;outs
+  gimpasg
+  ;;test expansion
+  #{($ga && gimple_assign_cast_p ($ga))}#
+  ;;fill expansion
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs = gimple_assign_rhs1($ga);
+  }#
+)
+
+;; match a gimple copy assign
+(defcmatcher gimple_assign_copy
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs				;first right operand
+  )					;outs
+  gimpasg
+  ;;test expansion
+  #{($ga && gimple_assign_copy_p ($ga))}#
+  ;;fill expansion
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs = gimple_assign_rhs1($ga);
+  }#
+)
+
+;; match a gimple copy assign with ssa name
+(defcmatcher gimple_assign_ssa_name_copy
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs				;first right operand
+  )					;outs
+  gimpasg
+  ;;test expansion
+   #{($ga && gimple_assign_ssa_name_copy_p ($ga))}#
+  ;;fill expansion
+   #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs = gimple_assign_rhs1($ga);
+   }#
+)
+
+;; match a gimple unary nop assign
+(defcmatcher gimple_assign_unary_nop
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs				;first right operand
+  )					;outs
+  gimpasg
+  ;;test expansion
+  #{($ga && gimple_assign_unary_nop_p ($ga))}#
+  ;;fill expansion
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs = gimple_assign_rhs1($ga);
+  }#
+)
+
+
+;;;; match a gimple assign with addition ie X = Y + Z
+
+(defcmatcher gimple_assign_plus
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasplus
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == PLUS_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+;;;; match a gimple assign with substraction ie X = Y - Z
+(defcmatcher gimple_assign_minus
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasplus
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == MINUS_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+
+(defcmatcher gimple_assign_pointerplus
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasplus
+  ;; test
+  #{ $ga && is_gimple_assign($ga) 
+     && gimple_expr_code($ga) == POINTER_PLUS_EXPR }#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+  }# )
+
+
+;;;; match a gimple assign with multiplication ie X = Y * Z
+
+(defcmatcher gimple_assign_mult
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == MULT_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+
+
+;;;; match a gimple assign with trunc division ie X = Y /trunc Z
+(defcmatcher gimple_assign_trunc_div
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == TRUNC_DIV_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+;;;; match a gimple assign with ceil division ie X = Y /ceil Z
+(defcmatcher gimple_assign_ceil_div
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == CEIL_DIV_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+;;;; match a gimple assign with floor division ie X = Y /floor Z
+(defcmatcher gimple_assign_floor_div
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == FLOOR_DIV_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+
+;;;; match a gimple assign with round division ie X = Y /round Z
+(defcmatcher gimple_assign_round_div
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == ROUND_DIV_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+;;;; match a gimple assign with real division ie X = Y /real Z
+(defcmatcher gimple_assign_rdiv
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == RDIV_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+;;;; match a gimple assign with exact division ie X = Y /exact Z
+(defcmatcher gimple_assign_exact_div
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == EXACT_DIV_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+
+;;;;;;;;;;;;;;;;
+;;;; match a gimple assign with trunc remainder ie X = Y %trunc Z
+(defcmatcher gimple_assign_trunc_mod
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == TRUNC_MOD_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+;;;; match a gimple assign with ceil remainder ie X = Y %ceil Z
+(defcmatcher gimple_assign_ceil_mod
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == CEIL_MOD_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+;;;; match a gimple assign with floor remainder ie X = Y %floor Z
+(defcmatcher gimple_assign_floor_mod
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == FLOOR_MOD_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+
+;;;; match a gimple assign with round remainder ie X = Y %round Z
+(defcmatcher gimple_assign_round_mod
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   )
+  gasmult
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_expr_code($ga) == ROUND_MOD_EXPR)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   }# )
+
+
+
+;;; match a gimple assign binary op
+(defcmatcher gimple_assign_binaryop
+  (:gimple ga)				;match
+  (:tree lhs				;left hand side
+   :tree rhs1
+   :tree rhs2
+   :long opcode
+   )
+  gasplus
+  ;; test
+  #{($ga && is_gimple_assign($ga) && gimple_num_ops($ga)>3)}#
+  ;; fill
+  #{
+   $lhs = gimple_assign_lhs($ga);
+   $rhs1 = gimple_assign_rhs1($ga);
+   $rhs2 = gimple_assign_rhs2($ga);
+   $opcode = gimple_assign_rhs_code($ga);
+   }# )
+
+;;;;;;;;;;;;;;;;
+;;; match a gimple cond less or equal
+(defcmatcher gimple_cond_lessequal
+  (:gimple gc)
+  (:tree lhs 
+   :tree rhs
+   :tree truelab
+   :tree falselab
+   )
+  gimpcondle
+  ;; test expansion
+  #{($gc && gimple_code($gc)==GIMPLE_COND 
+     && gimple_cond_code($gc)==LE_EXPR)}#
+  ;; fill expansion
+  #{
+   $lhs = gimple_cond_lhs($gc);
+   $rhs = gimple_cond_rhs($gc);
+   $truelab = gimple_cond_true_label($gc);
+   $falselab = gimple_cond_false_label($gc);
+  }# )
+
+;;; match a gimple cond less 
+(defcmatcher gimple_cond_less
+  (:gimple gc)
+  (:tree lhs 
+   :tree rhs
+   :tree truelab
+   :tree falselab
+   )
+  gimpcondle
+  ; test expansion
+  #{($gc && gimple_code($gc)==GIMPLE_COND
+     && gimple_cond_code($gc)==LT_EXPR)}#
+  ;; fill expansion
+  #{
+   $lhs = gimple_cond_lhs($gc);
+   $rhs = gimple_cond_rhs($gc);
+   $truelab = gimple_cond_true_label($gc);
+   $falselab = gimple_cond_false_label($gc);
+  }# )
+
+;;;;;;;;;;;;;;;;
+;;; match a gimple cond not equal
+(defcmatcher gimple_cond_notequal
+  (:gimple gc)
+  (:tree lhs 
+   :tree rhs
+   :tree truelab
+   :tree falselab
+   )
+  gimpcondle
+  ;; test expansion
+  #{($gc && gimple_code($gc)==GIMPLE_COND 
+     && gimple_cond_code($gc)==NE_EXPR)}#
+  ;; fill expansion
+  #{
+   $lhs = gimple_cond_lhs($gc);
+   $rhs = gimple_cond_rhs($gc);
+   $truelab = gimple_cond_true_label($gc);
+   $falselab = gimple_cond_false_label($gc);
+  }# )
+
+;;; match a gimple cond greater
+(defcmatcher gimple_cond_greater
+  (:gimple gc)
+  (:tree lhs 
+   :tree rhs
+   :tree truelab
+   :tree falselab
+   )
+  gimpcondle
+  ;; test expansion
+  #{($gc && gimple_code($gc)==GIMPLE_COND 
+      && gimple_cond_code($gc)==GT_EXPR)}#
+  ;; fill expansion
+  #{
+   $lhs = gimple_cond_lhs($gc);
+   $rhs = gimple_cond_rhs($gc);
+   $truelab = gimple_cond_true_label($gc);
+   $falselab = gimple_cond_false_label($gc);
+  }# )
+
+;; match a gimple cond true
+(defcmatcher gimple_cond_true
+  (:gimple gc)
+  (:tree truelab falselab)
+  gimpcondtr
+  ;;test
+  #{($gc && gimple_code($gc)==GIMPLE_COND 
+     && gimple_cond_true_p($gc))}#
+  ;;fill
+  #{
+   $truelab = gimple_cond_true_label($gc);
+   $falselab = gimple_cond_false_label($gc);
+  }# )
+
+
+;; match a gimple cond false
+(defcmatcher gimple_cond_false
+  (:gimple gc)
+  (:tree truelab falselab)
+  gimpcondtr
+  ;;test
+  #{($gc && gimple_code($gc)==GIMPLE_COND
+	 && gimple_cond_false_p($gc))}#
+  ;;fill
+  #{
+   $truelab = gimple_cond_true_label($gc);
+   $falselab = gimple_cond_false_label($gc);
+   }# )
+
+;;; match a gimple call to a direct function
+(defcmatcher gimple_call
+  (:gimple gc)
+  (:tree lhs
+	 fndecl
+   :long nbargs
+   )
+  gimpcall
+  ;; test 
+  #{($gc && gimple_code($gc)==GIMPLE_CALL)}#
+  ;; fill
+  #{
+   $lhs  = gimple_call_lhs($gc);
+   $fndecl = gimple_call_fndecl($gc);
+   $nbargs = gimple_call_num_args($gc);
+  }# )
+
+;;;; fetch the nth argument inside a call
+(defprimitive gimple_call_nth_arg (:gimple gc :long n) :tree
+  #{(($gc && gimple_code($gc) == GIMPLE_CALL && ($n)>=0 
+      && ($n) < gimple_call_num_args($gc)) 
+     ? gimple_call_arg(($gc), ($n)) : (tree)0)}# )
+
+;;;;  match a gimple return
+(defcmatcher gimple_return
+  (:gimple gr)
+  (:tree retval
+   )
+  gimpret
+  ;; test 
+  #{($gr && gimple_code($gr)==GIMPLE_RETURN)}#
+  ;; fill
+  #{
+   $retval = gimple_return_retval($gr);
+  }# )
+ 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defprimitive is_gimpleseq (v) :long
+  #{(basilys_magic_discr((basilys_ptr_t)($v)) == OBMAG_GIMPLESEQ)}# )
+
+(defprimitive make_gimpleseq (discr :gimpleseq g) :value
+  #{(basilysgc_new_gimpleseq((basilysobject_ptr_t)($discr),($g)))}# )
+
+(defprimitive gimpleseq_content (v) :gimpleseq
+  #{(basilys_gimpleseq_content((basilys_ptr_t)($v)))}# )
+
+
+
+(defprimitive is_tree (v) :long
+  #{(basilys_magic_discr((basilys_ptr_t)($v)) == OBMAG_TREE)}# )
+
+(defprimitive make_tree (discr :tree g) :value
+  #{(basilysgc_new_tree((basilysobject_ptr_t)($discr),($g)))}# )
+
+(defprimitive tree_content (v) :tree
+  #{(basilys_tree_content((basilys_ptr_t)($v)))}# )
+
+(defprimitive ==t (:tree t1 t2) :long
+  #{(($t1) == ($t2))}# )
+
+(defprimitive inform_at_tree (:tree tr :cstring msg) :void
+  ;; if DECL_P(tr) use DECL_SOURCE_LOCATION(tr)
+  ;; if EXPR_P(tr) use EXPR_LOCATION(tr)
+  ;; otherwise no location
+  #{ inform((DECL_P($tr)? DECL_SOURCE_LOCATION($tr)
+	    : EXPR_P($tr) ? EXPR_LOCATION($tr) : UNKNOWN_LOCATION), 
+  $msg );
+  }# )
+
+(defprimitive tree_type (:tree tr) :tree
+  #{(($tr)?TREE_TYPE($tr):NULL)}#)
+
+
+;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;
+;; pattern (tree_function_decl <funame> <initialtree>) match a tree for a function
+;; declaration
+(defcmatcher tree_function_decl 
+  (:tree tr) 				;matched
+  ;; output 
+  (:cstring funame
+   :tree initialdcl
+   )
+  treefun				;state symbol
+  ;; test expansion
+  #{ (($tr) && TREE_CODE($tr) == FUNCTION_DECL) }#
+  ;; fill expansion
+  #{
+   $funame = NULL; 
+   $initialdcl = NULL; 
+   if (DECL_NAME($tr))
+     $funame = IDENTIFIER_POINTER(DECL_NAME($tr)); 
+   $initialdcl = DECL_INITIAL($tr); 
+  }#
+)
+
+;;;;;;;;;;;;;;;;
+;; similarily pattern (tree_variable_decl <funame>)
+(defcmatcher tree_variable_decl 
+  (:tree tr)
+  (:cstring varname
+   )
+  treevar				;statesym
+  ;; test expansion
+  #{ (($tr) && TREE_CODE($tr) == VAR_DECL) }#
+  ;; fill expansion
+  #{
+   $varname =NULL;
+   if (DECL_NAME($tr))
+     $varname = IDENTIFIER_POINTER(DECL_NAME($tr));
+   }# )
+	   
+;;;;;;;;;;;;;;;;
+;; pattern tree_block matches a block
+(defcmatcher tree_block 
+  (:tree tr)
+  (					;output
+   :tree trvars  trsubblocks 	 
+   )
+  treeblock				;statesym
+  ;; test expander
+   #{(($tr) && TREE_CODE($tr) == BLOCK)}#
+  ;; fill expander
+   #{
+   $trvars = BLOCK_VARS($tr);
+   $trsubblocks =BLOCK_SUBBLOCKS($tr);
+   }# )
+
+;;;;;;;;;;;;;;;;
+;;; pattern tree_parm_decl matches a formal parameter declaration
+(defcmatcher tree_parm_decl 
+  (:tree tr)
+  (					;output
+   :tree trargtype trdecl
+   :cstring name
+   )
+  treeparmdecl				;statesym
+  ;; test expander
+   #{(($tr) && TREE_CODE($tr) == PARM_DECL)}#
+  ;; fill expander
+   #{
+   $trargtype = DECL_ARG_TYPE($tr);
+   $trdecl = DECL_NAME($tr);
+   $name = DECL_NAME($tr) ? IDENTIFIER_POINTER(DECL_NAME($tr)) : NULL;
+   }# )
+
+
+
+;;;;;;;;;;;;;;;;
+;;; pattern tree_decl matches any declaration
+(defcmatcher tree_decl 
+  (:tree tr)
+  (					;output
+   :tree trdecl
+   :cstring name
+   :long uid
+   )
+  treedecl				;statesym
+  ;; test expander
+  #{(($tr) && DECL_P($tr))}#
+  ;; fill expander
+  #{
+   tree  $treedecl#_name = DECL_NAME($tr);
+   $trdecl = $treedecl#_name;
+   $name = ($treedecl#_name) ? IDENTIFIER_POINTER($treedecl#_name) : NULL;
+   $uid = DECL_UID($tr);
+   }# )
+
+
+;;;;;;;;;;;;;;;;
+;;; pattern tree_integer_type
+(defcmatcher tree_integer_type 
+  (:tree tr)
+  (					;output
+   :cstring name
+   :value minbig maxbig 
+   :long size
+   )
+  treeinty				;statesym
+  ;; test expander
+   #{ (($tr) && TREE_CODE($tr) == INTEGER_TYPE) }#
+  ;; fill expander
+   #{
+   tree $treeinty#_ty= TYPE_NAME($tr);
+   tree $treeinty#_sizt= TYPE_SIZE($tr);
+   mpz_t $treeinty#_minz, $treeinty#_maxz;
+   $size = 0L;
+   $minbig = NULL; 
+   $maxbig = NULL;
+   if ($treeinty#_ty && TREE_CODE($treeinty#_ty) == IDENTIFIER_NODE)
+   $name = IDENTIFIER_POINTER($treeinty#_ty);
+   mpz_init ($treeinty#_minz);
+   mpz_init ($treeinty#_maxz);
+   get_type_static_bounds($tr, $treeinty#_minz, $treeinty#_maxz);
+   $minbig = basilysgc_new_mixbigint_mpz(BASILYSGOB (DISCR_MIXBIGINT), 
+					 NULL, 
+					 $treeinty#_minz);
+   $maxbig =  basilysgc_new_mixbigint_mpz(BASILYSGOB (DISCR_MIXBIGINT), 
+					 NULL, 
+					 $treeinty#_maxz);
+   mpz_clear ($treeinty#_minz);
+   mpz_clear ($treeinty#_maxz);
+   if ($treeinty#_sizt && TREE_CODE($treeinty#_sizt) == INTEGER_CST)
+     $size = tree_low_cst($treeinty#_sizt,0);
+   }# )
+
+
+
+;;; pattern tree_integer_cst
+(defcmatcher tree_integer_cst
+  (:tree tr)
+  (					;output
+   :long n )
+  treeintk
+  ;; test expander
+  #{ (($tr) && TREE_CODE($tr) == INTEGER_CST) }#
+  ;; fill expander
+  #{ $n  = tree_low_cst(($tr), 0);
+  }#  )
+
+
+;;;; matcher for patter ssa_name
+(defcmatcher tree_ssa_name 
+  (:tree tr)
+  (:tree tvar tvalu :long vers :gimple defstmt)
+  treessa
+  ;; test expander
+  #{ (($tr) && TREE_CODE($tr) == SSA_NAME) }#
+  ;; fill expander
+  #{
+   $tvar = SSA_NAME_VAR($tr);
+   $tvalu = SSA_NAME_VALUE($tr);
+   $vers = SSA_NAME_VERSION($tr);
+   $defstmt = SSA_NAME_DEF_STMT($tr);
+  }# )
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  
+(defprimitive is_basicblock (v) :long
+ #{ (basilys_magic_discr((basilys_ptr_t)($v)) == OBMAG_BASICBLOCK)}# )
+
+(defprimitive null_basicblock (:basicblock bb) :long
+ #{($bb == (basic_block)0)}# )
+
+(defprimitive notnull_basicblock (:basicblock bb) :long
+ #{($bb != (basic_block)0)}# )
+
+(defprimitive make_basicblock (discr :basicblock bb) :value
+ #{(basilysgc_new_basicblock((basilysobject_ptr_t)($discr),($bb)))}# )
+
+
+(defprimitive basicblock_content (v) :basicblock
+ #{(basilys_basicblock_content((basilys_ptr_t)($v)))}# )
+
+(defprimitive basicblock_gimpleseq (v) :gimpleseq
+  #{(basilys_basicblock_gimpleseq((basilys_ptr_t)($v)))}# )
+  
+(defprimitive basicblock_phinodes (v) :gimpleseq
+  #{(basilys_basicblock_phinodes((basilys_ptr_t)($v)))}# )
+  
+(defprimitive ppstrbuf_gimple (sbuf :long indent :gimple g) :void
+  #{ basilysgc_ppstrbuf_gimple((basilys_ptr_t)($sbuf), 
+			       (int) ($indent), ($g)) }# )
+
+(defprimitive ppstrbuf_gimple_seq (sbuf :long indent :gimpleseq gseq) :void
+  #{ basilysgc_ppstrbuf_gimple_seq((basilys_ptr_t)($sbuf),
+				   (int) ($indent), ($gseq)) }# )
+
+(defprimitive ppstrbuf_tree (sbuf :long indent :tree t) :void
+  #{ basilysgc_ppstrbuf_tree((basilys_ptr_t)($sbuf), 
+			     (int) ($indent), ($t)) }# )
+
+(defprimitive ppstrbuf_basicblock (sbuf :long indent :basicblock bb) :void
+  #{ basilysgc_ppstrbuf_basicblock((basilys_ptr_t)($sbuf),
+				   (int) ($indent), ($bb)) }# )
+
+(defprimitive basicblock_single_succ (:basicblock bb) :basicblock
+  #{(($bb && single_succ_p($bb))?single_succ($bb):NULL)}# )
+
+(defprimitive basicblock_nb_succ (:basicblock bb) :long
+  #{(($bb)?EDGE_COUNT($bb->succs):0)}#)
+
+(defprimitive basicblock_nth_succ_edge  (:basicblock bb :long ix) :edge
+  #{(($bb && $ix>=0 && $ix<EDGE_COUNT($bb->succs))?EDGE_SUCC($bb,$ix):NULL)}#)
+
+;;;;;;;;;;;;;;;;
+
+(defprimitive is_mapbasicblock (map) :long
+  #{(basilys_magic_discr((basilys_ptr_t)($map)) == OBMAG_MAPBASICBLOCKS)}# )
+(defprimitive mapbasicblock_size (map) :long
+  #{(basilys_size_mapbasicblocks((struct basilysmapbasicblocks_st*)($map)))}#)
+;; primitive to get the attribute count of a mapbasicblock
+(defprimitive mapbasicblock_count (map) :long
+  #{(basilys_count_mapbasicblocks((struct basilysmapbasicblocks_st*)($map)))}#)
+;; get an entry in a mapbasicblock from a C basicblock
+(defprimitive mapbasicblock_get (map :basicblock bb) :value
+  #{(basilys_get_mapbasicblocks(($map), ($bb)))}#)
+;; primitive for making a new map of basicblocks
+(defprimitive make_mapbasicblock (discr :long len) :value
+  #{(basilysgc_new_mapbasicblocks( (basilysobject_ptr_t) ($discr),
+				   ($len)))}#)
+;; primitive for putting into a map of basicblocks
+(defprimitive mapbasicblock_put (map :basicblock key :value val) :void
+  #{basilys_put_mapbasicblocks( (struct basilysmapbasicblocks_st *)
+				($map), ($key), (basilys_ptr_t) ($val))}#)
+;; primivite for removing from a map of basicblocks
+(defprimitive mapbasicblock_remove (map :basicblock key) :void
+ #{basilysgc_remove_mapbasicblocks( (struct basilysmapbasicblocks_st*) ($map), ($key))}#)
+
+;; primitive to get the nth basicblock of a mapbasicblock
+(defprimitive mapbasicblock_nth_attr (map :long n) :basicblock
+ #{(basilys_nthattr_mapbasicblocks((struct basilysmapbasicblocks_st*)($map), 
+				   (int)($n)))}#)
+;; primitive to get the nth value of a mapobject
+(defprimitive mapbasicblock_nth_val (map :long n) :value
+ #{(basilys_nthval_mapbasicblocks((struct basilysmapbasicblocks_st*)($map),
+				  (int)($n)))}#)
+(defciterator foreach_mapbasicblock 
+  (bbmap)				; startformals
+  eachmapbb 				;state symbol
+  (:basicblock bbatt :value bbval)	;local formals
+  ;; before expansion
+  #{
+   /*eachbbmap*/ int  $eachmapbb#_rk=0;
+   for ( $eachmapbb#_rk=0;  
+	 $eachmapbb#_rk<basilys_size_mapbasicblocks((struct basilysmapbasicblocks_st*)($bbmap));  
+	 $eachmapbb#_rk++) {
+   basic_block $eachmapbb#_bb=basilys_nthattr_mapbasicblocks((struct basilysmapbasicblocks_st*)($bbmap), $eachmapbb#_rk);
+   if (!$eachmapbb#_bb) continue;
+   $bbatt = $eachmapbb#_bb;
+   $bbval = basilys_nthval_mapbasicblocks((struct basilysmapbasicblocks_st*)($bbmap ), $eachmapbb#_rk);
+   }#
+  ;;after expansion
+   #{
+   } /*endeachbbmap*/
+   }#
+  )
+
+(defciterator foreach_basicblock_succ_edge
+  (:basicblock bb)
+  eachbbsucc
+  (:edge e :long eix)
+  #{
+  /* $eachbbsucc start */
+   int $eachbbsucc#_nbsuc = $bb ? EDGE_COUNT($bb->succs) : 0;
+   int $eachbbsucc#_ix = 0;
+   for ($eachbbsucc#_ix=0; 
+	$eachbbsucc#_ix < $eachbbsucc#_nbsuc;  
+	$eachbbsucc#_ix++) {
+     $e = EDGE_SUCC(($bb), $eachbbsucc#_ix);
+     if (!$e) continue;
+     $eix = $eachbbsucc#_ix;
+   }#
+   #{  /* $eachbbsucc end */ }  }#
+)
+
+;;;;;;;;;;;;;;;;
+
+(defprimitive is_maptree (map) :long
+  #{ (basilys_magic_discr((basilys_ptr_t)($map)) == OBMAG_MAPTREES) }#)
+(defprimitive maptree_size (map) :long
+ #{ (basilys_size_maptrees((struct basilysmaptrees_st*)($map))) }#)
+;; primitive to get the attribute count of a maptree
+(defprimitive maptree_count (map) :long
+  #{ (basilys_count_maptrees((struct basilysmaptrees_st*)($map))) }# )
+;; get an entry in a maptree from a C tree
+(defprimitive maptree_get (map :tree bb) :value
+  #{(basilys_get_maptrees(($map), ($bb)))}#)
+;; primitive for making a new map of trees
+(defprimitive make_maptree (discr :long len) :value
+ #{(basilysgc_new_maptrees((basilysobject_ptr_t) ($discr), ($len)))}#)
+;; primitive for putting into a map of trees
+(defprimitive maptree_put (map :tree key :value val) :void
+  #{basilys_put_maptrees( (struct basilysmaptrees_st *) ($map), 
+			  ($key), (basilys_ptr_t) ($val))}#)
+;; primivite for removing from a map of trees
+(defprimitive maptree_remove (map :tree key) :void
+  #{basilysgc_remove_maptrees( (struct basilysmaptrees_st*) ($map), ($key))}#)
+
+;; primitive to get the nth tree of a maptree
+(defprimitive maptree_nth_attr (map :long n) :tree
+  #{(basilys_nthattr_maptrees((struct basilysmaptrees_st*)($map), (int)($n)))}#)
+;; primitive to get the nth value of a mapobject
+(defprimitive maptree_nth_val (map :long n) :value
+  #{(basilys_nthval_maptrees((struct basilysmaptrees_st*)($map), (int)($n)))}# )
+;; iterator inside maptree
+(defciterator foreach_maptree 
+  (trmap)				; startformals
+  eachmaptr 				;state symbol
+  (:tree tratt :value trval)	;local formals
+  ;; before expansion
+  #{
+   /*eachtrmap*/ int $eachmaptr#_rk=0;
+   for ($eachmaptr#_rk=0;
+        $eachmaptr#_rk<basilys_size_maptrees((struct basilysmaptrees_st*)($trmap));
+	$eachmaptr#_rk++) {
+   tree $eachmaptr#_tr=basilys_nthattr_maptrees((struct basilysmaptrees_st*)($trmap), $eachmaptr#_rk);
+   if (!$eachmaptr#_tr) continue;
+   $tratt = $eachmaptr#_tr;
+   $trval =basilys_nthval_maptrees((struct basilysmaptrees_st*)($trmap), 
+				   $eachmaptr#_rk);
+   }#
+  ;;after expansion
+   #{
+   } /*endeachtrmap*/
+   }#
+  )
+
+;;;;;;;;;;;;;;;;
+;;; primitive to push the cfun asociated with a function declaration
+;;; this is required otherwise dump of gimple crashes
+(defprimitive push_cfun_decl (:tree fundecl) :void
+#{ push_cfun(DECL_STRUCT_FUNCTION($fundecl)) }#) 
+(defprimitive pop_cfun () :void
+"pop_cfun()")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; Parma Polyhedra Library stuff (aka PPL)
+(defprimitive ppl_new_empty_constraint_system (discr) :value
+ #{ basilysgc_new_ppl_constraint_system(($discr), 
+					BASILYS_PPL_EMPTY_CONSTRAINT_SYSTEM)}# )
+
+(defprimitive ppl_clone_constraint_system (pplv) :value
+ #{ basilysgc_clone_ppl_constraint_system($pplv) }#)
+
+(defprimitive ppl_new_unsatisfiable_constraint_system (discr) :value
+  #{ basilysgc_new_ppl_constraint_system(($discr), 
+					 BASILYS_PPL_UNSATISFIABLE_CONSTRAINT_SYSTEM) }#)
+
+(defprimitive raw_new_ppl_empty_constraint_system () :ppl_constraint_system
+  #{ basilys_raw_new_ppl_empty_constraint_system() }#)
+
+(defprimitive raw_new_ppl_unsatisfiable_constraint_system () :ppl_constraint_system
+  #{ basilys_raw_new_ppl_unsatisfiable_constraint_system() }#)
+
+(defprimitive ppl_ppstrbuf (sbuf ppl :long indent :value varvect) :void
+  #{ basilysgc_ppstrbuf_ppl_varnamvect (($sbuf), ($indent), ($ppl), ($varvect))}#)
+
+(defprimitive ppl_coefficient_from_tree (:tree tr) :ppl_coefficient
+  #{ (basilys_make_ppl_coefficient_from_tree($tr)) }#)
+
+(defprimitive ppl_coefficient_from_long (:long l) :ppl_coefficient
+   #{(basilys_make_ppl_coefficient_from_long($l))}#)
+
+(defprimitive ppl_delete_Coefficient (:ppl_coefficient coef) :void
+  #{ { if ($coef) ppl_delete_Coefficient($coef); 
+       $coef =NULL;} 
+       }#)
+
+(defprimitive make_ppl_linear_expression () :ppl_linear_expression
+  #{ basilys_make_ppl_linear_expression() }#)
+
+(defprimitive ppl_delete_Linear_Expression (:ppl_linear_expression liex) :void
+#{ { if ($liex) 
+     ppl_delete_Linear_Expression($liex); 
+   $liex =NULL;} 
+ }#)
+
+(defprimitive ppl_delete_Constraint (:ppl_constraint cons) :void
+  #{ { if ($cons) 
+      ppl_delete_Constraint($cons); 
+    $cons =NULL;}
+    }#)
+
+(defprimitive ppl_Linear_Expression_add_to_coefficient 
+  (:ppl_linear_expression liex 
+   :long vardim
+   :ppl_coefficient coef) :void
+#{ 
+   { if (($liex) && ($coef)) 
+       ppl_Linear_Expression_add_to_coefficient(($liex), ($vardim), ($coef)); 
+     else debugeprintf("failed ppl_Linear_Expression_coefficient");}
+  }#)
+
+(defprimitive ppl_Linear_Expression_add_to_inhomogeneous
+  (:ppl_linear_expression liex :ppl_coefficient coef) :void
+#{ { if (($liex) && ($coef)) 
+       ppl_Linear_Expression_add_to_inhomogeneous(($liex), ($coef)); }
+}#)
+
+(defprimitive make_ppl_constraint 
+  (:ppl_linear_expression liex
+   :cstring constyp) :ppl_constraint
+#{ basilys_make_ppl_constraint_cstrtype(($liex), ($constyp)) }#)
+
+(defprimitive clear_special (v) :void
+ #{ basilys_clear_special($v); 
+ }#)
+
+(defprimitive insert_ppl_constraint_in_boxed_system 
+  (:ppl_constraint cons :value sysv) :void
+ #{basilys_insert_ppl_constraint_in_boxed_system(($cons), ($sysv))}#)
+
+(defprimitive ppl_Constraint_System_insert_Constraint
+ (:ppl_constraint_system consys :ppl_constraint cons) :void
+#{ if (ppl_Constraint_System_insert_Constraint ($consys, $cons)) 
+     fatal_error("ppl_Constraint_System_insert_Constraint failed"); }#)
+
+(defprimitive ppl_Polyhedron_add_constraint 
+(:ppl_polyhedron poly :ppl_constraint cons) :void
+#{ if (ppl_Polyhedron_add_constraint(($poly), ($cons))) 
+     fatal_error("ppl_Polyhedron_add_constraint failed"); }#)
+
+(defprimitive debug_ppl_coefficient
+  (:cstring msg :ppl_coefficient coef) :void
+#{  if (flag_basilys_debug)  {char*s=0; 
+     if ($coef) ppl_io_asprint_Coefficient(&s, $coef); 
+     debugeprintf("debug_ppl_coefficient %s @%p %s", $msg, (void*)$coef, s); 
+     free(s);}
+}#)
+
+(defprimitive debug_ppl_linear_expression
+  (:cstring msg :ppl_linear_expression liex) :void
+ #{ if (flag_basilys_debug)   {char*s=0; 
+    if ($liex) ppl_io_asprint_Linear_Expression(&s, $liex); 
+    debugeprintf("debug_ppl_linear_expression %s @%p %s", 
+		 $msg, (void*)$liex, s); free(s);}
+ }#)
+
+(defprimitive debug_ppl_constraint (:cstring msg :ppl_constraint cons) :void
+ #{if (flag_basilys_debug) { char*s=0; 
+  if ($cons) ppl_io_asprint_Constraint(&s, $cons); 
+  debugeprintf("debug_ppl_constraint %s @%p %s", $msg, (void*)$cons, s); 
+  free(s);}
+ }#)
+
+(defprimitive debug_ppl_polyhedron (:cstring msg :ppl_polyhedron poly) :void
+#{ if (flag_basilys_debug) {  char*s = 0; 
+     debugeprintfnonl("debug_ppl_polyhedron %s @%p ", $msg, $poly);
+     if ($poly) ppl_io_asprint_Polyhedron(&s, $poly);
+     debugeprintf_raw("%s\n", s);
+     free(s); } 
+}#)
+
+(defprimitive ppl_NNC_Polyhedron_from_Constraint_System
+  (:ppl_constraint_system consys) :ppl_polyhedron
+#{ basilys_make_ppl_NNC_Polyhedron_from_Constraint_System($consys) }#
+)
+
+(defprimitive make_ppl_polyhedron_same(discr :ppl_polyhedron poly) :value
+#{ basilysgc_new_ppl_polyhedron($discr, $poly, SAME_PPL_POLHYEDRON) }#
+)
+
+(defprimitive make_ppl_polyhedron_cloned(discr :ppl_polyhedron poly) :value
+#{ basilysgc_new_ppl_polyhedron($discr, $poly, CLONED_PPL_POLHYEDRON) }#
+)
+
+(defprimitive ppl_delete_Polyhedron (:ppl_polyhedron poly) :void
+ #{ { if ($poly) ppl_delete_Polyhedron($poly); $poly=NULL;} }#
+)
+
+(defprimitive ppl_Polyhedron_is_empty (:ppl_polyhedron poly) :long
+ #{ $poly && ppl_Polyhedron_is_empty($poly) }#
+)
+
+(defprimitive ppl_coefficient_content (pplv) :ppl_coefficient
+  #{ basilys_ppl_coefficient_content($pplv) }#
+)
+
+(defprimitive ppl_constraint_content (pplv) :ppl_constraint
+  #{ basilys_ppl_constraint_content($pplv) }#
+)
+
+(defprimitive ppl_constraint_system_content (pplv) :ppl_constraint_system
+  #{ basilys_ppl_constraint_system_content($pplv) }#
+)
+
+(defprimitive ppl_polyhedron_content (pplv) :ppl_polyhedron
+  #{ basilys_ppl_polyhedron_content($pplv) }#
+)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; DEBUG OUTPUT 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; boxed gimple debug
+(defun dbgout_boxgimple_method (self dbgi :long depth)
+  (assert_msg "check dbgi" (is_a dbgi class_debuginfo))
+  (let ( (dis (discrim self)) 
+	 (sbuf  (unsafe_get_field :dbgi_sbuf dbgi)) ) 
+    (add2sbuf_strconst sbuf " ?/")
+    (if (is_a dis class_named) (add2sbuf_string sbuf (unsafe_get_field :named_name dis)))
+    (add2sbuf_strconst sbuf "/{")
+    (ppstrbuf_gimple sbuf depth (gimple_content self))
+    (add2sbuf_strconst sbuf "}/ ")
+    )
+  )
+(install_method discr_gimple dbg_output dbgout_boxgimple_method)
+
+;;;; boxed gimple seq debug
+(defun dbgout_boxgimpleseq_method (self dbgi :long depth)
+  (assert_msg "check dbgi" (is_a dbgi class_debuginfo))
+  (let ( (dis (discrim self)) 
+	 (sbuf  (unsafe_get_field :dbgi_sbuf dbgi)) ) 
+    (add2sbuf_strconst sbuf " ?/")
+    (if (is_a dis class_named) (add2sbuf_string sbuf (unsafe_get_field :named_name dis)))
+    (add2sbuf_strconst sbuf "/{")
+    (ppstrbuf_gimple_seq sbuf depth (gimpleseq_content self))
+    (add2sbuf_strconst sbuf "}/ ")
+    )
+  )
+(install_method discr_gimpleseq dbg_output dbgout_boxgimpleseq_method)
+
+;;;; boxed tree debug
+(defun dbgout_boxtree_method (self dbgi :long depth)
+  (assert_msg "check dbgi" (is_a dbgi class_debuginfo))
+  (let ( (dis (discrim self)) 
+	 (sbuf  (unsafe_get_field :dbgi_sbuf dbgi)) ) 
+    (add2sbuf_strconst sbuf " ?/")
+    (if (is_a dis class_named) (add2sbuf_string sbuf (unsafe_get_field :named_name dis)))
+    (add2sbuf_strconst sbuf "/{")
+    (ppstrbuf_tree sbuf depth (tree_content self))
+    (add2sbuf_strconst sbuf "}/ ")
+    )
+  )
+(install_method discr_tree dbg_output dbgout_boxtree_method)
+
+;;;; boxed basicblock debug
+(defun dbgout_boxbasicblock_method (self dbgi :long depth)
+  (assert_msg "check dbgi" (is_a dbgi class_debuginfo))
+  (let ( (dis (discrim self)) 
+	 (sbuf  (unsafe_get_field :dbgi_sbuf dbgi)) ) 
+    (add2sbuf_strconst sbuf " ?/")
+    (if (is_a dis class_named) (add2sbuf_string sbuf (unsafe_get_field :named_name dis)))
+    (add2sbuf_strconst sbuf "/{")
+    (ppstrbuf_basicblock sbuf depth (basicblock_content self))
+    (add2sbuf_strconst sbuf "}/ ")
+    )
+  )
+(install_method discr_basicblock dbg_output dbgout_boxbasicblock_method)
+
+
+
+;;;; basicblockmap debug
+(defun dbgout_mapbasicblock_method (self dbgi :long depth)
+  (assert_msg "check dbgi" (is_a dbgi class_debuginfo))
+  (assert_msg "check self" (is_mapbasicblock self))
+  (let ( (dis (discrim self)) 
+	 (:long mapcount (mapbasicblock_count self))
+	 (sbuf  (unsafe_get_field :dbgi_sbuf dbgi)) ) 
+    (add2sbuf_strconst sbuf " !bbmap.")
+    (if (is_a dis class_named) (add2sbuf_string sbuf (unsafe_get_field :named_name dis)))
+    (add2sbuf_strconst sbuf "/")
+    (add2sbuf_longdec sbuf mapcount)
+    (add2sbuf_strconst sbuf "!{")
+    (foreach_mapbasicblock
+     (self)
+     (:basicblock bbatt :value bbval)
+     (add2sbuf_indentnl sbuf (+i depth 1))
+     (add2sbuf_strconst sbuf "*")
+     (ppstrbuf_basicblock sbuf (+i depth 1) bbatt)
+     (add2sbuf_strconst sbuf " == ")
+     (dbg_out bbval dbgi (+i depth 2))
+     )
+    (add2sbuf_strconst sbuf "}!")
+    (add2sbuf_indentnl sbuf depth)
+    ))
+(install_method discr_mapbasicblocks dbg_output dbgout_mapbasicblock_method)
+
+
+;;;; treemap debug
+(defun dbgout_maptree_method (self dbgi :long depth)
+  (assert_msg "check dbgi" (is_a dbgi class_debuginfo))
+  (assert_msg "check self" (is_maptree self))
+  (let ( (dis (discrim self)) 
+	 (:long mapcount (maptree_count self))
+	 (sbuf  (unsafe_get_field :dbgi_sbuf dbgi)) ) 
+    (add2sbuf_strconst sbuf " !bbmap.")
+    (if (is_a dis class_named) (add2sbuf_string sbuf (unsafe_get_field :named_name dis)))
+    (add2sbuf_strconst sbuf "/")
+    (add2sbuf_longdec sbuf mapcount)
+    (add2sbuf_strconst sbuf "!{ ")
+    (foreach_maptree
+     (self)
+     (:tree tratt :value trval)
+     (add2sbuf_indentnl sbuf (+i depth 1))
+     (add2sbuf_strconst sbuf "*")
+     (ppstrbuf_tree sbuf (+i depth 1) tratt)
+     (add2sbuf_strconst sbuf " == ")
+     (dbg_out trval dbgi (+i depth 2))
+     )
+    (add2sbuf_strconst sbuf "}!")
+    (add2sbuf_indentnl sbuf depth)
+    ))
+(install_method discr_maptrees dbg_output dbgout_maptree_method)
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; iterators needed in our analysis
+
+;;; an iterator is simply something which translates to a for loop in
+;;; C. It usually binds some variables (local to the iterated body)
+;;; to some C stuff.
+
+;;; Be careful to not declare any iterator related stuff in
+;;; warmelt*.melt file, because we want to be able to bootstrap
+;;; Basilys/MELT (ie to generate the warmelt*.c files) even when GCC
+;;; internal representation changes a little.
+
+;;;;;;;;;;;;;;;;
+;;;; iterate on every cgraph_node which is a function with a body
+(defciterator each_cgraph_fun_body 
+  ()					; startformals
+  eachcgrfun 				;state symbol
+  (:tree funtree :gimpleseq funbody)	;local formals
+  ;; before expansion
+  #{
+   struct cgraph_node *$eachcgrfun#_nd = NULL; 
+   for ($eachcgrfun#_nd = cgraph_nodes; 
+	$eachcgrfun#_nd != NULL; 
+	$eachcgrfun#_nd = $eachcgrfun#_nd->next) {
+     tree $eachcgrfun#_dcl = 0;
+     gimple_seq  $eachcgrfun#_bdy = 0;
+     $eachcgrfun#_dcl =  $eachcgrfun#_nd->decl;
+     if (!$eachcgrfun#_dcl) continue;
+     if (TREE_CODE($eachcgrfun#_dcl) != FUNCTION_DECL) continue;
+     $eachcgrfun#_bdy = gimple_body($eachcgrfun#_dcl);
+     if (!$eachcgrfun#_bdy) continue;
+     $funtree = $eachcgrfun#_dcl;
+     $funbody = $eachcgrfun#_bdy;
+  }#
+   ;;after expansion
+   #{ } }#  )
+
+
+;;; iterate on every cgraph_node which is a function with a CFG and an
+;;; entryblock
+(defciterator each_cgraph_fun_entryblock
+  ()					;startformals
+  eachcgrblo				;state symbol
+  (:tree funtree :basicblock funbb)	;local formals
+  ;;before expansion
+  #{
+   struct cgraph_node *$eachcgrblo#_nd = NULL; 
+   for ($eachcgrblo#_nd = cgraph_nodes; 
+   $eachcgrblo#_nd != NULL; 
+   $eachcgrblo#_nd = $eachcgrblo#_nd->next) {
+   tree  $eachcgrblo#_dcl = NULL;
+   basic_block  $eachcgrblo#_bb = NULL;
+   struct function *$eachcgrblo#_fun = NULL;
+   $eachcgrblo#_dcl = $eachcgrblo#_nd->decl;
+   if (! $eachcgrblo#_dcl) continue;
+   if (TREE_CODE($eachcgrblo#_dcl) != FUNCTION_DECL) continue;
+   $eachcgrblo#_fun = DECL_STRUCT_FUNCTION($eachcgrblo#_dcl);
+   if (!$eachcgrblo#_fun) continue;
+   $eachcgrblo#_bb = ENTRY_BLOCK_PTR_FOR_FUNCTION($eachcgrblo#_fun);
+   if (! $eachcgrblo#_bb) continue;
+   $funtree = $eachcgrblo#_dcl;
+   $funbb = $eachcgrblo#_bb;
+  }#
+  ;;after expansion
+  #{ } }# )
+
+
+;;; iterate on evey basicblock of the current cfun
+(defciterator each_bb_cfun
+  ()					;startformals
+  eachbbcfun				;state symbol
+  (					;local formals
+   :basicblock cfunbb 
+   :tree cfundecl
+   )	
+  ;;before expansion
+  #{
+   /* start $eachbbcfun */
+   basic_block  $eachbbcfun#_bb = NULL;
+   if (cfun) {
+     $cfundecl  = cfun->decl;
+    FOR_EACH_BB_FN($eachbbcfun#_bb, cfun) {
+      if (!$eachbbcfun#_bb) continue;
+      $cfunbb  = $eachbbcfun#_bb;
+ }#
+ ;;after expansion
+ #{ }} /* end $eachbbcfun */  
+ }# )
+
+;; debug_tree is ok even for nil trees
+(defprimitive debugtree (:cstring msg :tree tr) :void
+  #{ do {debugeprintfnonl("debugtree %s @%p /%s ", $msg, (void*)$tr, 
+		       ($tr)?tree_code_name[TREE_CODE($tr)]:" *niltree*");
+  if (flag_basilys_debug) debug_tree($tr);}while(0)
+  }#
+)
+
+
+;; debug_edge is ok even for nil
+(defprimitive debugedge (:cstring msg :edge eg) :void
+  #{ do {debugeprintfnonl("debugedge %s @%p ", $msg, (void*)$eg);
+  if (flag_basilys_debug) { if ($eg) dump_edge_info(stderr,$eg,1);
+  fputc('\n',stderr); }
+ }while(0)  }#
+)
+
+;; the basic block source of an edge
+(defprimitive edge_src_bb (:edge eg) :basicblock
+#{ ($eg)?($eg->src):NULL }#)
+
+;; the basic block destination of an edge
+(defprimitive edge_dest_bb (:edge eg) :basicblock
+#{ ($eg)?($eg->dest):NULL }#)
+
+;; test if an edge is for a true value of a branch
+(defprimitive edge_for_true_value (:edge eg) :long
+#{ ($eg && $eg->flags & EDGE_TRUE_VALUE) }#)
+;; test if an edge is for a false value of a branch
+(defprimitive edge_for_false_value (:edge eg) :long
+#{ ($eg && $eg->flags & EDGE_FALSE_VALUE) }#)
+
+(defprimitive debugtreecodenum  (:cstring msg :long opcod) :void
+  #{ debugeprintf("debugtreecodenum %s #%ld %s", $msg, 
+		  $opcod, tree_code_name[$opcod]);
+}#)
+
+;; debug_gimple_stmt is ok even for nil gimples
+(defprimitive debuggimple(:cstring msg :gimple g) :void
+  #{ do{debugeprintfnonl("debuggimple %s @%p /%s ", $msg , (void*)$g, 
+			 ($g)?gimple_code_name[gimple_code($g)]: "*nil*");
+  if ($g && gimple_location($g))
+    debugeprintf_raw("{%s:%d} ", LOCATION_FILE(gimple_location($g)), 
+		     LOCATION_LINE(gimple_location($g)));
+  if (flag_basilys_debug) debug_gimple_stmt($g);} while(0)
+}# )
+
+(defprimitive debuggimpleseq(:cstring msg :gimpleseq gs) :void
+  #{ do{debugeprintf("debuggimpleseq %s @%p", $msg, (void*)$gs);
+  if (flag_basilys_debug && $gs) debug_gimple_seq($gs);}while(0) 
+  }#)
+
+(defprimitive debugbasicblock(:cstring msg :basicblock bb) :void
+  #{ do{debugeprintf("debugbasicblock %s @%p", $msg, (void*)$bb);
+  if (flag_basilys_debug && $bb) debug_bb($bb);}while(0) 
+}#)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; gimpleseq iteration
+;;;; iterate on a gimpleseq
+(defciterator each_in_gimpleseq
+  (:gimpleseq gseq)			;start formals
+  eachgimplseq
+  (:gimple g)				;local formals
+  ;;; before expansion
+  #{
+   gimple_stmt_iterator gsi_$eachgimplseq;
+   if ($gseq) 
+     for (gsi_$eachgimplseq = gsi_start ($gseq);
+	  !gsi_end_p (gsi_$eachgimplseq);
+	  gsi_next (&gsi_$eachgimplseq)) {
+    $g  = gsi_stmt (gsi_$eachgimplseq);
+   }#
+  ;;; after expansion
+  #{ } }# )
+
+
+;;;; reverseiterate on a gimpleseq
+(defciterator reveach_in_gimpleseq
+  (:gimpleseq gseq)			;start formals
+  eachgimplseq
+  (:gimple g)				;local formals
+  ;;; before expansion
+  #{
+   gimple_stmt_iterator gsi_$eachgimplseq;
+   if ($gseq) 
+     for (gsi_$eachgimplseq = gsi_last ($gseq); 
+          !gsi_end_p (gsi_$eachgimplseq);
+	  gsi_prev (&gsi_$eachgimplseq)) {
+    $g = gsi_stmt (gsi_$eachgimplseq);
+  }#
+  ;;; after expansion
+  #{ } }# )
+
+;; apply a function to each boxed gimple in a gimple seq
+(defun do_each_gimpleseq (f :gimpleseq gseq)
+  (each_in_gimpleseq 
+   (gseq) (:gimple g)
+   (let ( (gplval (make_gimple discr_gimple g)) )
+     (f gplval)))
+)
+
+
+;; apply a function to each boxed gimple in a gimple seq
+(defun do_reveach_gimpleseq (f :gimpleseq gseq)
+  (reveach_in_gimpleseq 
+   (gseq) (:gimple g)
+   (let ( (gplval (make_gimple discr_gimple g)) )
+     (f gplval)))
+)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; basicblock iteration
+
+(defciterator eachgimple_in_basicblock
+  (:basicblock bb)			;start formals
+  eachgimpbb
+  (:gimple g)				;local formals
+  ;;; before expansion
+  #{
+   /* start $eachgimpbb */ 
+   gimple_stmt_iterator gsi_$eachgimpbb;
+   if ($bb) 
+     for (gsi_$eachgimpbb = gsi_start_bb ($bb);
+          !gsi_end_p (gsi_$eachgimpbb);
+          gsi_next (&gsi_$eachgimpbb)) {
+       $g = gsi_stmt (gsi_$eachgimpbb);
+  }#
+  ;;; after expansion
+  #{ } /* end $eachgimpbb */ }#  )
+  
+
+(defun do_eachgimple_in_basicblock (f :basicblock bb)
+  (eachgimple_in_basicblock 
+   (bb) (:gimple g)
+   (let ( (gplval (make_gimple discr_gimple g)) )
+     (f gplval)))
+   )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; gimpleseq iteration
+;;;; iterate on a function formal parameters
+(defciterator each_param_in_fundecl
+  ( :tree fundeclt )			;start formals
+  eachparamfun
+  ( :tree paramdclt )				;local formals
+  ;;; before expansion
+  #{
+   /*eachparaminfunctiondecl*/
+   tree $eachparamfun#_tr=NULL;
+   if (($fundeclt) && TREE_CODE($fundeclt) == FUNCTION_DECL)
+     for ($eachparamfun#_tr = DECL_ARGUMENTS($fundeclt);
+          $eachparamfun#_tr != NULL;
+          $eachparamfun#_tr = TREE_CHAIN($eachparamfun#_tr)) {
+ 	    $paramdclt = $eachparamfun#_tr;
+  }#
+  ;;; after expansion
+  #{
+   }/*end eachparaminfunctiondecl*/
+  }# )
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(export_values
+ ==g
+ ==t
+ basicblock_content
+ basicblock_gimpleseq
+ basicblock_phinodes
+ basicblock_single_succ 
+ clear_special 
+ debug_ppl_coefficient
+ debug_ppl_constraint
+ debug_ppl_linear_expression
+ debug_ppl_polyhedron 
+ debugbasicblock
+ debugedge
+ debuggimple
+ debuggimpleseq
+ debugtree
+ debugtreecodenum
+ each_bb_cfun
+ each_cgraph_fun_body
+ each_cgraph_fun_entryblock
+ each_in_gimpleseq
+ each_param_in_fundecl
+ eachgimple_in_basicblock
+ edge_dest_bb
+ edge_for_false_value
+ edge_for_true_value 
+ edge_src_bb
+ fetch_gdbmstate
+ fetch_gdbmstate_constr
+ foreach_basicblock_succ_edge
+ foreach_mapbasicblock
+ foreach_maptree
+ gimple_assign_binaryop
+ gimple_assign_cast
+ gimple_assign_ceil_div
+ gimple_assign_ceil_mod
+ gimple_assign_copy
+ gimple_assign_exact_div
+ gimple_assign_floor_div
+ gimple_assign_floor_mod
+ gimple_assign_mult 
+ gimple_assign_plus 
+ gimple_assign_pointerplus
+ gimple_assign_rdiv
+ gimple_assign_round_div
+ gimple_assign_round_mod
+ gimple_assign_single
+ gimple_assign_ssa_name_copy 
+ gimple_assign_trunc_div
+ gimple_assign_trunc_mod
+ gimple_assign_unary_nop
+ gimple_call
+ gimple_call_nth_arg  
+ gimple_cond_false
+ gimple_cond_greater
+ gimple_cond_less 
+ gimple_cond_lessequal
+ gimple_cond_notequal
+ gimple_cond_true 
+ gimple_content
+ gimple_return
+ gimpleseq_content 
+ gimpleval
+ inform_at_tree
+ insert_ppl_constraint_in_boxed_system 
+ install_melt_gcc_pass
+ is_basicblock
+ is_gimple
+ is_gimpleseq  
+ is_mapbasicblock 
+ is_maptree
+ is_tree  
+ make_basicblock
+ make_gimple
+ make_gimpleseq
+ make_mapbasicblock
+ make_maptree
+ make_ppl_constraint 
+ make_ppl_linear_expression  
+ make_ppl_polyhedron_cloned
+ make_ppl_polyhedron_same 
+ make_tree  
+ mapbasicblock_count
+ mapbasicblock_get
+ mapbasicblock_nth_attr
+ mapbasicblock_nth_val 
+ mapbasicblock_put
+ mapbasicblock_remove  
+ mapbasicblock_size 
+ maptree_count
+ maptree_get
+ maptree_nth_attr
+ maptree_nth_val
+ maptree_put
+ maptree_remove
+ maptree_size
+ notnull_basicblock
+ null_basicblock
+ pop_cfun
+ ppl_Constraint_System_insert_Constraint
+ ppl_Linear_Expression_add_to_coefficient
+ ppl_Linear_Expression_add_to_inhomogeneous
+ ppl_NNC_Polyhedron_from_Constraint_System  
+ ppl_Polyhedron_add_constraint
+ ppl_Polyhedron_is_empty 
+ ppl_clone_constraint_system
+ ppl_coefficient_content 
+ ppl_coefficient_from_long
+ ppl_coefficient_from_tree 
+ ppl_constraint_content 
+ ppl_constraint_system_content 
+ ppl_delete_Coefficient  
+ ppl_delete_Constraint  
+ ppl_delete_Linear_Expression 
+ ppl_delete_Polyhedron  
+ ppl_new_empty_constraint_system
+ ppl_new_unsatisfiable_constraint_system 
+ ppl_polyhedron_content
+ ppl_ppstrbuf  
+ ppstrbuf_basicblock 
+ ppstrbuf_gimple
+ ppstrbuf_gimple_seq
+ ppstrbuf_tree
+ push_cfun_decl
+ put_gdbmstate
+ put_gdbmstate_constr
+ raw_new_ppl_empty_constraint_system
+ raw_new_ppl_unsatisfiable_constraint_system
+ reveach_in_gimpleseq
+ tree_block
+ tree_content 
+ tree_decl
+ tree_function_decl 
+ tree_integer_cst
+ tree_integer_type
+ tree_parm_decl
+ tree_ssa_name 
+ tree_type
+ tree_variable_decl
+)
+
+(export_class
+ class_analysis_state
+)
+;; eof ana-base.melt

@@ -1,6 +1,6 @@
 /* Definitions of target machine for GNU compiler.
    Renesas H8/300 version
-   Copyright (C) 2000, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
    Contributed by Steve Chamberlain (sac@cygnus.com),
    Jim Wilson (wilson@cygnus.com), and Doug Evans (dje@cygnus.com).
 
@@ -8,7 +8,7 @@ This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
 
 GCC is distributed in the hope that it will be useful,
@@ -17,9 +17,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_H8300_PROTOS_H
 #define GCC_H8300_PROTOS_H
@@ -45,7 +44,8 @@ extern const char *output_logical_op (enum machine_mode, rtx *);
 extern unsigned int compute_logical_op_length (enum machine_mode,
 					       rtx *);
 extern int compute_logical_op_cc (enum machine_mode, rtx *);
-extern void h8300_expand_branch (enum rtx_code, rtx);
+extern void h8300_expand_branch (rtx[]);
+extern void h8300_expand_store (rtx[]);
 extern bool expand_a_shift (enum machine_mode, int, rtx[]);
 extern int h8300_shift_needs_scratch_p (int, enum machine_mode);
 extern int expand_a_rotate (rtx[]);
@@ -60,7 +60,6 @@ extern int same_cmp_preceding_p (rtx);
 extern int same_cmp_following_p (rtx);
 
 extern int h8300_legitimate_constant_p (rtx);
-extern int h8300_legitimate_address_p (enum machine_mode, rtx, int);
 
 /* Used in builtins.c */
 extern rtx h8300_return_addr_rtx (int, rtx);

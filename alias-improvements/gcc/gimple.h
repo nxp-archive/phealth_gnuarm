@@ -1,6 +1,6 @@
 /* Gimple IR definitions.
 
-   Copyright 2007, 2008 Free Software Foundation, Inc.
+   Copyright 2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Aldy Hernandez <aldyh@redhat.com>
 
 This file is part of GCC.
@@ -33,6 +33,10 @@ along with GCC; see the file COPYING3.  If not see
 DEF_VEC_P(gimple);
 DEF_VEC_ALLOC_P(gimple,heap);
 DEF_VEC_ALLOC_P(gimple,gc);
+
+typedef gimple *gimple_p;
+DEF_VEC_P(gimple_p);
+DEF_VEC_ALLOC_P(gimple_p,heap);
 
 DEF_VEC_P(gimple_seq);
 DEF_VEC_ALLOC_P(gimple_seq,gc);
@@ -364,14 +368,10 @@ struct gimple_statement_with_memory_ops_base GTY(())
   struct gimple_statement_with_ops_base opbase;
 
   /* [ WORD 8-9 ]
-     Virtual operands for this statement.  */
-  tree vdef;
-  tree vuse;
-
-  /* [ WORD 10-11 ]
-     Symbols stored/loaded by this statement.  */
-  bitmap GTY((skip (""))) stores;
-  bitmap GTY((skip (""))) loads;
+     Virtual operands for this statement.  The GC will pick them
+     up via the ssa_names array.  */
+  tree GTY((skip (""))) vdef;
+  tree GTY((skip (""))) vuse;
 };
 
 
@@ -379,10 +379,10 @@ struct gimple_statement_with_memory_ops_base GTY(())
 
 struct gimple_statement_with_memory_ops GTY(())
 {
-  /* [ WORD 1-10 ]  */
+  /* [ WORD 1-9 ]  */
   struct gimple_statement_with_memory_ops_base membase;
 
-  /* [ WORD 11 ]
+  /* [ WORD 10 ]
      Operand vector.  NOTE!  This must always be the last field
      of this structure.  In particular, this means that this
      structure cannot be embedded inside another one.  */
@@ -545,20 +545,20 @@ struct gimple_statement_wce GTY(())
 
 struct gimple_statement_asm GTY(())
 {
-  /* [ WORD 1-10 ]  */
+  /* [ WORD 1-9 ]  */
   struct gimple_statement_with_memory_ops_base membase;
 
-  /* [ WORD 11 ]
+  /* [ WORD 10 ]
      __asm__ statement.  */
   const char *string;
 
-  /* [ WORD 12 ]
+  /* [ WORD 11 ]
        Number of inputs, outputs and clobbers.  */
   unsigned char ni;
   unsigned char no;
   unsigned short nc;
 
-  /* [ WORD 13 ]
+  /* [ WORD 12 ]
      Operand vector.  NOTE!  This must always be the last field
      of this structure.  In particular, this means that this
      structure cannot be embedded inside another one.  */
@@ -859,10 +859,6 @@ extern bool is_gimple_stmt (tree);
 extern bool is_gimple_reg_type (tree);
 /* Returns true iff T is a scalar register variable.  */
 extern bool is_gimple_reg (tree);
-/* Returns true if T is a GIMPLE temporary variable, false otherwise.  */
-extern bool is_gimple_formal_tmp_var (tree);
-/* Returns true if T is a GIMPLE temporary register variable.  */
-extern bool is_gimple_formal_tmp_reg (tree);
 /* Returns true iff T is any sort of variable.  */
 extern bool is_gimple_variable (tree);
 /* Returns true iff T is any sort of symbol.  */
@@ -894,7 +890,6 @@ extern bool is_gimple_asm_val (tree);
 /* Returns true iff T is a valid rhs for a MODIFY_EXPR where the LHS is a
    GIMPLE temporary, a renamed user variable, or something else,
    respectively.  */
-extern bool is_gimple_formal_tmp_rhs (tree);
 extern bool is_gimple_reg_rhs (tree);
 extern bool is_gimple_mem_rhs (tree);
 
@@ -1405,29 +1400,6 @@ gimple_set_vdef (gimple g, tree vdef)
 {
   gcc_assert (gimple_has_mem_ops (g));
   g->gsmem.membase.vdef = vdef;
-}
-
-/* Return the set of symbols loaded by statement G.  Each element of the
-   set is the DECL_UID of the corresponding symbol.  */
-
-static inline bitmap
-gimple_loaded_syms (const_gimple g)
-{
-  if (!gimple_has_mem_ops (g))
-    return NULL;
-  return g->gsmem.membase.loads;
-}
-
-
-/* Return the set of symbols stored by statement G.  Each element of
-   the set is the DECL_UID of the corresponding symbol.  */
-
-static inline bitmap
-gimple_stored_syms (const_gimple g)
-{
-  if (!gimple_has_mem_ops (g))
-    return NULL;
-  return g->gsmem.membase.stores;
 }
 
 

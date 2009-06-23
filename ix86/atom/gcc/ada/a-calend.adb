@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2008, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -150,6 +148,7 @@ package body Ada.Calendar is
    Ada_Min_Year          : constant Year_Number := Year_Number'First;
    Secs_In_Four_Years    : constant := (3 * 365 + 366) * Secs_In_Day;
    Secs_In_Non_Leap_Year : constant := 365 * Secs_In_Day;
+   Nanos_In_Four_Years   : constant := Secs_In_Four_Years * Nano;
 
    --  Lower and upper bound of Ada time. The zero (0) value of type Time is
    --  positioned at year 2150. Note that the lower and upper bound account
@@ -178,6 +177,10 @@ package body Ada.Calendar is
 
    Unix_Min : constant Time_Rep :=
                 Ada_Low + Time_Rep (17 * 366 + 52 * 365) * Nanos_In_Day;
+
+   Epoch_Offset : constant Time_Rep := (136 * 365 + 44 * 366) * Nanos_In_Day;
+   --  The difference between 2150-1-1 UTC and 1970-1-1 UTC expressed in
+   --  nanoseconds. Note that year 2100 is non-leap.
 
    Cumulative_Days_Before_Month :
      constant array (Month_Number) of Natural :=
@@ -767,11 +770,6 @@ package body Ada.Calendar is
 
    package body Conversion_Operations is
 
-      Epoch_Offset : constant Time_Rep :=
-                       (136 * 365 + 44 * 366) * Nanos_In_Day;
-      --  The difference between 2150-1-1 UTC and 1970-1-1 UTC expressed in
-      --  nanoseconds. Note that year 2100 is non-leap.
-
       -----------------
       -- To_Ada_Time --
       -----------------
@@ -974,6 +972,15 @@ package body Ada.Calendar is
       -----------------
 
       function To_Duration (Date : Time) return Duration is
+         pragma Unsuppress (Overflow_Check);
+
+         Safe_Ada_High : constant Time_Rep := Ada_High - Epoch_Offset;
+         --  This value represents a "safe" end of time. In order to perform a
+         --  proper conversion to Unix duration, we will have to shift origins
+         --  at one point. For very distant dates, this means an overflow check
+         --  failure. To prevent this, the function returns the "safe" end of
+         --  time (roughly 2219) which is still distant enough.
+
          Elapsed_Leaps : Natural;
          Next_Leap_N   : Time_Rep;
          Res_N         : Time_Rep;
@@ -981,8 +988,8 @@ package body Ada.Calendar is
       begin
          Res_N := Time_Rep (Date);
 
-         --  If the target supports leap seconds, remove any leap seconds
-         --  elapsed up to the input date.
+         --  Step 1: If the target supports leap seconds, remove any leap
+         --  seconds elapsed up to the input date.
 
          if Leap_Support then
             Cumulative_Leap_Seconds
@@ -1002,10 +1009,17 @@ package body Ada.Calendar is
 
          Res_N := Res_N - Time_Rep (Elapsed_Leaps) * Nano;
 
-         --  Perform a shift in origins, note that enforcing type Time on
-         --  both operands will invoke Ada.Calendar."-".
+         --  Step 2: Perform a shift in origins to obtain a Unix equivalent of
+         --  the input. Guard against very large delay values such as the end
+         --  of time since the computation will overflow.
 
-         return Time (Res_N) - Time (Unix_Min);
+         if Res_N > Safe_Ada_High then
+            Res_N := Safe_Ada_High;
+         else
+            Res_N := Res_N + Epoch_Offset;
+         end if;
+
+         return Time_Rep_To_Duration (Res_N);
       end To_Duration;
 
    end Delay_Operations;
@@ -1304,7 +1318,9 @@ package body Ada.Calendar is
          --  the input date.
 
          Count := (Year - Year_Number'First) / 4;
-         Res_N := Res_N + Time_Rep (Count) * Secs_In_Four_Years * Nano;
+         for Four_Year_Segments in 1 .. Count loop
+            Res_N := Res_N + Nanos_In_Four_Years;
+         end loop;
 
          --  Note that non-leap centennial years are automatically considered
          --  leap in the operation above. An adjustment of several days is

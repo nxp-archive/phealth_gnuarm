@@ -1,5 +1,6 @@
 /* Subroutines used for code generation on Vitesse IQ2000 processors
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -88,7 +89,7 @@ struct iq2000_frame_info
   int  num_gp;			/* Number of gp registers saved.  */
 } iq2000_frame_info;
 
-struct machine_function GTY(())
+struct GTY(()) machine_function
 {
   /* Current frame information, calculated by compute_frame_size.  */
   long total_size;		/* # bytes that the entire frame takes up.  */
@@ -116,13 +117,6 @@ enum processor_type iq2000_tune;
 
 /* Which instruction set architecture to use.  */
 int iq2000_isa;
-
-/* Cached operands, and operator to compare for use in set/branch/trap
-   on condition codes.  */
-rtx branch_cmp[2];
-
-/* What type of branch to use.  */
-enum cmp_type branch_type;
 
 /* Local variables.  */
 
@@ -161,13 +155,16 @@ static bool iq2000_return_in_memory   (const_tree, const_tree);
 static void iq2000_setup_incoming_varargs (CUMULATIVE_ARGS *,
 					   enum machine_mode, tree, int *,
 					   int);
-static bool iq2000_rtx_costs          (rtx, int, int, int *);
-static int  iq2000_address_cost       (rtx);
+static bool iq2000_rtx_costs          (rtx, int, int, int *, bool);
+static int  iq2000_address_cost       (rtx, bool);
 static section *iq2000_select_section (tree, int, unsigned HOST_WIDE_INT);
+static rtx  iq2000_legitimize_address (rtx, rtx, enum machine_mode);
 static bool iq2000_pass_by_reference  (CUMULATIVE_ARGS *, enum machine_mode,
 				       const_tree, bool);
 static int  iq2000_arg_partial_bytes  (CUMULATIVE_ARGS *, enum machine_mode,
 				       tree, bool);
+static void iq2000_va_start	      (tree, rtx);
+static bool iq2000_legitimate_address_p (enum machine_mode, rtx, bool);
 
 #undef  TARGET_INIT_BUILTINS
 #define TARGET_INIT_BUILTINS 		iq2000_init_builtins
@@ -183,6 +180,9 @@ static int  iq2000_arg_partial_bytes  (CUMULATIVE_ARGS *, enum machine_mode,
 #define TARGET_ADDRESS_COST		iq2000_address_cost
 #undef  TARGET_ASM_SELECT_SECTION
 #define TARGET_ASM_SELECT_SECTION	iq2000_select_section
+
+#undef TARGET_LEGITIMIZE_ADDRESS
+#define TARGET_LEGITIMIZE_ADDRESS	iq2000_legitimize_address
 
 /* The assembler supports switchable .bss sections, but
    iq2000_select_section doesn't yet make use of them.  */
@@ -209,6 +209,12 @@ static int  iq2000_arg_partial_bytes  (CUMULATIVE_ARGS *, enum machine_mode,
 #define TARGET_SETUP_INCOMING_VARARGS	iq2000_setup_incoming_varargs
 #undef  TARGET_STRICT_ARGUMENT_NAMING
 #define TARGET_STRICT_ARGUMENT_NAMING	hook_bool_CUMULATIVE_ARGS_true
+
+#undef	TARGET_EXPAND_BUILTIN_VA_START
+#define	TARGET_EXPAND_BUILTIN_VA_START	iq2000_va_start
+
+#undef TARGET_LEGITIMATE_ADDRESS_P
+#define TARGET_LEGITIMATE_ADDRESS_P	iq2000_legitimate_address_p
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
@@ -247,12 +253,12 @@ iq2000_reg_mode_ok_for_base_p (rtx reg,
    memory operand of the indicated MODE.  STRICT is nonzero if this
    function is called during reload.  */
 
-int
-iq2000_legitimate_address_p (enum machine_mode mode, rtx xinsn, int strict)
+bool
+iq2000_legitimate_address_p (enum machine_mode mode, rtx xinsn, bool strict)
 {
   if (TARGET_DEBUG_A_MODE)
     {
-      GO_PRINTF2 ("\n========== GO_IF_LEGITIMATE_ADDRESS, %sstrict\n",
+      GO_PRINTF2 ("\n========== legitimate_address_p, %sstrict\n",
 		  strict ? "" : "not ");
       GO_DEBUG_RTX (xinsn);
     }
@@ -309,7 +315,7 @@ iq2000_legitimate_address_p (enum machine_mode mode, rtx xinsn, int strict)
     }
 
   if (TARGET_DEBUG_A_MODE)
-    GO_PRINTF ("Not a legitimate address\n");
+    GO_PRINTF ("Not a enum machine_mode mode, legitimate address\n");
 
   /* The address was not legitimate.  */
   return 0;
@@ -740,7 +746,7 @@ iq2000_move_1word (rtx operands[], rtx insn, int unsignedp)
 /* Provide the costs of an addressing mode that contains ADDR.  */
 
 static int
-iq2000_address_cost (rtx addr)
+iq2000_address_cost (rtx addr, bool speed)
 {
   switch (GET_CODE (addr))
     {
@@ -791,7 +797,7 @@ iq2000_address_cost (rtx addr)
 	  case LABEL_REF:
 	  case HIGH:
 	  case LO_SUM:
-	    return iq2000_address_cost (plus1) + 1;
+	    return iq2000_address_cost (plus1, speed) + 1;
 
 	  default:
 	    break;
@@ -933,15 +939,15 @@ gen_int_relational (enum rtx_code test_code, rtx result, rtx cmp0, rtx cmp1,
     {
       if (p_info->const_add != 0)
 	{
-	  HOST_WIDE_INT new = INTVAL (cmp1) + p_info->const_add;
+	  HOST_WIDE_INT new_const = INTVAL (cmp1) + p_info->const_add;
 
 	  /* If modification of cmp1 caused overflow,
 	     we would get the wrong answer if we follow the usual path;
 	     thus, x > 0xffffffffU would turn into x > 0U.  */
 	  if ((p_info->unsignedp
-	       ? (unsigned HOST_WIDE_INT) new >
+	       ? (unsigned HOST_WIDE_INT) new_const >
 	       (unsigned HOST_WIDE_INT) INTVAL (cmp1)
-	       : new > INTVAL (cmp1))
+	       : new_const > INTVAL (cmp1))
 	      != (p_info->const_add > 0))
 	    {
 	      /* This test is always true, but if INVERT is true then
@@ -951,7 +957,7 @@ gen_int_relational (enum rtx_code test_code, rtx result, rtx cmp0, rtx cmp1,
 	      return result;
 	    }
 	  else
-	    cmp1 = GEN_INT (new);
+	    cmp1 = GEN_INT (new_const);
 	}
     }
 
@@ -1001,60 +1007,31 @@ gen_int_relational (enum rtx_code test_code, rtx result, rtx cmp0, rtx cmp1,
    The comparison operands are saved away by cmp{si,di,sf,df}.  */
 
 void
-gen_conditional_branch (rtx operands[], enum rtx_code test_code)
+gen_conditional_branch (rtx operands[], enum machine_mode mode)
 {
-  enum cmp_type type = branch_type;
-  rtx cmp0 = branch_cmp[0];
-  rtx cmp1 = branch_cmp[1];
-  enum machine_mode mode;
+  enum rtx_code test_code = GET_CODE (operands[0]);
+  rtx cmp0 = operands[1];
+  rtx cmp1 = operands[2];
   rtx reg;
   int invert;
   rtx label1, label2;
 
-  switch (type)
+  invert = 0;
+  reg = gen_int_relational (test_code, NULL_RTX, cmp0, cmp1, &invert);
+
+  if (reg)
     {
-    case CMP_SI:
-    case CMP_DI:
-      mode = type == CMP_SI ? SImode : DImode;
-      invert = 0;
-      reg = gen_int_relational (test_code, NULL_RTX, cmp0, cmp1, &invert);
-
-      if (reg)
-	{
-	  cmp0 = reg;
-	  cmp1 = const0_rtx;
-	  test_code = NE;
-	}
-      else if (GET_CODE (cmp1) == CONST_INT && INTVAL (cmp1) != 0)
-	/* We don't want to build a comparison against a nonzero
-	   constant.  */
-	cmp1 = force_reg (mode, cmp1);
-
-      break;
-
-    case CMP_SF:
-    case CMP_DF:
-      reg = gen_reg_rtx (CCmode);
-
-      /* For cmp0 != cmp1, build cmp0 == cmp1, and test for result == 0.  */
-      emit_insn (gen_rtx_SET (VOIDmode, reg,
-			      gen_rtx_fmt_ee (test_code == NE ? EQ : test_code,
-					      CCmode, cmp0, cmp1)));
-
-      test_code = test_code == NE ? EQ : NE;
-      mode = CCmode;
       cmp0 = reg;
       cmp1 = const0_rtx;
-      invert = 0;
-      break;
-
-    default:
-      abort_with_insn (gen_rtx_fmt_ee (test_code, VOIDmode, cmp0, cmp1),
-		       "bad test");
+      test_code = NE;
     }
+  else if (GET_CODE (cmp1) == CONST_INT && INTVAL (cmp1) != 0)
+    /* We don't want to build a comparison against a nonzero
+       constant.  */
+    cmp1 = force_reg (mode, cmp1);
 
   /* Generate the branch.  */
-  label1 = gen_rtx_LABEL_REF (VOIDmode, operands[0]);
+  label1 = gen_rtx_LABEL_REF (VOIDmode, operands[3]);
   label2 = pc_rtx;
 
   if (invert)
@@ -1170,6 +1147,11 @@ function_arg_advance (CUMULATIVE_ARGS *cum, enum machine_mode mode, tree type,
       cum->arg_words += 2;
       break;
 
+    case TImode:
+      cum->gp_reg_found = 1;
+      cum->arg_words += 4;
+      break;
+
     case QImode:
     case HImode:
     case SImode:
@@ -1240,6 +1222,12 @@ function_arg (CUMULATIVE_ARGS *cum, enum machine_mode mode, const_tree type,
     case DImode:
       cum->arg_words += (cum->arg_words & 1);
       regbase = GP_ARG_FIRST;
+      break;
+
+    case TImode:
+      cum->arg_words += (cum->arg_words & 3);
+      regbase = GP_ARG_FIRST;
+      break;
     }
 
   if (*arg_words >= (unsigned) MAX_ARGS_IN_REGISTERS)
@@ -1357,14 +1345,14 @@ iq2000_arg_partial_bytes (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 
 /* Implement va_start.  */
 
-void
+static void
 iq2000_va_start (tree valist, rtx nextarg)
 {
   int int_arg_words;
   /* Find out how many non-float named formals.  */
   int gpr_save_area_size;
   /* Note UNITS_PER_WORD is 4 bytes.  */
-  int_arg_words = current_function_args_info.arg_words;
+  int_arg_words = crtl->args.info.arg_words;
 
   if (int_arg_words < 8 )
     /* Adjust for the prologue's economy measure.  */
@@ -1385,7 +1373,7 @@ iq2000_init_machine_status (void)
 {
   struct machine_function *f;
 
-  f = ggc_alloc_cleared (sizeof (struct machine_function));
+  f = GGC_CNEW (struct machine_function);
 
   return f;
 }
@@ -1611,11 +1599,11 @@ compute_frame_size (HOST_WIDE_INT size)
   mask = 0;
   extra_size = IQ2000_STACK_ALIGN ((0));
   var_size = IQ2000_STACK_ALIGN (size);
-  args_size = IQ2000_STACK_ALIGN (current_function_outgoing_args_size);
+  args_size = IQ2000_STACK_ALIGN (crtl->outgoing_args_size);
 
   /* If a function dynamically allocates the stack and
      has 0 for STACK_DYNAMIC_OFFSET then allocate some stack space.  */
-  if (args_size == 0 && current_function_calls_alloca)
+  if (args_size == 0 && cfun->calls_alloca)
     args_size = 4 * UNITS_PER_WORD;
 
   total_size = var_size + args_size + extra_size;
@@ -1631,7 +1619,7 @@ compute_frame_size (HOST_WIDE_INT size)
     }
 
   /* We need to restore these for the handler.  */
-  if (current_function_calls_eh_return)
+  if (crtl->calls_eh_return)
     {
       unsigned int i;
 
@@ -1656,7 +1644,7 @@ compute_frame_size (HOST_WIDE_INT size)
       && ! profile_flag)
     total_size = extra_size = 0;
 
-  total_size += IQ2000_STACK_ALIGN (current_function_pretend_args_size);
+  total_size += IQ2000_STACK_ALIGN (crtl->args.pretend_args_size);
 
   /* Save other computed information.  */
   cfun->machine->total_size = total_size;
@@ -1868,11 +1856,12 @@ iq2000_expand_prologue (void)
 
   /* If struct value address is treated as the first argument.  */
   if (aggregate_value_p (DECL_RESULT (fndecl), fndecl)
-      && ! current_function_returns_pcc_struct
+      && !cfun->returns_pcc_struct
       && targetm.calls.struct_value_rtx (TREE_TYPE (fndecl), 1) == 0)
     {
       tree type = build_pointer_type (fntype);
-      tree function_result_decl = build_decl (PARM_DECL, NULL_TREE, type);
+      tree function_result_decl = build_decl (BUILTINS_LOCATION,
+					      PARM_DECL, NULL_TREE, type);
 
       DECL_ARG_TYPE (function_result_decl) = type;
       TREE_CHAIN (function_result_decl) = fnargs;
@@ -2060,7 +2049,7 @@ iq2000_expand_epilogue (void)
 
       save_restore_insns (0);
 
-      if (current_function_calls_eh_return)
+      if (crtl->calls_eh_return)
 	{
 	  rtx eh_ofs = EH_RETURN_STACKADJ_RTX;
 	  emit_insn (gen_addsi3 (eh_ofs, eh_ofs, tsize_rtx));
@@ -2069,20 +2058,19 @@ iq2000_expand_epilogue (void)
 
       emit_insn (gen_blockage ());
 
-      if (tsize != 0 || current_function_calls_eh_return)
+      if (tsize != 0 || crtl->calls_eh_return)
 	{
 	  emit_insn (gen_addsi3 (stack_pointer_rtx, stack_pointer_rtx,
 				 tsize_rtx));
 	}
     }
 
-  if (current_function_calls_eh_return)
+  if (crtl->calls_eh_return)
     {
       /* Perform the additional bump for __throw.  */
       emit_move_insn (gen_rtx_REG (Pmode, HARD_FRAME_POINTER_REGNUM),
 		      stack_pointer_rtx);
-      emit_insn (gen_rtx_USE (VOIDmode, gen_rtx_REG (Pmode,
-						  HARD_FRAME_POINTER_REGNUM)));
+      emit_use (gen_rtx_REG (Pmode, HARD_FRAME_POINTER_REGNUM));
       emit_jump_insn (gen_eh_return_internal ());
     }
   else
@@ -3199,8 +3187,76 @@ print_operand (FILE *file, rtx op, int letter)
     output_addr_const (file, op);
 }
 
+
+/* For the IQ2000, transform:
+
+        memory(X + <large int>)
+   into:
+        Y = <large int> & ~0x7fff;
+        Z = X + Y
+        memory (Z + (<large int> & 0x7fff));
+*/
+
+rtx
+iq2000_legitimize_address (rtx xinsn, rtx old_x ATTRIBUTE_UNUSED,
+			   enum machine_mode mode)
+{
+  if (TARGET_DEBUG_B_MODE)
+    {
+      GO_PRINTF ("\n========== LEGITIMIZE_ADDRESS\n");
+      GO_DEBUG_RTX (xinsn);
+    }
+
+  if (iq2000_check_split (xinsn, mode))
+    {
+      return gen_rtx_LO_SUM (Pmode,
+                             copy_to_mode_reg (Pmode,
+                                               gen_rtx_HIGH (Pmode, xinsn)),
+                             xinsn);
+    }
+
+  if (GET_CODE (xinsn) == PLUS)
+    {
+      rtx xplus0 = XEXP (xinsn, 0);
+      rtx xplus1 = XEXP (xinsn, 1);
+      enum rtx_code code0 = GET_CODE (xplus0);
+      enum rtx_code code1 = GET_CODE (xplus1);
+
+      if (code0 != REG && code1 == REG)
+        {
+          xplus0 = XEXP (xinsn, 1);
+          xplus1 = XEXP (xinsn, 0);
+          code0 = GET_CODE (xplus0);
+          code1 = GET_CODE (xplus1);
+        }
+
+      if (code0 == REG && REG_MODE_OK_FOR_BASE_P (xplus0, mode)
+          && code1 == CONST_INT && !SMALL_INT (xplus1))
+        {
+          rtx int_reg = gen_reg_rtx (Pmode);
+          rtx ptr_reg = gen_reg_rtx (Pmode);
+
+          emit_move_insn (int_reg,
+                          GEN_INT (INTVAL (xplus1) & ~ 0x7fff));
+
+          emit_insn (gen_rtx_SET (VOIDmode,
+                                  ptr_reg,
+                                  gen_rtx_PLUS (Pmode, xplus0, int_reg)));
+
+          return plus_constant (ptr_reg, INTVAL (xplus1) & 0x7fff);
+        }
+    }
+
+  if (TARGET_DEBUG_B_MODE)
+    GO_PRINTF ("LEGITIMIZE_ADDRESS could not fix.\n");
+
+  return xinsn;
+}
+
+
 static bool
-iq2000_rtx_costs (rtx x, int code, int outer_code ATTRIBUTE_UNUSED, int * total)
+iq2000_rtx_costs (rtx x, int code, int outer_code ATTRIBUTE_UNUSED, int * total,
+		  bool speed ATTRIBUTE_UNUSED)
 {
   enum machine_mode mode = GET_MODE (x);
 

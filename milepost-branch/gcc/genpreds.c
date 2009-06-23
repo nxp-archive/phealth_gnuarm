@@ -2,7 +2,7 @@
    - prototype declarations for operand predicates (tm-preds.h)
    - function definitions of operand predicates, if defined new-style
      (insn-preds.c)
-   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2007
+   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -234,7 +234,7 @@ needs_variable (rtx exp, const char *var)
 	if (q != p && (ISALNUM (q[-1]) || q[-1] == '_'))
 	  return false;
 	q += strlen (var);
-	if (ISALNUM (q[0] || q[0] == '_'))
+	if (ISALNUM (q[0]) || q[0] == '_')
 	  return false;
       }
       return true;
@@ -674,6 +674,7 @@ struct constraint_data
   unsigned int is_extra     : 1;
   unsigned int is_memory    : 1;
   unsigned int is_address   : 1;
+  unsigned int is_overloaded : 1; /* Set for all but the first definition.  */
 };
 
 /* Overview of all constraints beginning with a given letter.  */
@@ -690,8 +691,11 @@ static struct constraint_data **last_constraint_ptr = &first_constraint;
   for (iter_ = first_constraint; iter_; iter_ = iter_->next_textual)
 
 /* These letters, and all names beginning with them, are reserved for
-   generic constraints.  */
-static const char generic_constraint_letters[] = "EFVXgimnoprs";
+   generic constraints.
+   The 'm' constraint is not mentioned here since that constraint
+   letter can be overridden by the back end by defining the
+   TARGET_MEM_CONSTRAINT macro.  */
+static const char generic_constraint_letters[] = "EFVXginoprs";
 
 /* Machine-independent code expects that constraints with these
    (initial) letters will allow only (a subset of all) CONST_INTs.  */
@@ -729,7 +733,7 @@ mangle (const char *name)
       }
 
   obstack_1grow (rtl_obstack, '\0');
-  return obstack_finish (rtl_obstack);
+  return XOBFINISH (rtl_obstack, const char *);
 }
 
 /* Add one constraint, of any sort, to the tables.  NAME is its name;
@@ -754,6 +758,7 @@ add_constraint (const char *name, const char *regclass,
   bool is_const_int;
   bool is_const_dbl;
   size_t namelen;
+  bool is_overloaded = 0;
 
   if (exp && validate_exp (exp, name, lineno))
     return;
@@ -813,10 +818,29 @@ add_constraint (const char *name, const char *regclass,
 
       if (!strcmp ((*iter)->name, name))
 	{
-	  message_with_line (lineno, "redefinition of constraint '%s'", name);
-	  message_with_line ((*iter)->lineno, "previous definition is here");
-	  have_error = 1;
-	  return;
+	  /* An exact match is OK if the purpose is to overload the constraint.
+	   */
+	  if (is_overloaded)
+	    ; /* We've already warned against the 1st definition.  */
+	  else if ((*iter)->is_register != (regclass != 0)
+		   || (*iter)->is_memory != is_memory
+		   || (*iter)->is_address != is_address)
+	    {
+	      message_with_line (lineno,
+				 "overloading of constraint '%s'", name);
+	      message_with_line ((*iter)->lineno,
+				 "previous definition is here");
+	      is_overloaded = 1;
+	    }
+	  else
+	    {
+	      message_with_line (lineno,
+				 "redefinition of constraint '%s'", name);
+	      message_with_line ((*iter)->lineno,
+				 "previous definition is here");
+	      have_error = 1;
+	      return;
+	    }
 	}
       else if (!strncmp ((*iter)->name, name, (*iter)->namelen))
 	{
@@ -894,7 +918,7 @@ add_constraint (const char *name, const char *regclass,
     }
 
   
-  c = obstack_alloc (rtl_obstack, sizeof (struct constraint_data));
+  c = XOBNEW (rtl_obstack, struct constraint_data);
   c->name = name;
   c->c_name = need_mangled_name ? mangle (name) : name;
   c->lineno = lineno;
@@ -907,6 +931,7 @@ add_constraint (const char *name, const char *regclass,
   c->is_extra = !(regclass || is_const_int || is_const_dbl);
   c->is_memory = is_memory;
   c->is_address = is_address;
+  c->is_overloaded = is_overloaded;
 
   c->next_this_letter = *slot;
   *slot = c;
@@ -955,8 +980,9 @@ write_enum_constraint_num (void)
 	 "{\n"
 	 "  CONSTRAINT__UNKNOWN = 0", stdout);
   FOR_ALL_CONSTRAINTS (c)
-    printf (",\n  CONSTRAINT_%s", c->c_name);
-  puts ("\n};\n");
+    if (!c->is_overloaded)
+      printf (",\n  CONSTRAINT_%s", c->c_name);
+  puts (",\n  CONSTRAINT__LIMIT\n};\n");
 }
 
 /* Write out a function which looks at a string and determines what
@@ -984,9 +1010,10 @@ write_lookup_constraint (void)
 	{
 	  do
 	    {
-	      printf ("      if (!strncmp (str, \"%s\", %lu))\n"
-		      "        return CONSTRAINT_%s;\n",
-		      c->name, (unsigned long int) c->namelen, c->c_name);
+	      if (!c->is_overloaded)
+		printf ("      if (!strncmp (str, \"%s\", %lu))\n"
+			"        return CONSTRAINT_%s;\n",
+			c->name, (unsigned long int) c->namelen, c->c_name);
 	      c = c->next_this_letter;
 	    }
 	  while (c);
@@ -1000,26 +1027,44 @@ write_lookup_constraint (void)
 	"}\n");
 }
 
-/* Write out the function which computes constraint name lengths from
-   their enumerators. */
+/* Write out a function which looks at a string and determines what
+   the constraint name length is.  */
 static void
 write_insn_constraint_len (void)
 {
-  struct constraint_data *c;
+  unsigned int i;
 
-  if (constraint_max_namelen == 1)
-    return;
-
-  puts ("size_t\n"
-	"insn_constraint_len (enum constraint_num c)\n"
+  puts ("static inline size_t\n"
+	"insn_constraint_len (char fc, const char *str ATTRIBUTE_UNUSED)\n"
 	"{\n"
-	"  switch (c)\n"
+	"  switch (fc)\n"
 	"    {");
 
-  FOR_ALL_CONSTRAINTS (c)
-    if (c->namelen > 1)
-      printf ("    case CONSTRAINT_%s: return %lu;\n", c->c_name,
-	      (unsigned long int) c->namelen);
+  for (i = 0; i < ARRAY_SIZE(constraints_by_letter_table); i++)
+    {
+      struct constraint_data *c = constraints_by_letter_table[i];
+
+      if (!c
+      	  || c->namelen == 1)
+	continue;
+
+      /* Constraints with multiple characters should have the same
+	 length.  */
+      {
+	struct constraint_data *c2 = c->next_this_letter;
+	size_t len = c->namelen;
+	while (c2)
+	  {
+	    if (c2->namelen != len)
+	      error ("Multi-letter constraints with first letter '%c' "
+		     "should have same length", i);
+	    c2 = c2->next_this_letter;
+	  }
+      }
+
+      printf ("    case '%c': return %lu;\n",
+	      i, (unsigned long int) c->namelen);
+    }
 
   puts ("    default: break;\n"
 	"    }\n"
@@ -1063,7 +1108,11 @@ write_tm_constrs_h (void)
 
   puts ("\
 #ifndef GCC_TM_CONSTRS_H\n\
-#define GCC_TM_CONSTRS_H\n");
+#define GCC_TM_CONSTRS_H\n\
+\n\
+#include \"multi-target.h\"\n\
+\n\
+START_TARGET_SPECIFIC\n");
 
   FOR_ALL_CONSTRAINTS (c)
     if (!c->is_register)
@@ -1082,7 +1131,7 @@ write_tm_constrs_h (void)
 		"{\n", c->c_name,
 		needs_op ? "op" : "ARG_UNUSED (op)");
 	if (needs_mode)
-	  puts ("enum machine_mode mode = GET_MODE (op);");
+	  puts ("  enum machine_mode mode = GET_MODE (op);");
 	if (needs_ival)
 	  puts ("  HOST_WIDE_INT ival = 0;");
 	if (needs_hval)
@@ -1108,7 +1157,10 @@ write_tm_constrs_h (void)
 	write_predicate_stmts (c->exp);
 	fputs ("}\n", stdout);
       }
-  puts ("#endif /* tm-constrs.h */");
+  puts ("\
+END_TARGET_SPECIFIC\n\
+\n\
+#endif /* tm-constrs.h */");
 }
 
 /* Write out the wrapper function, constraint_satisfied_p, that maps
@@ -1233,6 +1285,10 @@ write_tm_preds_h (void)
 #ifndef GCC_TM_PREDS_H\n\
 #define GCC_TM_PREDS_H\n\
 \n\
+#include \"multi-target.h\"\n\
+\n\
+START_TARGET_SPECIFIC\n\
+\n\
 #ifdef HAVE_MACHINE_MODES");
 
   FOR_ALL_PREDICATES (p)
@@ -1247,9 +1303,11 @@ write_tm_preds_h (void)
 	    "extern bool constraint_satisfied_p (rtx, enum constraint_num);\n");
 
       if (constraint_max_namelen > 1)
-	puts ("extern size_t insn_constraint_len (enum constraint_num);\n"
-	      "#define CONSTRAINT_LEN(c_,s_) "
-	      "insn_constraint_len (lookup_constraint (s_))\n");
+        {
+	  write_insn_constraint_len ();
+	  puts ("#define CONSTRAINT_LEN(c_,s_) "
+		"insn_constraint_len (c_,s_)\n");
+	}
       else
 	puts ("#define CONSTRAINT_LEN(c_,s_) 1\n");
       if (have_register_constraints)
@@ -1289,7 +1347,9 @@ write_tm_preds_h (void)
 	puts ("#define EXTRA_ADDRESS_CONSTRAINT(c_,s_) false\n");
     }
 
-  puts ("#endif /* tm-preds.h */");
+  puts ("END_TARGET_SPECIFIC\n"
+	"\n"
+	"#endif /* tm-preds.h */");
 }
 
 /* Write insn-preds.c.  
@@ -1328,7 +1388,10 @@ write_insn_preds_c (void)
 #include \"toplev.h\"\n\
 #include \"reload.h\"\n\
 #include \"regs.h\"\n\
-#include \"tm-constrs.h\"\n");
+#include \"multi-target.h\"\n\
+#include \"tm-constrs.h\"\n\
+\n\
+START_TARGET_SPECIFIC\n");
 
   FOR_ALL_PREDICATES (p)
     write_one_predicate_function (p);
@@ -1336,12 +1399,10 @@ write_insn_preds_c (void)
   if (constraint_max_namelen > 0)
     {
       write_lookup_constraint ();
-      write_regclass_for_constraint ();
+      if (have_register_constraints)
+	write_regclass_for_constraint ();
       write_constraint_satisfied_p ();
       
-      if (constraint_max_namelen > 1)
-	write_insn_constraint_len ();
-
       if (have_const_int_constraints)
 	write_insn_const_int_ok_for_constraint ();
 
@@ -1350,6 +1411,7 @@ write_insn_preds_c (void)
       if (have_address_constraints)
 	write_insn_extra_address_constraint ();
     }
+  puts ("END_TARGET_SPECIFIC");
 }
 
 /* Argument parsing.  */

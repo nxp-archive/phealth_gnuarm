@@ -1,6 +1,6 @@
 /* Prototypes for exported functions defined in arm.c and pe.c
-   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
-   Free Software Foundation, Inc.
+   Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
+   2009 Free Software Foundation, Inc.
    Contributed by Richard Earnshaw (rearnsha@arm.com)
    Minor hacks by Nick Clifton (nickc@cygnus.com)
 
@@ -24,8 +24,9 @@
 #define GCC_ARM_PROTOS_H
 
 extern void arm_override_options (void);
+extern void arm_optimization_options (int, int);
 extern int use_return_insn (int, rtx);
-extern int arm_regno_class (int);
+extern enum reg_class arm_regno_class (int);
 extern void arm_load_pic_register (unsigned long);
 extern int arm_volatile_func (void);
 extern const char *arm_output_epilogue (rtx);
@@ -42,9 +43,6 @@ extern unsigned int arm_dbx_register_number (unsigned int);
 extern void arm_output_fn_unwind (FILE *, bool);
   
 
-#ifdef TREE_CODE
-extern int arm_return_in_memory (const_tree);
-#endif
 #ifdef RTX_CODE
 extern bool arm_vector_mode_supported_p (enum machine_mode);
 extern int arm_hard_regno_mode_ok (unsigned int, enum machine_mode);
@@ -56,12 +54,8 @@ extern RTX_CODE arm_canonicalize_comparison (RTX_CODE, enum machine_mode,
 extern int legitimate_pic_operand_p (rtx);
 extern rtx legitimize_pic_address (rtx, enum machine_mode, rtx);
 extern rtx legitimize_tls_address (rtx, rtx);
-extern int arm_legitimate_address_p  (enum machine_mode, rtx, RTX_CODE, int);
-extern int thumb1_legitimate_address_p (enum machine_mode, rtx, int);
-extern int thumb2_legitimate_address_p  (enum machine_mode, rtx, int);
+extern int arm_legitimate_address_outer_p (enum machine_mode, rtx, RTX_CODE, int);
 extern int thumb_legitimate_offset_p (enum machine_mode, HOST_WIDE_INT);
-extern rtx arm_legitimize_address (rtx, rtx, enum machine_mode);
-extern rtx thumb_legitimize_address (rtx, rtx, enum machine_mode);
 extern rtx thumb_legitimize_reload_address (rtx *, enum machine_mode, int, int,
 					    int);
 extern int arm_const_double_rtx (rtx);
@@ -90,7 +84,7 @@ extern bool arm_cannot_force_const_mem (rtx);
 
 extern int cirrus_memory_offset (rtx);
 extern int arm_coproc_mem_operand (rtx, bool);
-extern int neon_vector_mem_operand (rtx, bool);
+extern int neon_vector_mem_operand (rtx, int);
 extern int neon_struct_mem_operand (rtx);
 extern int arm_no_early_store_addr_dep (rtx, rtx);
 extern int arm_no_early_alu_shift_dep (rtx, rtx);
@@ -125,6 +119,7 @@ extern const char *fp_immediate_constant (rtx);
 extern void arm_emit_call_insn (rtx, rtx);
 extern const char *output_call (rtx *);
 extern const char *output_call_mem (rtx *);
+void arm_emit_movpair (rtx, rtx);
 extern const char *output_mov_long_double_fpa_from_arm (rtx *);
 extern const char *output_mov_long_double_arm_from_fpa (rtx *);
 extern const char *output_mov_long_double_arm_from_arm (rtx *);
@@ -207,6 +202,10 @@ extern void arm_pr_long_calls (struct cpp_reader *);
 extern void arm_pr_no_long_calls (struct cpp_reader *);
 extern void arm_pr_long_calls_off (struct cpp_reader *);
 
+extern void arm_lang_object_attributes_init(void);
+
 extern const char *arm_mangle_type (const_tree);
+
+extern void arm_order_regs_for_local_alloc (void);
 
 #endif /* ! GCC_ARM_PROTOS_H */

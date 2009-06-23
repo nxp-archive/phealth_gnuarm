@@ -5,7 +5,7 @@
 ;;
 ;; GCC is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 ;;
 ;; GCC is distributed in the hope that it will be useful,
@@ -14,9 +14,8 @@
 ;; GNU General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with GCC; see the file COPYING.  If not, write to
-;; the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-;; Boston, MA 02110-1301, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
 
 ;;; Unused letters:
 ;;;    ABCDEF               V  YZ
@@ -43,7 +42,7 @@
 (define_constraint "I"
   "An unsigned 8 bit constant"
   (and (match_code "const_int")
-       (match_test "ival >= 0 && ival <= 255")))
+       (match_test "IN_RANGE (ival, 0, 255)")))
 
 (define_constraint "J"
   "The constant zero"
@@ -53,7 +52,7 @@
 (define_constraint "K"
   "Signed 16-bit integer constant"
   (and (match_code "const_int")
-       (match_test "ival >= -32768 && ival < 32768 ")))
+       (match_test "IN_RANGE (ival, -32768, 32767)")))
 
 (define_constraint "L"
   "A shifted signed 16-bit constant appropriate for LDAH"
@@ -69,12 +68,12 @@
 (define_constraint "N"
   "A complemented unsigned 8-bit constant"
   (and (match_code "const_int")
-       (match_test "~ival >= 0 && ~ival <= 255")))
+       (match_test "IN_RANGE (~ival, 0, 255)")))
 
 (define_constraint "O"
   "A negated unsigned 8-bit constant"
   (and (match_code "const_int")
-       (match_test "-ival >= 0 && -ival <= 255")))
+       (match_test "IN_RANGE (-ival, 0, 255)")))
 
 (define_constraint "P"
   "The constant 1, 2 or 3"
@@ -105,7 +104,7 @@
 (define_constraint "S"
   "An unsigned 6-bit constant"
   (and (match_code "const_int")
-       (match_test "ival >= 0 && ival <= 63")))
+       (match_test "IN_RANGE (ival, 0, 63)")))
 
 (define_constraint "T"
   "@internal A high-part symbol"

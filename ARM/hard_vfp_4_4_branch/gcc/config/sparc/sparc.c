@@ -1,6 +1,6 @@
 /* Subroutines for insn-output.c for SPARC.
    Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
    64-bit SPARC-V9 support by Michael Tiemann, Jim Wilson, and Doug Evans,
@@ -6120,7 +6120,7 @@ enum rtx_code
 sparc_emit_float_lib_cmp (rtx x, rtx y, enum rtx_code comparison)
 {
   const char *qpfunc;
-  rtx slot0, slot1, result, tem, tem2;
+  rtx slot0, slot1, result, tem, tem2, libfunc;
   enum machine_mode mode;
   enum rtx_code new_comparison;
 
@@ -6183,7 +6183,8 @@ sparc_emit_float_lib_cmp (rtx x, rtx y, enum rtx_code comparison)
 	  emit_move_insn (slot1, y);
 	}
 
-      emit_library_call (gen_rtx_SYMBOL_REF (Pmode, qpfunc), LCT_NORMAL,
+      libfunc = gen_rtx_SYMBOL_REF (Pmode, qpfunc);
+      emit_library_call (libfunc, LCT_NORMAL,
 			 DImode, 2,
 			 XEXP (slot0, 0), Pmode,
 			 XEXP (slot1, 0), Pmode);
@@ -6191,7 +6192,8 @@ sparc_emit_float_lib_cmp (rtx x, rtx y, enum rtx_code comparison)
     }
   else
     {
-      emit_library_call (gen_rtx_SYMBOL_REF (Pmode, qpfunc), LCT_NORMAL,
+      libfunc = gen_rtx_SYMBOL_REF (Pmode, qpfunc);
+      emit_library_call (libfunc, LCT_NORMAL,
 			 SImode, 2,
 			 x, TFmode, y, TFmode);
       mode = SImode;
@@ -6202,7 +6204,7 @@ sparc_emit_float_lib_cmp (rtx x, rtx y, enum rtx_code comparison)
      register so reload doesn't clobber the value if it needs
      the return register for a spill reg.  */
   result = gen_reg_rtx (mode);
-  emit_move_insn (result, hard_libcall_value (mode));
+  emit_move_insn (result, hard_libcall_value (mode, libfunc));
 
   switch (comparison)
     {

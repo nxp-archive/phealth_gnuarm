@@ -5293,31 +5293,34 @@ fold_cond_expr_with_comparison (tree type, tree arg0, tree arg1, tree arg2)
 	break;
 
       case GT_EXPR:
-	/* If C1 is C2 - 1, this is max(A, C2).  */
+	/* If C1 is C2 - 1, this is max(A, C2), but use ARG00's type for
+	   MAX_EXPR, to preserve the signedness of the comparison.  */
 	if (! operand_equal_p (arg2, TYPE_MIN_VALUE (type),
 			       OEP_ONLY_CONST)
 	    && operand_equal_p (arg01,
 				const_binop (MINUS_EXPR, arg2,
 					     build_int_cst (type, 1), 0),
 				OEP_ONLY_CONST))
-	  return pedantic_non_lvalue (fold_build2 (MAX_EXPR,
-						   type,
-						   fold_convert (type, arg1),
-						   arg2));
+	  return pedantic_non_lvalue (fold_convert (type,
+				      fold_build2 (MAX_EXPR, TREE_TYPE (arg00),
+						   arg00,
+						   fold_convert (TREE_TYPE (arg00),
+							         arg2))));
 	break;
 
       case GE_EXPR:
-	/* If C1 is C2 + 1, this is max(A, C2).  */
+	/* If C1 is C2 + 1, this is max(A, C2), with the same care as above.  */
 	if (! operand_equal_p (arg2, TYPE_MAX_VALUE (type),
 			       OEP_ONLY_CONST)
 	    && operand_equal_p (arg01,
 				const_binop (PLUS_EXPR, arg2,
 					     build_int_cst (type, 1), 0),
 				OEP_ONLY_CONST))
-	  return pedantic_non_lvalue (fold_build2 (MAX_EXPR,
-						   type,
-						   fold_convert (type, arg1),
-						   arg2));
+	  return pedantic_non_lvalue (fold_convert (type,
+				      fold_build2 (MAX_EXPR, TREE_TYPE (arg00),
+						   arg00,
+						   fold_convert (TREE_TYPE (arg00),
+							         arg2))));
 	break;
       case NE_EXPR:
 	break;
@@ -8174,12 +8177,12 @@ fold_unary (enum tree_code code, tree type, tree op0)
 	      && inter_prec >= final_prec)
 	    return fold_build1 (code, type, TREE_OPERAND (op0, 0));
 
-	  /* Likewise, if the intermediate and final types are either both
-	     float or both integer, we don't need the middle conversion if
-	     it is wider than the final type and doesn't change the signedness
-	     (for integers).  Avoid this if the final type is a pointer
-	     since then we sometimes need the inner conversion.  Likewise if
-	     the outer has a precision not equal to the size of its mode.  */
+	  /* Likewise, if the intermediate and initial types are either both
+	     float or both integer, we don't need the middle conversion if the
+	     former is wider than the latter and doesn't change the signedness
+	     (for integers).  Avoid this if the final type is a pointer since
+	     then we sometimes need the middle conversion.  Likewise if the
+	     final type has a precision not equal to the size of its mode.  */
 	  if (((inter_int && inside_int)
 	       || (inter_float && inside_float)
 	       || (inter_vec && inside_vec))
@@ -9292,7 +9295,8 @@ fold_comparison (enum tree_code code, tree type, tree op0, tree op1)
 	    }
 
 	  /* Fold comparisons against infinity.  */
-	  if (REAL_VALUE_ISINF (cst))
+	  if (REAL_VALUE_ISINF (cst)
+	      && MODE_HAS_INFINITIES (TYPE_MODE (TREE_TYPE (arg1))))
 	    {
 	      tem = fold_inf_compare (code, type, arg0, arg1);
 	      if (tem != NULL_TREE)
@@ -11359,6 +11363,8 @@ fold_binary (enum tree_code code, tree type, tree op0, tree op1)
 	      if (prec < HOST_BITS_PER_WIDE_INT
 		  || newmask == ~(unsigned HOST_WIDE_INT) 0)
 		{
+		  tree newmaskt;
+
 		  if (shift_type != TREE_TYPE (arg0))
 		    {
 		      tem = fold_build2 (TREE_CODE (arg0), shift_type,
@@ -11369,9 +11375,9 @@ fold_binary (enum tree_code code, tree type, tree op0, tree op1)
 		    }
 		  else
 		    tem = op0;
-		  return fold_build2 (BIT_AND_EXPR, type, tem,
-				      build_int_cst_type (TREE_TYPE (op1),
-							  newmask));
+		  newmaskt = build_int_cst_type (TREE_TYPE (op1), newmask);
+		  if (!tree_int_cst_equal (newmaskt, arg1))
+		    return fold_build2 (BIT_AND_EXPR, type, tem, newmaskt);
 		}
 	    }
 	}
@@ -11860,7 +11866,8 @@ fold_binary (enum tree_code code, tree type, tree op0, tree op1)
 	      if (code == LROTATE_EXPR || code == RROTATE_EXPR)
 	        low = low % TYPE_PRECISION (type);
 	      else if (TYPE_UNSIGNED (type) || code == LSHIFT_EXPR)
-	        return build_int_cst (type, 0);
+		return omit_one_operand (type, build_int_cst (type, 0),
+					 TREE_OPERAND (arg0, 0));
 	      else
 		low = TYPE_PRECISION (type) - 1;
 	    }

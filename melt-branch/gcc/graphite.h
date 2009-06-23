@@ -1,5 +1,5 @@
 /* Gimple Represented as Polyhedra.
-   Copyright (C) 2006, 2007, 2008  Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009  Free Software Foundation, Inc.
    Contributed by Sebastian Pop <sebastian.pop@inria.fr>.
 
 This file is part of GCC.
@@ -265,7 +265,7 @@ struct loop_to_cloog_loop_str
   CloogLoop *cloog_loop;
 };
 
-typedef struct name_tree
+typedef struct name_tree_d
 {
   tree t;
   const char *name;
@@ -277,7 +277,7 @@ DEF_VEC_ALLOC_P (name_tree, heap);
 
 /* A Single Entry, Single Exit region is a part of the CFG delimited
    by two edges.  */
-typedef struct sese
+typedef struct sese_d
 {
   /* Single ENTRY and single EXIT from the SESE region.  */
   edge entry, exit;

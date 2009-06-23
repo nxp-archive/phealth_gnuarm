@@ -1,13 +1,13 @@
 ;; GCC machine description for CRX.
 ;; Copyright (C) 1988, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-;; 2001, 2002, 2003, 2004
+;; 2001, 2002, 2003, 2004, 2007
 ;; Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
 ;; GCC is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 ;;
 ;; GCC is distributed in the hope that it will be useful,
@@ -16,9 +16,8 @@
 ;; GNU General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with GCC; see the file COPYING.  If not, write to
-;; the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-;; Boston, MA 02110-1301, USA.  */
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.  */
 
 ;;  Register numbers
 
@@ -64,6 +63,10 @@
   (ior (match_code "symbol_ref")
        (match_operand 0 "register_operand")))
 
+(define_predicate "cc_reg_operand"
+  (and (match_code "reg")
+       (match_test "REGNO (op) == CC_REGNUM")))
+
 (define_predicate "nosp_reg_operand"
   (and (match_operand 0 "register_operand")
        (match_test "REGNO (op) != SP_REGNUM")))
@@ -74,12 +77,12 @@
 
 ;;  Mode Macro Definitions
 
-(define_mode_macro ALLMT [QI HI SI SF DI DF])
-(define_mode_macro CRXMM [QI HI SI SF])
-(define_mode_macro CRXIM [QI HI SI])
-(define_mode_macro DIDFM [DI DF])
-(define_mode_macro SISFM [SI SF])
-(define_mode_macro SHORT [QI HI])
+(define_mode_iterator ALLMT [QI HI SI SF DI DF])
+(define_mode_iterator CRXMM [QI HI SI SF])
+(define_mode_iterator CRXIM [QI HI SI])
+(define_mode_iterator DIDFM [DI DF])
+(define_mode_iterator SISFM [SI SF])
+(define_mode_iterator SHORT [QI HI])
 
 (define_mode_attr tIsa [(QI "b") (HI "w") (SI "d") (SF "d")])
 (define_mode_attr lImmArith [(QI "4") (HI "4") (SI "6")])
@@ -95,20 +98,18 @@
 
 ;;  Code Macro Definitions
 
-(define_code_macro sz_xtnd [sign_extend zero_extend])
+(define_code_iterator sz_xtnd [sign_extend zero_extend])
 (define_code_attr sIsa [(sign_extend "") (zero_extend "u")])
 (define_code_attr sPat [(sign_extend "s") (zero_extend "u")])
 (define_code_attr szPat [(sign_extend "") (zero_extend "zero_")])
 (define_code_attr szIsa [(sign_extend "s") (zero_extend "z")])
 
-(define_code_macro sh_oprnd [ashift ashiftrt lshiftrt])
+(define_code_iterator sh_oprnd [ashift ashiftrt lshiftrt])
 (define_code_attr shIsa [(ashift "ll") (ashiftrt "ra") (lshiftrt "rl")])
 (define_code_attr shPat [(ashift "ashl") (ashiftrt "ashr") (lshiftrt "lshr")])
 
-(define_code_macro mima_oprnd [smax umax smin umin])
+(define_code_iterator mima_oprnd [smax umax smin umin])
 (define_code_attr mimaIsa [(smax "maxs") (umax "maxu") (smin "mins") (umin "minu")])
-
-(define_code_macro any_cond [eq ne gt gtu lt ltu ge geu le leu])
 
 ;;  Addition Instructions
 
@@ -523,9 +524,21 @@
 
 ;;  Compare and Branch Instructions
 
+(define_insn "cbranchcc4"
+  [(set (pc)
+       (if_then_else (match_operator 0 "ordered_comparison_operator"
+		       [(match_operand:CC 1 "cc_reg_operand" "r")
+			(match_operand 2 "cst4_operand" "L")])
+                     (label_ref (match_operand 3 ""))
+                     (pc)))]
+  ""
+  "b%d0\t%l3"
+  [(set_attr "length" "6")]
+)
+
 (define_insn "cbranch<mode>4"
   [(set (pc)
-	(if_then_else (match_operator 0 "comparison_operator"
+	(if_then_else (match_operator 0 "ordered_comparison_operator"
 			[(match_operand:CRXIM 1 "register_operand" "r")
 			 (match_operand:CRXIM 2 "reg_or_cst4_operand" "rL")])
 		      (label_ref (match_operand 3 "" ""))
@@ -536,18 +549,18 @@
   [(set_attr "length" "6")]
 )
 
-;;  Compare Instructions
 
-(define_expand "cmp<mode>"
+;;  Scond Instructions
+
+(define_expand "cstore<mode>4"
   [(set (reg:CC CC_REGNUM)
-	(compare:CC (match_operand:CRXIM 0 "register_operand" "")
-		    (match_operand:CRXIM 1 "nonmemory_operand" "")))]
+	(compare:CC (match_operand:CRXIM 2 "register_operand" "")
+		    (match_operand:CRXIM 3 "nonmemory_operand" "")))
+   (set (match_operand:SI 0 "register_operand")
+	(match_operator:SI 1 "ordered_comparison_operator"
+	[(reg:CC CC_REGNUM) (const_int 0)]))]
   ""
-  {
-    crx_compare_op0 = operands[0];
-    crx_compare_op1 = operands[1];
-    DONE;
-  }
+  ""
 )
 
 (define_insn "cmp<mode>_internal"
@@ -559,48 +572,9 @@
   [(set_attr "length" "2,<lImmArith>")]
 )
 
-;;  Conditional Branch Instructions
-
-(define_expand "b<code>"
-  [(set (pc)
-	(if_then_else (any_cond (reg:CC CC_REGNUM)
-				(const_int 0))
-		      (label_ref (match_operand 0 ""))
-		      (pc)))]
-  ""
-  {
-    crx_expand_branch (<CODE>, operands[0]);
-    DONE;
-  }
-)
-
-(define_insn "bCOND_internal"
-  [(set (pc)
-	(if_then_else (match_operator 0 "comparison_operator"
-			[(reg:CC CC_REGNUM)
-			 (const_int 0)])
-		      (label_ref (match_operand 1 ""))
-		      (pc)))]
-  ""
-  "b%d0\t%l1"
-  [(set_attr "length" "6")]
-)
-
-;;  Scond Instructions
-
-(define_expand "s<code>"
-  [(set (match_operand:SI 0 "register_operand")
-  	(any_cond:SI (reg:CC CC_REGNUM) (const_int 0)))]
-  ""
-  {
-    crx_expand_scond (<CODE>, operands[0]);
-    DONE;
-  }
-)
-
 (define_insn "sCOND_internal"
   [(set (match_operand:SI 0 "register_operand" "=r")
-	(match_operator:SI 1 "comparison_operator"
+	(match_operator:SI 1 "ordered_comparison_operator"
 	  [(reg:CC CC_REGNUM) (const_int 0)]))]
   ""
   "s%d1\t%0"

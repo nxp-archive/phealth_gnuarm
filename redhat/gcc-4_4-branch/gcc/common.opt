@@ -1,6 +1,6 @@
 ; Options for the language- and target-independent parts of the compiler.
 
-; Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008
+; Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
 ; Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
@@ -93,10 +93,6 @@ Warn about uses of __attribute__((deprecated)) declarations
 Wdisabled-optimization
 Common Var(warn_disabled_optimization) Warning
 Warn when an optimization pass is disabled
-
-Wdisallowed-function-list=
-Common RejectNegative Joined Warning
-Warn on calls to these functions
 
 Werror
 Common Var(warnings_are_errors)
@@ -1375,12 +1371,12 @@ Common JoinedOrMissing
 Generate debug information in default format
 
 gcoff
-Common JoinedOrMissing Negative(gdwarf-2)
+Common JoinedOrMissing Negative(gdwarf-)
 Generate debug information in COFF format
 
-gdwarf-2
-Common JoinedOrMissing Negative(gstabs)
-Generate debug information in DWARF v2 format
+gdwarf-
+Common Joined UInteger Var(dwarf_version) Init(2) Negative(gstabs)
+Generate debug information in DWARF v2 (or later) format
 
 ggdb
 Common JoinedOrMissing

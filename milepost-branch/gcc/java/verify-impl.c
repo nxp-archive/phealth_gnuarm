@@ -1,4 +1,5 @@
-/* Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006  Free Software Foundation
+/* Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2008
+   Free Software Foundation
 
    This file is part of libgcj.
 
@@ -983,7 +984,7 @@ copy_state_with_stack (state *s, state *orig, int max_stack, int max_locals)
 static state *
 make_state_copy (state *orig, int max_stack, int max_locals)
 {
-  state *s = vfy_alloc (sizeof (state));
+  state *s = (state *) vfy_alloc (sizeof (state));
   copy_state_with_stack (s, orig, max_stack, max_locals);
   return s;
 }
@@ -991,7 +992,7 @@ make_state_copy (state *orig, int max_stack, int max_locals)
 static state *
 make_state (int max_stack, int max_locals)
 {
-  state *s = vfy_alloc (sizeof (state));
+  state *s = (state *) vfy_alloc (sizeof (state));
   init_state_with_stack (s, max_stack, max_locals);
   return s;
 }
@@ -1385,7 +1386,7 @@ add_new_state (int npc, state *old_state)
   debug_print_state (new_state, "New", npc, current_method->max_stack,
 		    current_method->max_locals);
 
-  nlink = vfy_alloc (sizeof (state_list));
+  nlink = (state_list *) vfy_alloc (sizeof (state_list));
   nlink->val = new_state;
   nlink->next = vfr->states[npc];
   vfr->states[npc] = nlink;
@@ -1946,7 +1947,7 @@ check_pool_index (int index)
 static type
 check_class_constant (int index)
 {
-  type t = { 0, 0, 0 };
+  type t = { void_type, 0, 0 };
   vfy_constants *pool;
 
   check_pool_index (index);
@@ -1963,7 +1964,7 @@ check_class_constant (int index)
 static type
 check_constant (int index)
 {
-  type t = { 0, 0, 0 };
+  type t = { void_type, 0, 0 };
   vfy_constants *pool;
 
   check_pool_index (index);
@@ -1987,7 +1988,7 @@ check_constant (int index)
 static type
 check_wide_constant (int index)
 {
-  type t = { 0, 0, 0 };
+  type t = { void_type, 0, 0 };
   vfy_constants *pool;
 
   check_pool_index (index);
@@ -2078,8 +2079,8 @@ check_method_constant (int index, bool is_interface,
 				 method_name, method_signature);
 }
 
-static char *
-get_one_type (char *p, type *t)
+static const char *
+get_one_type (const char *p, type *t)
 {
   const char *start = p;
   vfy_jclass k;
@@ -2131,7 +2132,7 @@ static void
 compute_argument_types (vfy_string signature, type *types)
 {
   int i;
-  char *p = (char *) vfy_string_bytes (signature);
+  const char *p = vfy_string_bytes (signature);
 
   /* Skip `('.  */
   ++p;
@@ -2144,7 +2145,7 @@ compute_argument_types (vfy_string signature, type *types)
 static type
 compute_return_type (vfy_string signature)
 {
-  char *p = (char *) vfy_string_bytes (signature);
+  const char *p = vfy_string_bytes (signature);
   type t;
   while (*p != ')')
     ++p;
@@ -3030,7 +3031,7 @@ verify_instructions_0 (void)
 	    if (atype < boolean_type || atype > long_type)
 	      verify_fail_pc ("type not primitive", vfr->start_PC);
 	    pop_type (int_type);
-	    init_type_from_class (&t, construct_primitive_array_type (atype));
+	    init_type_from_class (&t, construct_primitive_array_type ((type_val) atype));
 	    push_type_t (t);
 	  }
 	  break;

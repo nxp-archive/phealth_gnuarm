@@ -1,5 +1,6 @@
 /* Default target hook functions.
-   Copyright (C) 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -67,6 +68,22 @@ along with GCC; see the file COPYING3.  If not see
 #include "recog.h"
 
 
+bool
+default_legitimate_address_p (enum machine_mode mode ATTRIBUTE_UNUSED,
+			      rtx addr ATTRIBUTE_UNUSED,
+			      bool strict ATTRIBUTE_UNUSED)
+{
+#ifdef GO_IF_LEGITIMATE_ADDRESS
+  /* Defer to the old implementation using a goto.  */
+  if (strict)
+    return strict_memory_address_p (mode, addr);
+  else
+    return memory_address_p (mode, addr);
+#else
+  gcc_unreachable ();
+#endif
+}
+
 void
 default_external_libcall (rtx fun ATTRIBUTE_UNUSED)
 {
@@ -108,6 +125,13 @@ default_return_in_memory (const_tree type,
 			  const_tree fntype ATTRIBUTE_UNUSED)
 {
   return (TYPE_MODE (type) == BLKmode);
+}
+
+rtx
+default_legitimize_address (rtx x, rtx orig_x ATTRIBUTE_UNUSED,
+			    enum machine_mode mode ATTRIBUTE_UNUSED)
+{
+  return x;
 }
 
 rtx
@@ -374,7 +398,7 @@ default_invalid_within_doloop (const_rtx insn)
 /* Mapping of builtin functions to vectorized variants.  */
 
 tree
-default_builtin_vectorized_function (enum built_in_function fn ATTRIBUTE_UNUSED,
+default_builtin_vectorized_function (unsigned int fn ATTRIBUTE_UNUSED,
 				     tree type_out ATTRIBUTE_UNUSED,
 				     tree type_in ATTRIBUTE_UNUSED)
 {
@@ -384,7 +408,7 @@ default_builtin_vectorized_function (enum built_in_function fn ATTRIBUTE_UNUSED,
 /* Vectorized conversion.  */
 
 tree
-default_builtin_vectorized_conversion (enum tree_code code ATTRIBUTE_UNUSED,
+default_builtin_vectorized_conversion (unsigned int code ATTRIBUTE_UNUSED,
 				       tree type ATTRIBUTE_UNUSED)
 {
   return NULL_TREE;
@@ -393,7 +417,7 @@ default_builtin_vectorized_conversion (enum tree_code code ATTRIBUTE_UNUSED,
 /* Reciprocal.  */
 
 tree
-default_builtin_reciprocal (enum built_in_function fn ATTRIBUTE_UNUSED,
+default_builtin_reciprocal (unsigned int fn ATTRIBUTE_UNUSED,
 			    bool md_fn ATTRIBUTE_UNUSED,
 			    bool sqrt ATTRIBUTE_UNUSED)
 {
@@ -575,6 +599,12 @@ default_internal_arg_pointer (void)
     return virtual_incoming_args_rtx;
 }
 
+enum reg_class
+default_branch_target_register_class (void)
+{
+  return NO_REGS;
+}
+
 #ifdef IRA_COVER_CLASSES
 const enum reg_class *
 default_ira_cover_classes (void)
@@ -750,28 +780,16 @@ default_addr_space_name (addr_space_t addrspace ATTRIBUTE_UNUSED)
   gcc_unreachable ();
 }
 
-/* Named address space version of memory_address_p.  */
+/* Named address space version of legitimate_address_p.  */
 
 bool
-default_addr_space_memory_address_p (enum machine_mode mode, rtx mem,
-				     addr_space_t as)
+default_addr_space_legitimate_address_p (enum machine_mode mode, rtx mem,
+					 bool strict, addr_space_t as)
 {
-  if (!as)
-    return memory_address_p (mode, mem);
+  if (as)
+    gcc_unreachable ();
 
-  gcc_unreachable ();
-}
-
-/* Named address space version of strict_memory_address_p.  */
-
-bool
-default_addr_space_strict_memory_address_p (enum machine_mode mode, rtx mem,
-					    addr_space_t as)
-{
-  if (!as)
-    return strict_memory_address_p (mode, mem);
-
-  gcc_unreachable ();
+  return targetm.legitimate_address_p (mode, mem, strict);
 }
 
 /* Named address space version of LEGITIMIZE_ADDRESS.  */
@@ -782,25 +800,7 @@ default_addr_space_legitimize_address (rtx x ATTRIBUTE_UNUSED,
 				       enum machine_mode mode ATTRIBUTE_UNUSED,
 				       addr_space_t as ATTRIBUTE_UNUSED)
 {
-  return NULL_RTX;
-}
-
-/* The default hook for determining whether you can convert from one address
-   space to another.  */
-
-bool
-default_addr_space_can_convert_p (addr_space_t to_addr, addr_space_t from_addr)
-{
-  return to_addr == from_addr;
-}
-
-/* The default hook for determining whether convert from one address space to
-   another is a NOP.  */
-
-bool
-default_addr_space_nop_convert_p (addr_space_t to_addr, addr_space_t from_addr)
-{
-  return to_addr == from_addr;
+  return x;
 }
 
 /* The default hook for determining if one named address space is a subset of
@@ -808,20 +808,30 @@ default_addr_space_nop_convert_p (addr_space_t to_addr, addr_space_t from_addr)
    space.  */
 
 bool
-default_addr_space_subset_p (addr_space_t as1,
-			     addr_space_t as2,
-			     addr_space_t *common_as)
+default_addr_space_subset_p (addr_space_t subset, addr_space_t superset)
 {
-  if (as1 == as2)
-    {
-      *common_as = as1;
-      return true;
-    }
+  return (subset == superset);
+}
+
+/* The default hook for determining whether you can convert from one address
+   space to another.  */
+
+bool
+default_addr_space_can_convert_p (tree from_type, tree to_type)
+{
+  addr_space_t from_as = TYPE_ADDR_SPACE (TREE_TYPE (from_type));
+  addr_space_t to_as = TYPE_ADDR_SPACE (TREE_TYPE (to_type));
+
+  if (to_as == from_as)
+    return true;
+
+  /* If the from named address is a subset of the to named address, it should
+     be legal to do the conversion.  */
+  else if (targetm.addr_space.subset_p (from_as, to_as))
+    return true;
+
   else
-    {
-      *common_as = 0;
-      return false;
-    }
+    return false;
 }
 
 /* The default hook for TARGET_ADDR_SPACE_CONVERT. This hook should never be
@@ -829,9 +839,8 @@ default_addr_space_subset_p (addr_space_t as1,
 
 rtx 
 default_addr_space_convert (rtx op ATTRIBUTE_UNUSED,
-			    enum machine_mode mode ATTRIBUTE_UNUSED,
-			    addr_space_t from ATTRIBUTE_UNUSED,
-			    addr_space_t to ATTRIBUTE_UNUSED)
+			    tree from_type ATTRIBUTE_UNUSED,
+			    tree to_type ATTRIBUTE_UNUSED)
 {
   gcc_unreachable ();
 }
@@ -909,6 +918,19 @@ default_target_option_can_inline_p (tree caller, tree callee)
     ret = (callee_opts == caller_opts);
 
   return ret;
+}
+
+#ifndef HAVE_casesi
+# define HAVE_casesi 0
+#endif
+
+/* If the machine does not have a case insn that compares the bounds,
+   this means extra overhead for dispatch tables, which raises the
+   threshold for using them.  */
+
+unsigned int default_case_values_threshold (void)
+{
+  return (HAVE_casesi ? 4 : 5);
 }
 
 #include "gt-targhooks.h"

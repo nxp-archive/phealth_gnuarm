@@ -1,8 +1,8 @@
 /* Scalar Replacement of Aggregates (SRA) converts some structure
    references into scalar references, exposing them to the scalar
    optimizers.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008
-     Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -77,9 +77,6 @@ along with GCC; see the file COPYING3.  If not see
 
 /* True if this is the "early" pass, before inlining.  */
 static bool early_sra;
-
-/* The set of todo flags to return from tree_sra.  */
-static unsigned int todoflags;
 
 /* The set of aggregate variables that are candidates for scalarization.  */
 static bitmap sra_candidates;
@@ -1007,6 +1004,7 @@ sra_walk_gimple_assign (gimple stmt, gimple_stmt_iterator *gsi,
 	 we'd been passed the constructor directly.  Invoke INIT.  */
       else if (TREE_CODE (rhs) == VAR_DECL
 	       && TREE_STATIC (rhs)
+	       && !DECL_EXTERNAL (rhs)
 	       && TREE_READONLY (rhs)
 	       && targetm.binds_local_p (rhs))
 	fns->init (lhs_elt, DECL_INITIAL (rhs), gsi);
@@ -1710,16 +1708,6 @@ try_instantiate_multiple_fields (struct sra_elt *elt, tree f)
   gcc_assert (block && block->is_scalar);
 
   var = block->replacement;
-
-  if ((bit & ~alchk)
-      || (HOST_WIDE_INT)size != tree_low_cst (DECL_SIZE (var), 1))
-    {
-      block->replacement = fold_build3 (BIT_FIELD_REF,
-					TREE_TYPE (block->element), var,
-					bitsize_int (size),
-					bitsize_int (bit & ~alchk));
-    }
-
   block->in_bitfld_block = 2;
 
   /* Add the member fields to the group, such that they access
@@ -1733,12 +1721,14 @@ try_instantiate_multiple_fields (struct sra_elt *elt, tree f)
       gcc_assert (fld && fld->is_scalar && !fld->replacement);
 
       fld->replacement = fold_build3 (BIT_FIELD_REF, field_type, var,
-				      DECL_SIZE (f),
+				      bitsize_int (TYPE_PRECISION (field_type)),
 				      bitsize_int
 				      ((TREE_INT_CST_LOW (DECL_FIELD_OFFSET (f))
 					* BITS_PER_UNIT
 					+ (TREE_INT_CST_LOW
-					   (DECL_FIELD_BIT_OFFSET (f))))
+					   (DECL_FIELD_BIT_OFFSET (f)))
+					- (TREE_INT_CST_LOW
+					   (TREE_OPERAND (block->element, 2))))
 				       & ~alchk));
       fld->in_bitfld_block = 1;
     }
@@ -3622,7 +3612,6 @@ static unsigned int
 tree_sra (void)
 {
   /* Initialize local variables.  */
-  todoflags = 0;
   gcc_obstack_init (&sra_obstack);
   sra_candidates = BITMAP_ALLOC (NULL);
   needs_copy_in = BITMAP_ALLOC (NULL);
@@ -3635,8 +3624,6 @@ tree_sra (void)
       scan_function ();
       decide_instantiations ();
       scalarize_function ();
-      if (!bitmap_empty_p (sra_candidates))
-	todoflags |= TODO_rebuild_alias;
     }
 
   /* Free allocated memory.  */
@@ -3647,7 +3634,7 @@ tree_sra (void)
   BITMAP_FREE (sra_type_decomp_cache);
   BITMAP_FREE (sra_type_inst_cache);
   obstack_free (&sra_obstack, NULL);
-  return todoflags;
+  return 0;
 }
 
 static unsigned int
@@ -3659,7 +3646,7 @@ tree_sra_early (void)
   ret = tree_sra ();
   early_sra = false;
 
-  return ret & ~TODO_rebuild_alias;
+  return ret;
 }
 
 static bool
@@ -3704,7 +3691,7 @@ struct gimple_opt_pass pass_sra =
   PROP_cfg | PROP_ssa,			/* properties_required */
   0,					/* properties_provided */
   0,				        /* properties_destroyed */
-  0,					/* todo_flags_start */
+  TODO_update_address_taken,		/* todo_flags_start */
   TODO_dump_func
   | TODO_update_ssa
   | TODO_ggc_collect

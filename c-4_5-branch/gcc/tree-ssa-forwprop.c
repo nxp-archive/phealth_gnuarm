@@ -1,5 +1,5 @@
 /* Forward propagation of expressions for single use variables.
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -146,6 +146,14 @@ along with GCC; see the file COPYING3.  If not see
   Will get turned into:
 
      ptr2 = &x[index];
+
+  Or
+    ssa = (int) decl
+    res = ssa & 1
+
+  Provided that decl has known alignment >= 2, will get turned into
+
+    res = 0
 
   We also propagate casts into SWITCH_EXPR and COND_EXPR conditions to
   allow us to remove the cast and {NOT_EXPR,NEG_EXPR} into a subsequent
@@ -777,7 +785,7 @@ forward_propagate_addr_expr_1 (tree name, tree def_rhs,
       && operand_equal_p (TYPE_SIZE (TREE_TYPE (rhs)),
 			  TYPE_SIZE (TREE_TYPE (TREE_OPERAND (def_rhs, 0))), 0)) 
    {
-     tree new_rhs = unshare_expr (TREE_OPERAND (def_rhs, 0));
+     tree def_rhs_base, new_rhs = unshare_expr (TREE_OPERAND (def_rhs, 0));
      new_rhs = fold_build1 (VIEW_CONVERT_EXPR, TREE_TYPE (rhs), new_rhs);
      if (TREE_CODE (new_rhs) != VIEW_CONVERT_EXPR)
        {
@@ -788,16 +796,23 @@ forward_propagate_addr_expr_1 (tree name, tree def_rhs,
 	 new_rhs = force_gimple_operand_gsi (use_stmt_gsi, new_rhs, true, NULL,
 					     true, GSI_NEW_STMT);
 	 gimple_assign_set_rhs1 (use_stmt, new_rhs);
+	 tidy_after_forward_propagate_addr (use_stmt);
+	 return true;
        }
-     else
+     /* If the defining rhs comes from an indirect reference, then do not
+        convert into a VIEW_CONVERT_EXPR.  */
+     def_rhs_base = TREE_OPERAND (def_rhs, 0);
+     while (handled_component_p (def_rhs_base))
+       def_rhs_base = TREE_OPERAND (def_rhs_base, 0);
+     if (!INDIRECT_REF_P (def_rhs_base))
        {
 	 /* We may have arbitrary VIEW_CONVERT_EXPRs in a nested component
 	    reference.  Place it there and fold the thing.  */
 	 *rhsp = new_rhs;
 	 fold_stmt_inplace (use_stmt);
+	 tidy_after_forward_propagate_addr (use_stmt);
+	 return true;
        }
-     tidy_after_forward_propagate_addr (use_stmt);
-     return true;
    }
 
   /* If the use of the ADDR_EXPR is not a POINTER_PLUS_EXPR, there
@@ -813,19 +828,20 @@ forward_propagate_addr_expr_1 (tree name, tree def_rhs,
   array_ref = TREE_OPERAND (def_rhs, 0);
   if (TREE_CODE (array_ref) != ARRAY_REF
       || TREE_CODE (TREE_TYPE (TREE_OPERAND (array_ref, 0))) != ARRAY_TYPE
-      || !integer_zerop (TREE_OPERAND (array_ref, 1)))
+      || TREE_CODE (TREE_OPERAND (array_ref, 1)) != INTEGER_CST)
     return false;
 
   rhs2 = gimple_assign_rhs2 (use_stmt);
-  /* Try to optimize &x[0] p+ C where C is a multiple of the size
-     of the elements in X into &x[C/element size].  */
+  /* Try to optimize &x[C1] p+ C2 where C2 is a multiple of the size
+     of the elements in X into &x[C1 + C2/element size].  */
   if (TREE_CODE (rhs2) == INTEGER_CST)
     {
       tree new_rhs = maybe_fold_stmt_addition (gimple_expr_type (use_stmt),
-					       array_ref, rhs2);
+					       def_rhs, rhs2);
       if (new_rhs)
 	{
-	  gimple_assign_set_rhs_from_tree (use_stmt_gsi, new_rhs);
+	  gimple_assign_set_rhs_from_tree (use_stmt_gsi,
+					   unshare_expr (new_rhs));
 	  use_stmt = gsi_stmt (*use_stmt_gsi);
 	  update_stmt (use_stmt);
 	  tidy_after_forward_propagate_addr (use_stmt);
@@ -838,6 +854,8 @@ forward_propagate_addr_expr_1 (tree name, tree def_rhs,
      array elements, then the result is converted into the proper
      type for the arithmetic.  */
   if (TREE_CODE (rhs2) == SSA_NAME
+      && integer_zerop (TREE_OPERAND (array_ref, 1))
+      && useless_type_conversion_p (TREE_TYPE (name), TREE_TYPE (def_rhs))
       /* Avoid problems with IVopts creating PLUS_EXPRs with a
 	 different type than their operands.  */
       && useless_type_conversion_p (TREE_TYPE (lhs), TREE_TYPE (def_rhs)))
@@ -1116,6 +1134,45 @@ simplify_gimple_switch (gimple stmt)
     }
 }
 
+/* Run bitwise and assignments throug the folder.  If the first argument is an
+   ssa name that is itself a result of a typecast of an ADDR_EXPR to an
+   integer, feed the ADDR_EXPR to the folder rather than the ssa name.
+*/
+
+static void
+simplify_bitwise_and (gimple_stmt_iterator *gsi, gimple stmt)
+{
+  tree res;
+  tree arg1 = gimple_assign_rhs1 (stmt);
+  tree arg2 = gimple_assign_rhs2 (stmt);
+
+  if (TREE_CODE (arg2) != INTEGER_CST)
+    return;
+
+  if (TREE_CODE (arg1) == SSA_NAME && !SSA_NAME_IS_DEFAULT_DEF (arg1))
+    {
+      gimple def = SSA_NAME_DEF_STMT (arg1);
+
+      if (gimple_assign_cast_p (def)
+	  && INTEGRAL_TYPE_P (gimple_expr_type (def)))
+	{
+	  tree op = gimple_assign_rhs1 (def);
+
+	  if (TREE_CODE (op) == ADDR_EXPR)
+	    arg1 = op;
+	}
+    }
+
+  res = fold_binary (BIT_AND_EXPR, TREE_TYPE (gimple_assign_lhs (stmt)),
+		     arg1, arg2);
+  if (res && is_gimple_min_invariant (res))
+    {
+      gimple_assign_set_rhs_from_tree (gsi, res);
+      update_stmt (stmt);
+    }
+  return;
+}
+
 /* Main entry point for the forward propagation optimizer.  */
 
 static unsigned int
@@ -1197,6 +1254,11 @@ tree_ssa_forward_propagate_single_use_vars (void)
 		    }
 		  else
 		    gsi_next (&gsi);
+		}
+	      else if (gimple_assign_rhs_code (stmt) == BIT_AND_EXPR)
+		{
+		  simplify_bitwise_and (&gsi, stmt);
+		  gsi_next (&gsi);
 		}
 	      else
 		gsi_next (&gsi);

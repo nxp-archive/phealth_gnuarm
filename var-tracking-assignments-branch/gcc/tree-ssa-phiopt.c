@@ -387,7 +387,7 @@ empty_block_p (basic_block bb)
   gimple_stmt_iterator gsi = gsi_after_labels (bb);
   if (gsi_end_p (gsi))
     return true;
-  if (IS_DEBUG_STMT (gsi_stmt (gsi)))
+  if (is_gimple_debug (gsi_stmt (gsi)))
     gsi_next_nondebug (&gsi);
   return gsi_end_p (gsi);
 }
@@ -1281,7 +1281,7 @@ struct gimple_opt_pass pass_phiopt =
   NULL,					/* next */
   0,					/* static_pass_number */
   TV_TREE_PHIOPT,			/* tv_id */
-  PROP_cfg | PROP_ssa | PROP_alias,	/* properties_required */
+  PROP_cfg | PROP_ssa,			/* properties_required */
   0,					/* properties_provided */
   0,					/* properties_destroyed */
   0,					/* todo_flags_start */
@@ -1310,7 +1310,7 @@ struct gimple_opt_pass pass_cselim =
   NULL,					/* next */
   0,					/* static_pass_number */
   TV_TREE_PHIOPT,			/* tv_id */
-  PROP_cfg | PROP_ssa | PROP_alias,	/* properties_required */
+  PROP_cfg | PROP_ssa,			/* properties_required */
   0,					/* properties_provided */
   0,					/* properties_destroyed */
   0,					/* todo_flags_start */

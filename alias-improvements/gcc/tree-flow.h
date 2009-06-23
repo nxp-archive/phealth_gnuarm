@@ -126,10 +126,7 @@ typedef struct
 /* Aliasing information for SSA_NAMEs representing pointer variables.  */
 struct ptr_info_def GTY(())
 {
-  /* Nonzero if this pointer is really dereferenced.  */
-  unsigned int is_dereferenced : 1;
-
-  /* The points-to solution.  */
+  /* The points-to solution, TBAA-pruned if the pointer is dereferenced.  */
   struct pt_solution pt;
 };
 
@@ -609,7 +606,7 @@ extern void dump_referenced_vars (FILE *);
 extern void dump_variable (FILE *, tree);
 extern void debug_variable (tree);
 extern tree get_virtual_var (tree);
-extern void add_referenced_var (tree);
+extern bool add_referenced_var (tree);
 extern void remove_referenced_var (tree);
 extern void mark_symbols_for_renaming (gimple);
 extern void find_new_referenced_vars (gimple);
@@ -727,6 +724,7 @@ bool simplify_stmt_using_ranges (gimple_stmt_iterator *);
 extern void dump_dominator_optimization_stats (FILE *);
 extern void debug_dominator_optimization_stats (void);
 int loop_depth_of_name (tree);
+tree degenerate_phi_result (gimple);
 
 /* In tree-ssa-copy.c  */
 extern void merge_alias_info (tree, tree);
@@ -799,7 +797,7 @@ unsigned int tree_ssa_prefetch_arrays (void);
 unsigned int remove_empty_loops (void);
 void tree_ssa_iv_optimize (void);
 unsigned tree_predictive_commoning (void);
-tree canonicalize_loop_ivs (struct loop *, htab_t, tree);
+tree canonicalize_loop_ivs (struct loop *, htab_t, tree *);
 bool parallelize_loops (void);
 
 bool loop_only_exit_p (const struct loop *, const_edge);
@@ -886,6 +884,7 @@ extern bool operation_could_trap_p (enum tree_code, bool, bool, tree);
 extern bool stmt_could_throw_p (gimple);
 extern bool tree_could_throw_p (tree);
 extern bool stmt_can_throw_internal (gimple);
+extern bool stmt_can_throw_external (gimple);
 extern void add_stmt_to_eh_region (gimple, int);
 extern bool remove_stmt_from_eh_region (gimple);
 extern bool maybe_clean_or_replace_eh_stmt (gimple, gimple);
@@ -958,6 +957,7 @@ void mark_addressable (tree);
 
 /* In tree-ssa-live.c */
 extern void remove_unused_locals (void);
+extern void dump_scope_blocks (FILE *, int);
 
 /* In tree-ssa-address.c  */
 

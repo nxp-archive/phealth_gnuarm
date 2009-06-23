@@ -1,4 +1,4 @@
-/* Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008
+/* Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Andy Vaught
    F2003 I/O support contributed by Jerry DeLisle
@@ -7,27 +7,22 @@ This file is part of the GNU Fortran 95 runtime library (libgfortran).
 
 Libgfortran is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2, or (at your option)
+the Free Software Foundation; either version 3, or (at your option)
 any later version.
-
-In addition to the permissions in the GNU General Public License, the
-Free Software Foundation gives you unlimited permission to link the
-compiled version of this file into combinations with other programs,
-and to distribute those combinations without any restriction coming
-from the use of this file.  (The General Public License restrictions
-do apply in other respects; for example, they cover modification of
-the file, and distribution when not linked into a combine
-executable.)
 
 Libgfortran is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with Libgfortran; see the file COPYING.  If not, write to
-the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+Under Section 7 of GPL version 3, you are granted additional
+permissions described in the GCC Runtime Library Exception, version
+3.1, as published by the Free Software Foundation.
+
+You should have received a copy of the GNU General Public License and
+a copy of the GCC Runtime Library Exception along with this program;
+see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+<http://www.gnu.org/licenses/>.  */
 
 
 /* format.c-- parse a FORMAT string into a binary format suitable for
@@ -63,7 +58,7 @@ format_data;
 static const fnode colon_node = { FMT_COLON, 0, NULL, NULL, {{ 0, 0, 0 }}, 0,
 				  NULL };
 
-/* Error messages */
+/* Error messages. */
 
 static const char posint_required[] = "Positive width required in format",
   period_required[] = "Period required in format",
@@ -90,7 +85,8 @@ next_char (format_data *fmt, int literal)
 	return -1;
 
       fmt->format_string_len--;
-      fmt->error_element = c = toupper (*fmt->format_string++);
+      c = toupper (*fmt->format_string++);
+      fmt->error_element = c;
     }
   while ((c == ' ' || c == '\t') && !literal);
 
@@ -184,6 +180,14 @@ format_lex (format_data *fmt)
 
   switch (c)
     {
+    case '(':
+      token = FMT_LPAREN;
+      break;
+
+    case ')':
+      token = FMT_RPAREN;
+      break;
+
     case '-':
       negative_flag = 1;
       /* Fall Through */
@@ -274,14 +278,6 @@ format_lex (format_data *fmt)
 	  break;
 	}
 
-      break;
-
-    case '(':
-      token = FMT_LPAREN;
-      break;
-
-    case ')':
-      token = FMT_RPAREN;
       break;
 
     case 'X':
@@ -999,6 +995,33 @@ format_error (st_parameter_dt *dtp, const fnode *f, const char *message)
 }
 
 
+/* revert()-- Do reversion of the format.  Control reverts to the left
+ * parenthesis that matches the rightmost right parenthesis.  From our
+ * tree structure, we are looking for the rightmost parenthesis node
+ * at the second level, the first level always being a single
+ * parenthesis node.  If this node doesn't exit, we use the top
+ * level. */
+
+static void
+revert (st_parameter_dt *dtp)
+{
+  fnode *f, *r;
+  format_data *fmt = dtp->u.p.fmt;
+
+  dtp->u.p.reversion_flag = 1;
+
+  r = NULL;
+
+  for (f = fmt->array.array[0].u.child; f; f = f->next)
+    if (f->format == FMT_LPAREN)
+      r = f;
+
+  /* If r is NULL because no node was found, the whole tree will be used */
+
+  fmt->array.array[0].current = r;
+  fmt->array.array[0].count = 0;
+}
+
 /* parse_format()-- Parse a format string.  */
 
 void
@@ -1038,34 +1061,6 @@ parse_format (st_parameter_dt *dtp)
 
   if (fmt->error)
     format_error (dtp, NULL, fmt->error);
-}
-
-
-/* revert()-- Do reversion of the format.  Control reverts to the left
- * parenthesis that matches the rightmost right parenthesis.  From our
- * tree structure, we are looking for the rightmost parenthesis node
- * at the second level, the first level always being a single
- * parenthesis node.  If this node doesn't exit, we use the top
- * level. */
-
-static void
-revert (st_parameter_dt *dtp)
-{
-  fnode *f, *r;
-  format_data *fmt = dtp->u.p.fmt;
-
-  dtp->u.p.reversion_flag = 1;
-
-  r = NULL;
-
-  for (f = fmt->array.array[0].u.child; f; f = f->next)
-    if (f->format == FMT_LPAREN)
-      r = f;
-
-  /* If r is NULL because no node was found, the whole tree will be used */
-
-  fmt->array.array[0].current = r;
-  fmt->array.array[0].count = 0;
 }
 
 

@@ -1,6 +1,6 @@
 /* Instruction scheduling pass.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com) Enhanced by,
    and currently maintained by, Jim Wilson (wilson@cygnus.com)
@@ -601,7 +601,7 @@ static rtx last_scheduled_insn;
 /* Compute cost of executing INSN.
    This is the number of cycles between instruction issue and
    instruction results.  */
-HAIFA_INLINE int
+int
 insn_cost (rtx insn)
 {
   int cost;
@@ -980,12 +980,12 @@ rank_for_schedule (const void *x, const void *y)
   if (DEBUG_INSN_P (last) && last != current_sched_info->prev_head)
     do
       last = PREV_INSN (last);
-    while ((DEBUG_INSN_P (last) || !INSN_P (last))
+    while (!NONDEBUG_INSN_P (last)
 	   && last != current_sched_info->prev_head);
 
   /* Compare insns based on their relation to the last scheduled
      non-debug insn.  */
-  if (INSN_P (last) && !DEBUG_INSN_P (last))
+  if (NONDEBUG_INSN_P (last))
     {
       dep_t dep1;
       dep_t dep2;
@@ -1964,7 +1964,7 @@ reemit_notes (rtx insn)
     {
       if (REG_NOTE_KIND (note) == REG_SAVE_NOTE)
 	{
-	  enum insn_note note_type = INTVAL (XEXP (note, 0));
+	  enum insn_note note_type = (enum insn_note) INTVAL (XEXP (note, 0));
 
 	  last = emit_note_before (note_type, last);
 	  remove_note (insn, note);
@@ -4069,12 +4069,10 @@ sched_create_recovery_edges (basic_block first_bb, basic_block rec,
       /* Rewritten from cfgrtl.c.  */
       if (flag_reorder_blocks_and_partition
 	  && targetm.have_named_sections)
-	/* We don't need the same note for the check because
-	   any_condjump_p (check) == true.  */
 	{
-	  REG_NOTES (jump) = gen_rtx_EXPR_LIST (REG_CROSSING_JUMP,
-						NULL_RTX,
-						REG_NOTES (jump));
+	  /* We don't need the same note for the check because
+	     any_condjump_p (check) == true.  */
+	  add_reg_note (jump, REG_CROSSING_JUMP, NULL_RTX);
 	}
       edge_flags = EDGE_CROSSING;
     }
@@ -4900,8 +4898,6 @@ check_cfg (rtx head, rtx tail)
 }
 
 #endif /* ENABLE_CHECKING */
-
-const struct sched_scan_info_def *sched_scan_info;
 
 /* Extend per basic block data structures.  */
 static void

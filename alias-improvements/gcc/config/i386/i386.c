@@ -1533,24 +1533,8 @@ int const dbx_register_map[FIRST_PSEUDO_REGISTER] =
   -1, -1, -1, -1, -1, -1, -1, -1,	/* extended SSE registers */
 };
 
-static int const x86_64_int_parameter_registers[6] =
-{
-  5 /*RDI*/, 4 /*RSI*/, 1 /*RDX*/, 2 /*RCX*/,
-  FIRST_REX_INT_REG /*R8 */, FIRST_REX_INT_REG + 1 /*R9 */
-};
-
-static int const x86_64_ms_abi_int_parameter_registers[4] =
-{
-  2 /*RCX*/, 1 /*RDX*/,
-  FIRST_REX_INT_REG /*R8 */, FIRST_REX_INT_REG + 1 /*R9 */
-};
-
-static int const x86_64_int_return_registers[4] =
-{
-  0 /*RAX*/, 1 /*RDX*/, 5 /*RDI*/, 4 /*RSI*/
-};
-
 /* The "default" register map used in 64bit mode.  */
+
 int const dbx64_register_map[FIRST_PSEUDO_REGISTER] =
 {
   0, 1, 2, 3, 4, 5, 6, 7,		/* general regs */
@@ -1633,6 +1617,23 @@ int const svr4_dbx_register_map[FIRST_PSEUDO_REGISTER] =
 rtx ix86_compare_op0 = NULL_RTX;
 rtx ix86_compare_op1 = NULL_RTX;
 rtx ix86_compare_emitted = NULL_RTX;
+
+/* Define parameter passing and return registers.  */
+
+static int const x86_64_int_parameter_registers[6] =
+{
+  DI_REG, SI_REG, DX_REG, CX_REG, R8_REG, R9_REG
+};
+
+static int const x86_64_ms_abi_int_parameter_registers[4] =
+{
+  CX_REG, DX_REG, R8_REG, R9_REG
+};
+
+static int const x86_64_int_return_registers[4] =
+{
+  AX_REG, DX_REG, DI_REG, SI_REG
+};
 
 /* Define the structure for the machine field in struct function.  */
 
@@ -1742,6 +1743,9 @@ static unsigned int ix86_default_incoming_stack_boundary;
 /* Alignment for incoming stack boundary in bits.  */
 unsigned int ix86_incoming_stack_boundary;
 
+/* The abi used by target.  */
+enum calling_abi ix86_abi;
+
 /* Values 1-5: see jump.c */
 int ix86_branch_cost;
 
@@ -1817,6 +1821,8 @@ static bool ix86_valid_target_attribute_p (tree, tree, tree, int);
 static bool ix86_valid_target_attribute_inner_p (tree, char *[]);
 static bool ix86_can_inline_p (tree, tree);
 static void ix86_set_current_function (tree);
+
+static enum calling_abi ix86_function_abi (const_tree);
 
 
 /* The svr4 ABI for the i386 says that records and unions are returned
@@ -2715,6 +2721,20 @@ override_options (bool main_args_p)
     error ("bad value (%s) for %sarch=%s %s",
 	   ix86_arch_string, prefix, suffix, sw);
 
+  /* Validate -mabi= value.  */
+  if (ix86_abi_string)
+    {
+      if (strcmp (ix86_abi_string, "sysv") == 0)
+	ix86_abi = SYSV_ABI;
+      else if (strcmp (ix86_abi_string, "ms") == 0)
+	ix86_abi = MS_ABI;
+      else
+	error ("unknown ABI (%s) for %sabi=%s %s",
+	       ix86_abi_string, prefix, suffix, sw);
+    }
+  else
+    ix86_abi = DEFAULT_ABI;
+
   if (ix86_cmodel_string != 0)
     {
       if (!strcmp (ix86_cmodel_string, "small"))
@@ -2914,8 +2934,8 @@ override_options (bool main_args_p)
      Remove this code in GCC 3.2 or later.  */
   if (ix86_align_loops_string)
     {
-      warning (0, "%salign-loops%s is obsolete, use %salign-loops%s",
-	       prefix, suffix, prefix, suffix);
+      warning (0, "%salign-loops%s is obsolete, use -falign-loops%s",
+	       prefix, suffix, suffix);
       if (align_loops == 0)
 	{
 	  i = atoi (ix86_align_loops_string);
@@ -2929,8 +2949,8 @@ override_options (bool main_args_p)
 
   if (ix86_align_jumps_string)
     {
-      warning (0, "%salign-jumps%s is obsolete, use %salign-jumps%s",
-	       prefix, suffix, prefix, suffix);
+      warning (0, "%salign-jumps%s is obsolete, use -falign-jumps%s",
+	       prefix, suffix, suffix);
       if (align_jumps == 0)
 	{
 	  i = atoi (ix86_align_jumps_string);
@@ -2944,8 +2964,8 @@ override_options (bool main_args_p)
 
   if (ix86_align_funcs_string)
     {
-      warning (0, "%salign-functions%s is obsolete, use %salign-functions%s",
-	       prefix, suffix, prefix, suffix);
+      warning (0, "%salign-functions%s is obsolete, use -falign-functions%s",
+	       prefix, suffix, suffix);
       if (align_functions == 0)
 	{
 	  i = atoi (ix86_align_funcs_string);
@@ -4272,17 +4292,15 @@ static int
 ix86_function_regparm (const_tree type, const_tree decl)
 {
   tree attr;
-  int regparm = ix86_regparm;
+  int regparm;
 
   static bool error_issued;
 
   if (TARGET_64BIT)
-    {
-      if (ix86_function_type_abi (type) == DEFAULT_ABI)
-        return regparm;
-      return DEFAULT_ABI != SYSV_ABI ? X86_64_REGPARM_MAX : X64_REGPARM_MAX;
-    }
+    return (ix86_function_type_abi (type) == SYSV_ABI
+	    ? X86_64_REGPARM_MAX : X64_REGPARM_MAX);
 
+  regparm = ix86_regparm;
   attr = lookup_attribute ("regparm", TYPE_ATTRIBUTES (type));
   if (attr)
     {
@@ -4310,7 +4328,9 @@ ix86_function_regparm (const_tree type, const_tree decl)
     return 2;
 
   /* Use register calling convention for local functions when possible.  */
-  if (decl && TREE_CODE (decl) == FUNCTION_DECL
+  if (decl
+      && TREE_CODE (decl) == FUNCTION_DECL
+      && optimize
       && !profile_flag)
     {
       /* FIXME: remove this CONST_CAST when cgraph.[ch] is constified.  */
@@ -4395,7 +4415,7 @@ ix86_function_sseregparm (const_tree type, const_tree decl, bool warn)
 
   /* For local functions, pass up to SSE_REGPARM_MAX SFmode
      (and DFmode for SSE2) arguments in SSE registers.  */
-  if (decl && TARGET_SSE_MATH && !profile_flag)
+  if (decl && TARGET_SSE_MATH && optimize && !profile_flag)
     {
       /* FIXME: remove this CONST_CAST when cgraph.[ch] is constified.  */
       struct cgraph_local_info *i = cgraph_local_info (CONST_CAST_TREE(decl));
@@ -4514,14 +4534,14 @@ ix86_function_arg_regno_p (int regno)
      default ABI.  */
 
   /* RAX is used as hidden argument to va_arg functions.  */
-  if (DEFAULT_ABI == SYSV_ABI && regno == AX_REG)
+  if (ix86_abi == SYSV_ABI && regno == AX_REG)
     return true;
 
-  if (DEFAULT_ABI == MS_ABI)
+  if (ix86_abi == MS_ABI)
     parm_regs = x86_64_ms_abi_int_parameter_registers;
   else
     parm_regs = x86_64_int_parameter_registers;
-  for (i = 0; i < (DEFAULT_ABI == MS_ABI ? X64_REGPARM_MAX
+  for (i = 0; i < (ix86_abi == MS_ABI ? X64_REGPARM_MAX
   					 : X86_64_REGPARM_MAX); i++)
     if (regno == parm_regs[i])
       return true;
@@ -4549,7 +4569,7 @@ ix86_must_pass_in_stack (enum machine_mode mode, const_tree type)
 int
 ix86_reg_parm_stack_space (const_tree fndecl)
 {
-  int call_abi = SYSV_ABI;
+  enum calling_abi call_abi = SYSV_ABI;
   if (fndecl != NULL_TREE && TREE_CODE (fndecl) == FUNCTION_DECL)
     call_abi = ix86_function_abi (fndecl);
   else
@@ -4561,37 +4581,39 @@ ix86_reg_parm_stack_space (const_tree fndecl)
 
 /* Returns value SYSV_ABI, MS_ABI dependent on fntype, specifying the
    call abi used.  */
-int
+enum calling_abi
 ix86_function_type_abi (const_tree fntype)
 {
   if (TARGET_64BIT && fntype != NULL)
     {
-      int abi;
-      if (DEFAULT_ABI == SYSV_ABI)
-        abi = lookup_attribute ("ms_abi", TYPE_ATTRIBUTES (fntype)) ? MS_ABI : SYSV_ABI;
-      else
-        abi = lookup_attribute ("sysv_abi", TYPE_ATTRIBUTES (fntype)) ? SYSV_ABI : MS_ABI;
-
+      enum calling_abi abi = ix86_abi;
+      if (abi == SYSV_ABI)
+	{
+	  if (lookup_attribute ("ms_abi", TYPE_ATTRIBUTES (fntype)))
+	    abi = MS_ABI;
+	}
+      else if (lookup_attribute ("sysv_abi", TYPE_ATTRIBUTES (fntype)))
+	abi = SYSV_ABI;
       return abi;
     }
-  return DEFAULT_ABI;
+  return ix86_abi;
 }
 
-int
+static enum calling_abi
 ix86_function_abi (const_tree fndecl)
 {
   if (! fndecl)
-    return DEFAULT_ABI;
+    return ix86_abi;
   return ix86_function_type_abi (TREE_TYPE (fndecl));
 }
 
 /* Returns value SYSV_ABI, MS_ABI dependent on cfun, specifying the
    call abi used.  */
-int
+enum calling_abi
 ix86_cfun_abi (void)
 {
   if (! cfun || ! TARGET_64BIT)
-    return DEFAULT_ABI;
+    return ix86_abi;
   return cfun->machine->call_abi;
 }
 
@@ -4605,7 +4627,7 @@ void
 ix86_call_abi_override (const_tree fndecl)
 {
   if (fndecl == NULL_TREE)
-    cfun->machine->call_abi = DEFAULT_ABI;
+    cfun->machine->call_abi = ix86_abi;
   else
     cfun->machine->call_abi = ix86_function_type_abi (TREE_TYPE (fndecl));
 }
@@ -4617,7 +4639,7 @@ static void
 ix86_maybe_switch_abi (void)
 {
   if (TARGET_64BIT &&
-      call_used_regs[4 /*RSI*/] ==  (cfun->machine->call_abi == MS_ABI))
+      call_used_regs[SI_REG] == (cfun->machine->call_abi == MS_ABI))
     reinit_regs ();
 }
 
@@ -4645,8 +4667,8 @@ init_cumulative_args (CUMULATIVE_ARGS *cum,  /* Argument info to initialize */
   cum->nregs = ix86_regparm;
   if (TARGET_64BIT)
     {
-      if (cum->call_abi != DEFAULT_ABI)
-        cum->nregs = DEFAULT_ABI != SYSV_ABI ? X86_64_REGPARM_MAX
+      if (cum->call_abi != ix86_abi)
+        cum->nregs = ix86_abi != SYSV_ABI ? X86_64_REGPARM_MAX
         				     : X64_REGPARM_MAX;
     }
   if (TARGET_SSE)
@@ -4654,8 +4676,8 @@ init_cumulative_args (CUMULATIVE_ARGS *cum,  /* Argument info to initialize */
       cum->sse_nregs = SSE_REGPARM_MAX;
       if (TARGET_64BIT)
         {
-          if (cum->call_abi != DEFAULT_ABI)
-            cum->sse_nregs = DEFAULT_ABI != SYSV_ABI ? X86_64_SSE_REGPARM_MAX
+          if (cum->call_abi != ix86_abi)
+            cum->sse_nregs = ix86_abi != SYSV_ABI ? X86_64_SSE_REGPARM_MAX
             					     : X64_SSE_REGPARM_MAX;
         }
     }
@@ -4719,17 +4741,21 @@ init_cumulative_args (CUMULATIVE_ARGS *cum,  /* Argument info to initialize */
    modes, the generic vector support in gcc will choose some non-vector mode
    in order to implement the type.  By computing the natural mode, we'll
    select the proper ABI location for the operand and not depend on whatever
-   the middle-end decides to do with these vector types.  */
+   the middle-end decides to do with these vector types.
+
+   The midde-end can't deal with the vector types > 16 bytes.  In this
+   case, we return the original mode and warn ABI change if CUM isn't
+   NULL.  */
 
 static enum machine_mode
-type_natural_mode (const_tree type)
+type_natural_mode (const_tree type, CUMULATIVE_ARGS *cum)
 {
   enum machine_mode mode = TYPE_MODE (type);
 
   if (TREE_CODE (type) == VECTOR_TYPE && !VECTOR_MODE_P (mode))
     {
       HOST_WIDE_INT size = int_size_in_bytes (type);
-      if ((size == 8 || size == 16)
+      if ((size == 8 || size == 16 || size == 32)
 	  /* ??? Generic code allows us to create width 1 vectors.  Ignore.  */
 	  && TYPE_VECTOR_SUBPARTS (type) > 1)
 	{
@@ -4744,7 +4770,24 @@ type_natural_mode (const_tree type)
 	  for (; mode != VOIDmode; mode = GET_MODE_WIDER_MODE (mode))
 	    if (GET_MODE_NUNITS (mode) == TYPE_VECTOR_SUBPARTS (type)
 		&& GET_MODE_INNER (mode) == innermode)
-	      return mode;
+	      {
+		if (size == 32 && !TARGET_AVX)
+		  {
+		    static bool warnedavx;
+
+		    if (cum
+			&& !warnedavx 
+			&& cum->warn_avx)
+		      {
+			warnedavx = true;
+			warning (0, "AVX vector argument without AVX "
+				 "enabled changes the ABI");
+		      }
+		    return TYPE_MODE (type);
+		  }
+		else
+		  return mode;
+	      }
 
 	  gcc_unreachable ();
 	}
@@ -4901,19 +4944,40 @@ classify_argument (enum machine_mode mode, const_tree type,
 		    }
 		  else
 		    {
-		      num = classify_argument (TYPE_MODE (TREE_TYPE (field)),
-					       TREE_TYPE (field), subclasses,
+		      int pos;
+
+		      type = TREE_TYPE (field);
+
+		      /* Flexible array member is ignored.  */
+		      if (TYPE_MODE (type) == BLKmode
+			  && TREE_CODE (type) == ARRAY_TYPE
+			  && TYPE_SIZE (type) == NULL_TREE
+			  && TYPE_DOMAIN (type) != NULL_TREE
+			  && (TYPE_MAX_VALUE (TYPE_DOMAIN (type))
+			      == NULL_TREE))
+			{
+			  static bool warned;
+			  
+			  if (!warned && warn_psabi)
+			    {
+			      warned = true;
+			      inform (input_location,
+				      "The ABI of passing struct with"
+				      " a flexible array member has"
+				      " changed in GCC 4.4");
+			    }
+			  continue;
+			}
+		      num = classify_argument (TYPE_MODE (type), type,
+					       subclasses,
 					       (int_bit_position (field)
 						+ bit_offset) % 256);
 		      if (!num)
 			return 0;
-		      for (i = 0; i < num; i++)
-			{
-			  int pos =
-			    (int_bit_position (field) + (bit_offset % 64)) / 8 / 8;
-			  classes[i + pos] =
-			    merge_classes (subclasses[i], classes[i + pos]);
-			}
+		      pos = (int_bit_position (field) + (bit_offset % 64)) / 8 / 8;
+		      for (i = 0; i < num && (i + pos) < words; i++)
+			classes[i + pos] =
+			  merge_classes (subclasses[i], classes[i + pos]);
 		    }
 		}
 	    }
@@ -5001,10 +5065,24 @@ classify_argument (enum machine_mode mode, const_tree type,
 	      classes[i] = X86_64_SSE_CLASS;
 	    }
 
-	  /*  X86_64_X87UP_CLASS should be preceded by X86_64_X87_CLASS.  */
+	  /*  If X86_64_X87UP_CLASS isn't preceded by X86_64_X87_CLASS,
+	       everything should be passed in memory.  */
 	  if (classes[i] == X86_64_X87UP_CLASS
-	      && (i == 0 || classes[i - 1] != X86_64_X87_CLASS))
-	    classes[i] = X86_64_SSE_CLASS;
+	      && (classes[i - 1] != X86_64_X87_CLASS))
+	    {
+	      static bool warned;
+
+	      /* The first one should never be X86_64_X87UP_CLASS.  */
+	      gcc_assert (i != 0);
+	      if (!warned && warn_psabi)
+		{
+		  warned = true;
+		  inform (input_location,
+			  "The ABI of passing union with long double"
+			  " has changed in GCC 4.4");
+		}
+	      return 0;
+	    }
 	}
       return words;
     }
@@ -5080,9 +5158,11 @@ classify_argument (enum machine_mode mode, const_tree type,
     case TImode:
       classes[0] = classes[1] = X86_64_INTEGER_CLASS;
       return 2;
-    case CTImode:
     case COImode:
     case OImode:
+      /* OImode shouldn't be used directly.  */
+      gcc_unreachable ();
+    case CTImode:
       return 0;
     case SFmode:
       if (!(bit_offset % 64))
@@ -5315,6 +5395,8 @@ construct_container (enum machine_mode mode, enum machine_mode orig_mode,
   /* Otherwise figure out the entries of the PARALLEL.  */
   for (i = 0; i < n; i++)
     {
+      int pos;
+
       switch (regclass[i])
         {
 	  case X86_64_NO_CLASS:
@@ -5351,24 +5433,36 @@ construct_container (enum machine_mode mode, enum machine_mode orig_mode,
 	    sse_regno++;
 	    break;
 	  case X86_64_SSE_CLASS:
-	    if (i < n - 1 && regclass[i + 1] == X86_64_SSEUP_CLASS)
+	    pos = i;
+	    switch (n)
 	      {
-		if (regclass[i + 2] == X86_64_SSEUP_CLASS
-		    || regclass[i + 3] == X86_64_SSEUP_CLASS)
-		  tmpmode = OImode;
+	      case 1:
+		tmpmode = DImode;
+		break;
+	      case 2:
+		if (i == 0 && regclass[1] == X86_64_SSEUP_CLASS)
+		  {
+		    tmpmode = TImode;
+		    i++;
+		  }
 		else
-		  tmpmode = TImode;
+		  tmpmode = DImode;
+		break;
+	      case 4:
+		gcc_assert (i == 0
+			    && regclass[1] == X86_64_SSEUP_CLASS
+			    && regclass[2] == X86_64_SSEUP_CLASS
+			    && regclass[3] == X86_64_SSEUP_CLASS);
+		tmpmode = OImode;
+		i += 3;
+		break;
+	      default:
+		gcc_unreachable ();
 	      }
-	    else
-	      tmpmode = DImode;
 	    exp [nexps++] = gen_rtx_EXPR_LIST (VOIDmode,
 					       gen_rtx_REG (tmpmode,
 							    SSE_REGNO (sse_regno)),
-					       GEN_INT (i*8));
-	    if (tmpmode == OImode)
-	      i += 3;
-	    else if (tmpmode == TImode)
-	      i++;
+					       GEN_INT (pos*8));
 	    sse_regno++;
 	    break;
 	  default:
@@ -5419,6 +5513,10 @@ function_arg_advance_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 	}
       break;
 
+    case OImode:
+      /* OImode shouldn't be used directly.  */
+      gcc_unreachable ();
+
     case DFmode:
       if (cum->float_in_sse < 2)
 	break;
@@ -5427,7 +5525,6 @@ function_arg_advance_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 	break;
       /* FALLTHRU */
 
-    case OImode:
     case V8SFmode:
     case V8SImode:
     case V32QImode:
@@ -5525,9 +5622,9 @@ function_arg_advance (CUMULATIVE_ARGS *cum, enum machine_mode mode,
   words = (bytes + UNITS_PER_WORD - 1) / UNITS_PER_WORD;
 
   if (type)
-    mode = type_natural_mode (type);
+    mode = type_natural_mode (type, NULL);
 
-  if (TARGET_64BIT && (cum ? cum->call_abi : DEFAULT_ABI) == MS_ABI)
+  if (TARGET_64BIT && (cum ? cum->call_abi : ix86_abi) == MS_ABI)
     function_arg_advance_ms_64 (cum, bytes, words);
   else if (TARGET_64BIT)
     function_arg_advance_64 (cum, mode, type, words, named);
@@ -5553,7 +5650,7 @@ function_arg_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 		 enum machine_mode orig_mode, tree type,
 		 HOST_WIDE_INT bytes, HOST_WIDE_INT words)
 {
-  static bool warnedavx, warnedsse, warnedmmx;
+  static bool warnedsse, warnedmmx;
 
   /* Avoid the AL settings for the Unix64 ABI.  */
   if (mode == VOIDmode)
@@ -5624,7 +5721,9 @@ function_arg_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
       break;
 
     case OImode:
-      /* In 32bit, we pass OImode in ymm registers.  */
+      /* OImode shouldn't be used directly.  */
+      gcc_unreachable ();
+
     case V8SFmode:
     case V8SImode:
     case V32QImode:
@@ -5633,12 +5732,6 @@ function_arg_32 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
     case V4DImode:
       if (!type || !AGGREGATE_TYPE_P (type))
 	{
-	  if (!TARGET_AVX && !warnedavx && cum->warn_avx)
-	    {
-	      warnedavx = true;
-	      warning (0, "AVX vector argument without AVX enabled "
-		       "changes the ABI");
-	    }
 	  if (cum->sse_nregs)
 	    return gen_reg_or_parallel (mode, orig_mode,
 				        cum->sse_regno + FIRST_SSE_REG);
@@ -5672,16 +5765,14 @@ static rtx
 function_arg_64 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
 		 enum machine_mode orig_mode, tree type, int named)
 {
-  static bool warnedavx;
-
   /* Handle a hidden AL argument containing number of registers
      for varargs x86-64 functions.  */
   if (mode == VOIDmode)
     return GEN_INT (cum->maybe_vaarg
 		    ? (cum->sse_nregs < 0
-		       ? (cum->call_abi == DEFAULT_ABI
+		       ? (cum->call_abi == ix86_abi
 		          ? SSE_REGPARM_MAX
-		          : (DEFAULT_ABI != SYSV_ABI ? X86_64_SSE_REGPARM_MAX
+		          : (ix86_abi != SYSV_ABI ? X86_64_SSE_REGPARM_MAX
 		          			     : X64_SSE_REGPARM_MAX))
  	       : cum->sse_regno)
 		    : -1);
@@ -5697,18 +5788,6 @@ function_arg_64 (CUMULATIVE_ARGS *cum, enum machine_mode mode,
     case V16HImode:
     case V4DFmode:
     case V4DImode:
-      /* In 64bit, we pass TImode in interger registers and OImode on
-	 stack.  */
-      if (!type || !AGGREGATE_TYPE_P (type))
-	{
-	  if (!TARGET_AVX && !warnedavx && cum->warn_avx)
-	    {
-	      warnedavx = true;
-	      warning (0, "AVX vector argument without AVX enabled "
-		       "changes the ABI");
-	    }
-	}
-
       /* Unnamed 256bit vector mode parameters are passed on stack.  */
       if (!named)
 	return NULL;
@@ -5785,9 +5864,9 @@ function_arg (CUMULATIVE_ARGS *cum, enum machine_mode omode,
   /* To simplify the code below, represent vector types with a vector mode
      even if MMX/SSE are not active.  */
   if (type && TREE_CODE (type) == VECTOR_TYPE)
-    mode = type_natural_mode (type);
+    mode = type_natural_mode (type, cum);
 
-  if (TARGET_64BIT && (cum ? cum->call_abi : DEFAULT_ABI) == MS_ABI)
+  if (TARGET_64BIT && (cum ? cum->call_abi : ix86_abi) == MS_ABI)
     return function_arg_ms_64 (cum, mode, omode, named, bytes);
   else if (TARGET_64BIT)
     return function_arg_64 (cum, mode, omode, type, named);
@@ -5807,7 +5886,7 @@ ix86_pass_by_reference (CUMULATIVE_ARGS *cum ATTRIBUTE_UNUSED,
 			const_tree type, bool named ATTRIBUTE_UNUSED)
 {
   /* See Windows x64 Software Convention.  */
-  if (TARGET_64BIT && (cum ? cum->call_abi : DEFAULT_ABI) == MS_ABI)
+  if (TARGET_64BIT && (cum ? cum->call_abi : ix86_abi) == MS_ABI)
     {
       int msize = (int) GET_MODE_SIZE (mode);
       if (type)
@@ -5947,7 +6026,7 @@ ix86_function_value_regno_p (int regno)
       /* TODO: The function should depend on current function ABI but
        builtins.c would need updating then. Therefore we use the
        default ABI.  */
-      if (TARGET_64BIT && DEFAULT_ABI == MS_ABI)
+      if (TARGET_64BIT && ix86_abi == MS_ABI)
 	return false;
       return TARGET_FLOAT_RETURNS_IN_80387;
 
@@ -5987,6 +6066,10 @@ function_value_32 (enum machine_mode orig_mode, enum machine_mode mode,
 	   || (VECTOR_MODE_P (mode) && GET_MODE_SIZE (mode) == 16))
     regno = TARGET_SSE ? FIRST_SSE_REG : 0;
 
+  /* 32-byte vector modes in %ymm0.   */
+  else if (VECTOR_MODE_P (mode) && GET_MODE_SIZE (mode) == 32)
+    regno = TARGET_AVX ? FIRST_SSE_REG : 0;
+
   /* Floating point return values in %st(0) (unless -mno-fp-ret-in-387).  */
   else if (X87_FLOAT_MODE_P (mode) && TARGET_FLOAT_RETURNS_IN_80387)
     regno = FIRST_FLOAT_REG;
@@ -6003,6 +6086,9 @@ function_value_32 (enum machine_mode orig_mode, enum machine_mode mode,
 	  || (sse_level == 2 && mode == DFmode))
 	regno = FIRST_SSE_REG;
     }
+
+  /* OImode shouldn't be used directly.  */
+  gcc_assert (mode != OImode);
 
   return gen_rtx_REG (orig_mode, regno);
 }
@@ -6101,7 +6187,7 @@ ix86_function_value (const_tree valtype, const_tree fntype_or_decl,
   enum machine_mode mode, orig_mode;
 
   orig_mode = TYPE_MODE (valtype);
-  mode = type_natural_mode (valtype);
+  mode = type_natural_mode (valtype, NULL);
   return ix86_function_value_1 (valtype, fntype_or_decl, orig_mode, mode);
 }
 
@@ -6140,6 +6226,10 @@ return_in_memory_32 (const_tree type, enum machine_mode mode)
       /* SSE values are returned in XMM0, except when it doesn't exist.  */
       if (size == 16)
 	return (TARGET_SSE ? 0 : 1);
+
+      /* AVX values are returned in YMM0, except when it doesn't exist.  */
+      if (size == 32)
+	return TARGET_AVX ? 0 : 1;
     }
 
   if (mode == XFmode)
@@ -6147,6 +6237,10 @@ return_in_memory_32 (const_tree type, enum machine_mode mode)
 
   if (size > 12)
     return 1;
+
+  /* OImode shouldn't be used directly.  */
+  gcc_assert (mode != OImode);
+
   return 0;
 }
 
@@ -6177,14 +6271,17 @@ ix86_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 #ifdef SUBTARGET_RETURN_IN_MEMORY
   return SUBTARGET_RETURN_IN_MEMORY (type, fntype);
 #else
-   const enum machine_mode mode = type_natural_mode (type);
+  const enum machine_mode mode = type_natural_mode (type, NULL);
  
-  if (TARGET_64BIT_MS_ABI)
-     return return_in_memory_ms_64 (type, mode);
-   else if (TARGET_64BIT)
-     return return_in_memory_64 (type, mode);
-   else
-     return return_in_memory_32 (type, mode);
+  if (TARGET_64BIT)
+    {
+      if (ix86_function_type_abi (fntype) == MS_ABI)
+	return return_in_memory_ms_64 (type, mode);
+      else
+	return return_in_memory_64 (type, mode);
+    }
+  else
+    return return_in_memory_32 (type, mode);
 #endif
 }
 
@@ -6197,7 +6294,7 @@ bool
 ix86_sol10_return_in_memory (const_tree type, const_tree fntype ATTRIBUTE_UNUSED)
 {
   int size;
-  enum machine_mode mode = type_natural_mode (type);
+  enum machine_mode mode = type_natural_mode (type, NULL);
 
   if (TARGET_64BIT)
     return return_in_memory_64 (type, mode);
@@ -6325,13 +6422,13 @@ ix86_build_builtin_va_list_abi (enum calling_abi abi)
 static tree
 ix86_build_builtin_va_list (void)
 {
-  tree ret = ix86_build_builtin_va_list_abi (DEFAULT_ABI);
+  tree ret = ix86_build_builtin_va_list_abi (ix86_abi);
 
   /* Initialize abi specific va_list builtin types.  */
   if (TARGET_64BIT)
     {
       tree t;
-      if (DEFAULT_ABI == MS_ABI)
+      if (ix86_abi == MS_ABI)
         {
           t = ix86_build_builtin_va_list_abi (SYSV_ABI);
           if (TREE_CODE (t) != RECORD_TYPE)
@@ -6345,7 +6442,7 @@ ix86_build_builtin_va_list (void)
             t = build_variant_type_copy (t);
           sysv_va_list_type_node = t;
         }
-      if (DEFAULT_ABI != MS_ABI)
+      if (ix86_abi != MS_ABI)
         {
           t = ix86_build_builtin_va_list_abi (MS_ABI);
           if (TREE_CODE (t) != RECORD_TYPE)
@@ -6378,8 +6475,8 @@ setup_incoming_varargs_64 (CUMULATIVE_ARGS *cum)
   int i;
   int regparm = ix86_regparm;
 
-  if (cum->call_abi != DEFAULT_ABI)
-    regparm = DEFAULT_ABI != SYSV_ABI ? X86_64_REGPARM_MAX : X64_REGPARM_MAX;
+  if (cum->call_abi != ix86_abi)
+    regparm = ix86_abi != SYSV_ABI ? X86_64_REGPARM_MAX : X64_REGPARM_MAX;
 
   /* GPR size of varargs save area.  */
   if (cfun->va_list_gpr_size)
@@ -6532,7 +6629,7 @@ is_va_list_char_pointer (tree type)
     return true;
   canonic = ix86_canonical_va_list_type (type);
   return (canonic == ms_va_list_type_node
-          || (DEFAULT_ABI == MS_ABI && canonic == va_list_type_node));
+          || (ix86_abi == MS_ABI && canonic == va_list_type_node));
 }
 
 /* Implement va_start.  */
@@ -6651,7 +6748,7 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   size = int_size_in_bytes (type);
   rsize = (size + UNITS_PER_WORD - 1) / UNITS_PER_WORD;
 
-  nat_mode = type_natural_mode (type);
+  nat_mode = type_natural_mode (type, NULL);
   switch (nat_mode)
     {
     case V8SFmode:
@@ -7997,7 +8094,6 @@ ix86_expand_prologue (void)
 {
   rtx insn;
   bool pic_reg_used;
-  bool emit_blockage = false;
   struct ix86_frame frame;
   HOST_WIDE_INT allocate;
 
@@ -8209,14 +8305,12 @@ ix86_expand_prologue (void)
         insn = emit_insn (gen_set_got (pic_offset_table_rtx));
     }
 
-  /* Prevent function calls from being scheduled before the call to mcount.
-     In the pic_reg_used case, make sure that the got load isn't deleted.  */
-  if (crtl->profile)
-    {
-      if (pic_reg_used)
-	emit_insn (gen_prologue_use (pic_offset_table_rtx));
-      emit_blockage = true;
-    }
+  /* In the pic_reg_used case, make sure that the got load isn't deleted
+     when mcount needs it.  Blockage to avoid call movement across mcount
+     call is emitted in generic code after the NOTE_INSN_PROLOGUE_END
+     note.  */
+  if (crtl->profile && pic_reg_used)
+    emit_insn (gen_prologue_use (pic_offset_table_rtx));
 
   if (crtl->drap_reg && !crtl->stack_realign_needed)
     {
@@ -8235,10 +8329,7 @@ ix86_expand_prologue (void)
      prologue, and moving instructions that access redzone area via frame
      pointer inside push sequence violates this assumption.  */
   if (frame_pointer_needed && frame.red_zone_size)
-    emit_blockage = true;
-
-  if (emit_blockage)
-    emit_insn (gen_blockage ()); 
+    emit_insn (gen_memory_blockage ());
 
   /* Emit cld instruction if stringops are used in the function.  */
   if (TARGET_CLD && ix86_current_function_needs_cld)
@@ -8325,6 +8416,11 @@ ix86_expand_epilogue (int style)
 	      || stack_realign_fp);
 
   ix86_compute_frame_layout (&frame);
+
+  /* See the comment about red zone and frame
+     pointer usage in ix86_expand_prologue.  */
+  if (frame_pointer_needed && frame.red_zone_size)
+    emit_insn (gen_memory_blockage ()); 
 
   /* Calculate start of saved registers relative to ebp.  Special care
      must be taken for the normal return case of a function using
@@ -8857,9 +8953,8 @@ legitimate_constant_p (rtx x)
       break;
 
     case CONST_VECTOR:
-      if (x == CONST0_RTX (GET_MODE (x)))
-	return true;
-      return false;
+      if (!standard_sse_constant_p (x))
+	return false;
 
     default:
       break;
@@ -12577,6 +12672,11 @@ ix86_expand_push (enum machine_mode mode, rtx x)
     emit_move_insn (stack_pointer_rtx, tmp);
 
   tmp = gen_rtx_MEM (mode, stack_pointer_rtx);
+
+  /* When we push an operand onto stack, it has to be aligned at least
+     at the function argument boundary.  However since we don't have
+     the argument type, we can't determine the actual argument
+     boundary.  */
   emit_move_insn (tmp, x);
 }
 
@@ -18558,12 +18658,7 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
 		  rtx pop, int sibcall)
 {
   rtx use = NULL, call;
-  enum calling_abi function_call_abi;
 
-  if (callarg2 && INTVAL (callarg2) == -2)
-    function_call_abi = MS_ABI;
-  else
-    function_call_abi = SYSV_ABI;
   if (pop == const0_rtx)
     pop = NULL;
   gcc_assert (!TARGET_64BIT || !pop);
@@ -18619,14 +18714,19 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
       pop = gen_rtx_PLUS (Pmode, stack_pointer_rtx, pop);
       pop = gen_rtx_SET (VOIDmode, stack_pointer_rtx, pop);
       call = gen_rtx_PARALLEL (VOIDmode, gen_rtvec (2, call, pop));
-      gcc_assert (ix86_cfun_abi () != MS_ABI || function_call_abi != SYSV_ABI);
     }
-  /* We need to represent that SI and DI registers are clobbered
-     by SYSV calls.  */
-  if (ix86_cfun_abi () == MS_ABI && function_call_abi == SYSV_ABI)
+  if (TARGET_64BIT
+      && ix86_cfun_abi () == MS_ABI
+      && (!callarg2 || INTVAL (callarg2) != -2))
     {
-      static int clobbered_registers[] = {27, 28, 45, 46, 47, 48, 49, 50, 51,
-      					  52, SI_REG, DI_REG};
+      /* We need to represent that SI and DI registers are clobbered
+	 by SYSV calls.  */
+      static int clobbered_registers[] = {
+	XMM6_REG, XMM7_REG, XMM8_REG,
+	XMM9_REG, XMM10_REG, XMM11_REG,
+	XMM12_REG, XMM13_REG, XMM14_REG,
+	XMM15_REG, SI_REG, DI_REG
+      };
       unsigned int i;
       rtx vec[ARRAY_SIZE (clobbered_registers) + 2];
       rtx unspec = gen_rtx_UNSPEC (VOIDmode, gen_rtvec (1, const0_rtx),
@@ -18665,7 +18765,7 @@ ix86_init_machine_status (void)
   f = GGC_CNEW (struct machine_function);
   f->use_fast_prologue_epilogue_nregs = -1;
   f->tls_descriptor_call_expanded_p = 0;
-  f->call_abi = DEFAULT_ABI;
+  f->call_abi = ix86_abi;
 
   return f;
 }
@@ -18992,41 +19092,21 @@ ix86_flags_dependent (rtx insn, rtx dep_insn, enum attr_type insn_type)
   return 1;
 }
 
-/* A subroutine of ix86_adjust_cost -- return true iff INSN has a memory
-   address with operands set by DEP_INSN.  */
+/* Return true iff USE_INSN has a memory address with operands set by
+   SET_INSN.  */
 
-static int
-ix86_agi_dependent (rtx insn, rtx dep_insn, enum attr_type insn_type)
+bool
+ix86_agi_dependent (rtx set_insn, rtx use_insn)
 {
-  rtx addr;
-
-  if (insn_type == TYPE_LEA
-      && TARGET_PENTIUM)
-    {
-      addr = PATTERN (insn);
-
-      if (GET_CODE (addr) == PARALLEL)
-	addr = XVECEXP (addr, 0, 0);
-
-      gcc_assert (GET_CODE (addr) == SET);
-
-      addr = SET_SRC (addr);
-    }
-  else
-    {
-      int i;
-      extract_insn_cached (insn);
-      for (i = recog_data.n_operands - 1; i >= 0; --i)
-	if (MEM_P (recog_data.operand[i]))
-	  {
-	    addr = XEXP (recog_data.operand[i], 0);
-	    goto found;
-	  }
-      return 0;
-    found:;
-    }
-
-  return modified_in_p (addr, dep_insn);
+  int i;
+  extract_insn_cached (use_insn);
+  for (i = recog_data.n_operands - 1; i >= 0; --i)
+    if (MEM_P (recog_data.operand[i]))
+      {
+	rtx addr = XEXP (recog_data.operand[i], 0);
+	return modified_in_p (addr, set_insn) != 0;
+      }
+  return false;
 }
 
 static int
@@ -19054,7 +19134,20 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
     {
     case PROCESSOR_PENTIUM:
       /* Address Generation Interlock adds a cycle of latency.  */
-      if (ix86_agi_dependent (insn, dep_insn, insn_type))
+      if (insn_type == TYPE_LEA)
+	{
+	  rtx addr = PATTERN (insn);
+
+	  if (GET_CODE (addr) == PARALLEL)
+	    addr = XVECEXP (addr, 0, 0);
+
+	  gcc_assert (GET_CODE (addr) == SET);
+
+	  addr = SET_SRC (addr);
+	  if (modified_in_p (addr, dep_insn))
+	    cost += 1;
+	}
+      else if (ix86_agi_dependent (dep_insn, insn))
 	cost += 1;
 
       /* ??? Compares pair with jump/setcc.  */
@@ -19064,7 +19157,7 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
       /* Floating point stores require value to be ready one cycle earlier.  */
       if (insn_type == TYPE_FMOV
 	  && get_attr_memory (insn) == MEMORY_STORE
-	  && !ix86_agi_dependent (insn, dep_insn, insn_type))
+	  && !ix86_agi_dependent (dep_insn, insn))
 	cost += 1;
       break;
 
@@ -19087,7 +19180,7 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
 	 in parallel with previous instruction in case
 	 previous instruction is not needed to compute the address.  */
       if ((memory == MEMORY_LOAD || memory == MEMORY_BOTH)
-	  && !ix86_agi_dependent (insn, dep_insn, insn_type))
+	  && !ix86_agi_dependent (dep_insn, insn))
 	{
 	  /* Claim moves to take one cycle, as core can issue one load
 	     at time and the next load can start cycle later.  */
@@ -19116,7 +19209,7 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
 	 in parallel with previous instruction in case
 	 previous instruction is not needed to compute the address.  */
       if ((memory == MEMORY_LOAD || memory == MEMORY_BOTH)
-	  && !ix86_agi_dependent (insn, dep_insn, insn_type))
+	  && !ix86_agi_dependent (dep_insn, insn))
 	{
 	  /* Claim moves to take one cycle, as core can issue one load
 	     at time and the next load can start cycle later.  */
@@ -19141,7 +19234,7 @@ ix86_adjust_cost (rtx insn, rtx link, rtx dep_insn, int cost)
 	 in parallel with previous instruction in case
 	 previous instruction is not needed to compute the address.  */
       if ((memory == MEMORY_LOAD || memory == MEMORY_BOTH)
-	  && !ix86_agi_dependent (insn, dep_insn, insn_type))
+	  && !ix86_agi_dependent (dep_insn, insn))
 	{
 	  enum attr_unit unit = get_attr_unit (insn);
 	  int loadcost = 3;
@@ -19283,15 +19376,39 @@ ix86_data_alignment (tree type, int align)
   return align;
 }
 
-/* Compute the alignment for a local variable or a stack slot.  TYPE is
-   the data type, MODE is the widest mode available and ALIGN is the
-   alignment that the object would ordinarily have.  The value of this
-   macro is used instead of that alignment to align the object.  */
+/* Compute the alignment for a local variable or a stack slot.  EXP is
+   the data type or decl itself, MODE is the widest mode available and
+   ALIGN is the alignment that the object would ordinarily have.  The
+   value of this macro is used instead of that alignment to align the
+   object.  */
 
 unsigned int
-ix86_local_alignment (tree type, enum machine_mode mode,
+ix86_local_alignment (tree exp, enum machine_mode mode,
 		      unsigned int align)
 {
+  tree type, decl;
+
+  if (exp && DECL_P (exp))
+    {
+      type = TREE_TYPE (exp);
+      decl = exp;
+    }
+  else
+    {
+      type = exp;
+      decl = NULL;
+    }
+
+  /* Don't do dynamic stack realignment for long long objects with
+     -mpreferred-stack-boundary=2.  */
+  if (!TARGET_64BIT
+      && align == 64
+      && ix86_preferred_stack_boundary < 64
+      && (mode == DImode || (type && TYPE_MODE (type) == DImode))
+      && (!type || !TYPE_USER_ALIGN (type))
+      && (!decl || !DECL_USER_ALIGN (decl)))
+    align = 32;
+
   /* If TYPE is NULL, we are allocating a stack slot for caller-save
      register in MODE.  We will return the largest alignment of XF
      and DF.  */
@@ -20123,6 +20240,7 @@ enum ix86_builtins
 
   /* TFmode support builtins.  */
   IX86_BUILTIN_INFQ,
+  IX86_BUILTIN_HUGE_VALQ,
   IX86_BUILTIN_FABSQ,
   IX86_BUILTIN_COPYSIGNQ,
 
@@ -23291,6 +23409,11 @@ ix86_init_builtins (void)
 			       NULL, NULL_TREE);
   ix86_builtins[(int) IX86_BUILTIN_INFQ] = decl;
 
+  decl = add_builtin_function ("__builtin_huge_valq", ftype,
+			       IX86_BUILTIN_HUGE_VALQ, BUILT_IN_MD,
+			       NULL, NULL_TREE);
+  ix86_builtins[(int) IX86_BUILTIN_HUGE_VALQ] = decl;
+
   /* We will expand them to normal call if SSE2 isn't available since
      they are used by libgcc. */
   ftype = build_function_type_list (float128_type_node,
@@ -24746,6 +24869,7 @@ ix86_expand_builtin (tree exp, rtx target, rtx subtarget ATTRIBUTE_UNUSED,
       return ix86_expand_vec_set_builtin (exp);
 
     case IX86_BUILTIN_INFQ:
+    case IX86_BUILTIN_HUGE_VALQ:
       {
 	REAL_VALUE_TYPE inf;
 	rtx tmp;
@@ -25698,7 +25822,7 @@ ix86_hard_regno_mode_ok (int regno, enum machine_mode mode)
     {
       /* Take care for QImode values - they can be in non-QI regs,
 	 but then they do cause partial register stalls.  */
-      if (regno < 4 || TARGET_64BIT)
+      if (regno <= BX_REG || TARGET_64BIT)
 	return 1;
       if (!TARGET_PARTIAL_REG_STALL)
 	return 1;
@@ -26810,7 +26934,7 @@ x86_extended_QIreg_mentioned_p (rtx insn)
   extract_insn_cached (insn);
   for (i = 0; i < recog_data.n_operands; i++)
     if (REG_P (recog_data.operand[i])
-	&& REGNO (recog_data.operand[i]) >= 4)
+	&& REGNO (recog_data.operand[i]) > BX_REG)
        return true;
   return false;
 }
@@ -27080,9 +27204,12 @@ ix86_expand_vector_init_one_nonzero (bool mmx_ok, enum machine_mode mode,
     case V16HImode:
     case V8SImode:
     case V8SFmode:
-    case V4DImode:
     case V4DFmode:
       use_vector_set = TARGET_AVX;
+      break;
+    case V4DImode:
+      /* Use ix86_expand_vector_set in 64bit mode only.  */
+      use_vector_set = TARGET_AVX && TARGET_64BIT;
       break;
     default:
       break;
@@ -27222,8 +27349,11 @@ ix86_expand_vector_init_one_var (bool mmx_ok, enum machine_mode mode,
 	 the general case.  */
       return false;
 
-    case V4DFmode:
     case V4DImode:
+      /* Use ix86_expand_vector_set in 64bit mode only.  */
+      if (!TARGET_64BIT)
+	return false;
+    case V4DFmode:
     case V8SFmode:
     case V8SImode:
     case V16HImode:
@@ -29354,14 +29484,11 @@ x86_builtin_vectorization_cost (bool runtime_test)
 tree
 ix86_fn_abi_va_list (tree fndecl)
 {
-  int abi;
-
   if (!TARGET_64BIT)
     return va_list_type_node;
   gcc_assert (fndecl != NULL_TREE);
-  abi = ix86_function_abi ((const_tree) fndecl);
 
-  if (abi == MS_ABI)
+  if (ix86_function_abi ((const_tree) fndecl) == MS_ABI)
     return ms_va_list_type_node;
   else
     return sysv_va_list_type_node;

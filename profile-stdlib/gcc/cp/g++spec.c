@@ -1,6 +1,6 @@
 /* Specific flags and argument handling of the C++ front end.
    Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
-   2007  Free Software Foundation, Inc.
+   2007, 2008  Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -44,6 +44,9 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef LIBSTDCXX_PROFILE
 #define LIBSTDCXX_PROFILE LIBSTDCXX
 #endif
+#ifndef LIBSTDCXX_STATIC
+#define LIBSTDCXX_STATIC LIBSTDCXX
+#endif
 
 #ifndef LIBPROFCXX
 #define LIBPROFCXX "-lprofc++"
@@ -56,9 +59,6 @@ lang_specific_driver (int *in_argc, const char *const **in_argv,
 
   /* If nonzero, the user gave us the `-p' or `-pg' flag.  */
   int saw_profile_flag = 0;
-
-  /* If nonzero, the user gave us the `-fprofile-stdlib??' flag.  */
-  int saw_profile_stdlib_flag = 0;
 
   /* If nonzero, the user gave us the `-v' flag.  */
   int saw_verbose_flag = 0;
@@ -150,9 +150,6 @@ lang_specific_driver (int *in_argc, const char *const **in_argv,
 	    args[i] |= WITHLIBC;
 	  else if (strcmp (argv[i], "-pg") == 0 || strcmp (argv[i], "-p") == 0)
 	    saw_profile_flag++;
-	  else if (strcmp (argv[i], "-fprofile-stdlib") == 0 
-               || strcmp (argv[i], "-D_GLIBCXX_PROFILE") == 0)
-	    saw_profile_stdlib_flag++;
 	  else if (strcmp (argv[i], "-v") == 0)
 	    saw_verbose_flag = 1;
 	  else if (strncmp (argv[i], "-x", 2) == 0)
@@ -266,7 +263,7 @@ lang_specific_driver (int *in_argc, const char *const **in_argv,
 #endif
 
   /* Make sure to have room for the trailing NULL argument.  */
-  num_args = argc + added + need_math + shared_libgcc + (library > 0) + 1 + saw_profile_stdlib_flag;
+  num_args = argc + added + need_math + shared_libgcc + (library > 0) + 1;
   arglist = XNEWVEC (const char *, num_args);
 
   i = 0;
@@ -324,7 +321,8 @@ lang_specific_driver (int *in_argc, const char *const **in_argv,
   /* Add `-lstdc++' if we haven't already done so.  */
   if (library > 0)
     {
-      arglist[j] = saw_profile_flag ? LIBSTDCXX_PROFILE : LIBSTDCXX;
+      arglist[j] = shared_libgcc == 0 ? LIBSTDCXX_STATIC
+	: saw_profile_flag ? LIBSTDCXX_PROFILE : LIBSTDCXX;
       if (arglist[j][0] != '-' || arglist[j][1] == 'l')
 	added_libraries++;
       j++;
@@ -343,11 +341,6 @@ lang_specific_driver (int *in_argc, const char *const **in_argv,
   if (shared_libgcc)
     arglist[j++] = "-shared-libgcc";
 
-  if (saw_profile_stdlib_flag)
-  {
-    arglist[j++] = LIBPROFCXX; 
-	added_libraries++;
-  }
   arglist[j] = NULL;
 
   *in_argc = j;

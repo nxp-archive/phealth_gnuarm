@@ -1,50 +1,13 @@
-/* Test for typeof evaluation: should be at the appropriate point in
-   the containing expression rather than just adding a statement.  */
+/* Further tests of [*] being rejected other that in declarations, as
+   per the consensus in DR#341 that the second example there should be
+   invalid (but warnings because the final wording appears to allow
+   these cases).  */
 /* Origin: Joseph Myers <joseph@codesourcery.com> */
-/* { dg-do run } */
-/* { dg-options "-std=gnu99" } */
+/* { dg-do compile } */
+/* { dg-options "-std=c99 -pedantic-errors" } */
 
-extern void exit (int);
-extern void abort (void);
-
-void *p;
-
-void
-f1 (void)
-{
-  int i = 0, j = -1, k = -1;
-  /* typeof applied to expression with cast.  */
-  (j = ++i), (void)(typeof ((int (*)[(k = ++i)])p))p;
-  if (j != 1 || k != 2 || i != 2)
-    abort ();
-}
-
-void
-f2 (void)
-{
-  int i = 0, j = -1, k = -1;
-  /* typeof applied to type.  */
-  (j = ++i), (void)(typeof (int (*)[(k = ++i)]))p;
-  if (j != 1 || k != 2 || i != 2)
-    abort ();
-}
-
-void
-f3 (void)
-{
-  int i = 0, j = -1, k = -1;
-  void *q;
-  /* typeof applied to expression with cast that is used.  */
-  (j = ++i), (void)((typeof (1 + (int (*)[(k = ++i)])p))p);
-  if (j != 1 || k != 2 || i != 2)
-    abort ();
-}
-
-int
-main (void)
-{
-  f1 ();
-  f2 ();
-  f3 ();
-  exit (0);
-}
+void foo11a(int x[sizeof(int *(*)[*])]);	/* { dg-warning "not in a declaration" } */
+void foo11b(__SIZE_TYPE__ x, int y[(__SIZE_TYPE__)(int (*)[*])x]);	/* { dg-warning "not in a declaration" } */
+void foo11c(struct s { int (*x)[*]; } *y);	/* { dg-error "a member of a structure or union cannot have a variably modified type" "variably modified" } */
+/* { dg-warning "'struct s' declared inside parameter list" "struct decl" { target *-*-* } 11 } */
+/* { dg-warning "its scope is only this definition or declaration" "struct scope" { target *-*-* } 11 } */

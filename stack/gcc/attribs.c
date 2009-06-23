@@ -1,6 +1,6 @@
 /* Functions dealing with attribute handling, used by most front ends.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001,
-   2002, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+   2002, 2003, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -252,18 +252,18 @@ decl_attributes (tree *node, tree attributes, int flags)
       && !DECL_FUNCTION_SPECIFIC_OPTIMIZATION (*node))
     DECL_FUNCTION_SPECIFIC_OPTIMIZATION (*node) = optimization_current_node;
 
-  /* If this is a function and the user used #pragma GCC option, add the
-     options to the attribute((option(...))) list.  */
+  /* If this is a function and the user used #pragma GCC target, add the
+     options to the attribute((target(...))) list.  */
   if (TREE_CODE (*node) == FUNCTION_DECL
-      && current_option_pragma
+      && current_target_pragma
       && targetm.target_option.valid_attribute_p (*node, NULL_TREE,
-						  current_option_pragma, 0))
+						  current_target_pragma, 0))
     {
-      tree cur_attr = lookup_attribute ("option", attributes);
-      tree opts = copy_list (current_option_pragma);
+      tree cur_attr = lookup_attribute ("target", attributes);
+      tree opts = copy_list (current_target_pragma);
 
       if (! cur_attr)
-	attributes = tree_cons (get_identifier ("option"), opts, attributes);
+	attributes = tree_cons (get_identifier ("target"), opts, attributes);
       else
 	TREE_VALUE (cur_attr) = chainon (opts, TREE_VALUE (cur_attr));
     }

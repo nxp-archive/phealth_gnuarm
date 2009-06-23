@@ -1,6 +1,7 @@
 // { dg-do link }
 // { dg-options "-frepo -Werror" }
-// Build then link:
+// { dg-require-host-local "" }
+// { dg-skip-if "dkms are not final links" { vxworks_kernel } }
 
 
 // Submitted by Melissa O'Neill <oneill@cs.sfu.ca>

@@ -1,6 +1,6 @@
 /* Common subexpression elimination for GNU compiler.
    Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -517,6 +517,14 @@ static struct table_elt *free_element_chain;
 static int constant_pool_entries_cost;
 static int constant_pool_entries_regcost;
 
+/* Trace a patch through the CFG.  */
+
+struct branch_path
+{
+  /* The basic block for this path entry.  */
+  basic_block bb;
+};
+
 /* This data describes a block that will be processed by
    cse_extended_basic_block.  */
 
@@ -527,11 +535,7 @@ struct cse_basic_block_data
   /* Size of current branch path, if any.  */
   int path_size;
   /* Current path, indicating which basic_blocks will be processed.  */
-  struct branch_path
-    {
-      /* The basic block for this path entry.  */
-      basic_block bb;
-    } *path;
+  struct branch_path *path;
 };
 
 
@@ -1364,17 +1368,6 @@ lookup_as_function (rtx x, enum rtx_code code)
   struct table_elt *p
     = lookup (x, SAFE_HASH (x, VOIDmode), GET_MODE (x));
 
-  /* If we are looking for a CONST_INT, the mode doesn't really matter, as
-     long as we are narrowing.  So if we looked in vain for a mode narrower
-     than word_mode before, look for word_mode now.  */
-  if (p == 0 && code == CONST_INT
-      && GET_MODE_SIZE (GET_MODE (x)) < GET_MODE_SIZE (word_mode))
-    {
-      x = copy_rtx (x);
-      PUT_MODE (x, word_mode);
-      p = lookup (x, SAFE_HASH (x, VOIDmode), word_mode);
-    }
-
   if (p == 0)
     return 0;
 
@@ -1669,7 +1662,7 @@ check_dependence (rtx *x, void *data)
 {
   struct check_dependence_data *d = (struct check_dependence_data *) data;
   if (*x && MEM_P (*x))
-    return canon_true_dependence (d->exp, d->mode, d->addr, *x,
+    return canon_true_dependence (d->exp, d->mode, d->addr, *x, NULL_RTX,
 		    		  cse_rtx_varies_p);
   else
     return 0;
@@ -2340,14 +2333,14 @@ hash_rtx_cb (const_rtx x, enum machine_mode mode,
 	      goto repeat;
 	    }
           
-	  hash += hash_rtx_cb (XEXP (x, i), 0, do_not_record_p,
+	  hash += hash_rtx_cb (XEXP (x, i), VOIDmode, do_not_record_p,
                                hash_arg_in_memory_p,
                                have_reg_qty, cb);
 	  break;
 
 	case 'E':
 	  for (j = 0; j < XVECLEN (x, i); j++)
-	    hash += hash_rtx_cb (XVECEXP (x, i, j), 0, do_not_record_p,
+	    hash += hash_rtx_cb (XVECEXP (x, i, j), VOIDmode, do_not_record_p,
                                  hash_arg_in_memory_p,
                                  have_reg_qty, cb);
 	  break;
@@ -3171,33 +3164,15 @@ fold_rtx (rtx x, rtx insn)
     {
     case RTX_UNARY:
       {
-	int is_const = 0;
-
 	/* We can't simplify extension ops unless we know the
 	   original mode.  */
 	if ((code == ZERO_EXTEND || code == SIGN_EXTEND)
 	    && mode_arg0 == VOIDmode)
 	  break;
 
-	/* If we had a CONST, strip it off and put it back later if we
-	   fold.  */
-	if (const_arg0 != 0 && GET_CODE (const_arg0) == CONST)
-	  is_const = 1, const_arg0 = XEXP (const_arg0, 0);
-
 	new_rtx = simplify_unary_operation (code, mode,
 					const_arg0 ? const_arg0 : folded_arg0,
 					mode_arg0);
-	/* NEG of PLUS could be converted into MINUS, but that causes
-	   expressions of the form
-	   (CONST (MINUS (CONST_INT) (SYMBOL_REF)))
-	   which many ports mistakenly treat as LEGITIMATE_CONSTANT_P.
-	   FIXME: those ports should be fixed.  */
-	if (new_rtx != 0 && is_const
-	    && GET_CODE (new_rtx) == PLUS
-	    && (GET_CODE (XEXP (new_rtx, 0)) == SYMBOL_REF
-		|| GET_CODE (XEXP (new_rtx, 0)) == LABEL_REF)
-	    && GET_CODE (XEXP (new_rtx, 1)) == CONST_INT)
-	  new_rtx = gen_rtx_CONST (mode, new_rtx);
       }
       break;
 
@@ -3493,6 +3468,7 @@ fold_rtx (rtx x, rtx insn)
 	      int is_shift
 		= (code == ASHIFT || code == ASHIFTRT || code == LSHIFTRT);
 	      rtx y, inner_const, new_const;
+	      rtx canon_const_arg1 = const_arg1;
 	      enum rtx_code associate_code;
 
 	      if (is_shift
@@ -3500,8 +3476,9 @@ fold_rtx (rtx x, rtx insn)
 		      || INTVAL (const_arg1) < 0))
 		{
 		  if (SHIFT_COUNT_TRUNCATED)
-		    const_arg1 = GEN_INT (INTVAL (const_arg1)
-					  & (GET_MODE_BITSIZE (mode) - 1));
+		    canon_const_arg1 = GEN_INT (INTVAL (const_arg1)
+						& (GET_MODE_BITSIZE (mode)
+						   - 1));
 		  else
 		    break;
 		}
@@ -3560,7 +3537,8 @@ fold_rtx (rtx x, rtx insn)
 	      associate_code = (is_shift || code == MINUS ? PLUS : code);
 
 	      new_const = simplify_binary_operation (associate_code, mode,
-						     const_arg1, inner_const);
+						     canon_const_arg1,
+						     inner_const);
 
 	      if (new_const == 0)
 		break;
@@ -3659,6 +3637,8 @@ equiv_constant (rtx x)
 
   if (GET_CODE (x) == SUBREG)
     {
+      enum machine_mode mode = GET_MODE (x);
+      enum machine_mode imode = GET_MODE (SUBREG_REG (x));
       rtx new_rtx;
 
       /* See if we previously assigned a constant value to this SUBREG.  */
@@ -3667,10 +3647,25 @@ equiv_constant (rtx x)
           || (new_rtx = lookup_as_function (x, CONST_FIXED)) != 0)
         return new_rtx;
 
+      /* If we didn't and if doing so makes sense, see if we previously
+	 assigned a constant value to the enclosing word mode SUBREG.  */
+      if (GET_MODE_SIZE (mode) < GET_MODE_SIZE (word_mode)
+	  && GET_MODE_SIZE (word_mode) < GET_MODE_SIZE (imode))
+	{
+	  int byte = SUBREG_BYTE (x) - subreg_lowpart_offset (mode, word_mode);
+	  if (byte >= 0 && (byte % UNITS_PER_WORD) == 0)
+	    {
+	      rtx y = gen_rtx_SUBREG (word_mode, SUBREG_REG (x), byte);
+	      new_rtx = lookup_as_function (y, CONST_INT);
+	      if (new_rtx)
+		return gen_lowpart (mode, new_rtx);
+	    }
+	}
+
+      /* Otherwise see if we already have a constant for the inner REG.  */
       if (REG_P (SUBREG_REG (x))
 	  && (new_rtx = equiv_constant (SUBREG_REG (x))) != 0)
-        return simplify_subreg (GET_MODE (x), SUBREG_REG (x),
-				GET_MODE (SUBREG_REG (x)), SUBREG_BYTE (x));
+        return simplify_subreg (mode, new_rtx, imode, SUBREG_BYTE (x));
 
       return 0;
     }
@@ -4495,7 +4490,8 @@ cse_insn (rtx insn)
 	  enum machine_mode wider_mode;
 
 	  for (wider_mode = GET_MODE_WIDER_MODE (mode);
-	       GET_MODE_BITSIZE (wider_mode) <= BITS_PER_WORD
+	       wider_mode != VOIDmode
+	       && GET_MODE_BITSIZE (wider_mode) <= BITS_PER_WORD
 	       && src_related == 0;
 	       wider_mode = GET_MODE_WIDER_MODE (wider_mode))
 	    {
@@ -6008,11 +6004,11 @@ cse_extended_basic_block (struct cse_basic_block_data *ebb_data)
 	 edge pointing to that bb.  */
       if (bb_has_eh_pred (bb))
 	{
-	  struct df_ref **def_rec;
+	  df_ref *def_rec;
 
 	  for (def_rec = df_get_artificial_defs (bb->index); *def_rec; def_rec++)
 	    {
-	      struct df_ref *def = *def_rec;
+	      df_ref def = *def_rec;
 	      if (DF_REF_FLAGS (def) & DF_REF_AT_TOP)
 		invalidate (DF_REF_REG (def), GET_MODE (DF_REF_REG (def)));
 	    }
@@ -7006,3 +7002,63 @@ struct rtl_opt_pass pass_cse2 =
  }
 };
 
+static bool
+gate_handle_cse_after_global_opts (void)
+{
+  return optimize > 0 && flag_rerun_cse_after_global_opts;
+}
+
+/* Run second CSE pass after loop optimizations.  */
+static unsigned int
+rest_of_handle_cse_after_global_opts (void)
+{
+  int save_cfj;
+  int tem;
+
+  /* We only want to do local CSE, so don't follow jumps.  */
+  save_cfj = flag_cse_follow_jumps;
+  flag_cse_follow_jumps = 0;
+
+  rebuild_jump_labels (get_insns ());
+  tem = cse_main (get_insns (), max_reg_num ());
+  purge_all_dead_edges ();
+  delete_trivially_dead_insns (get_insns (), max_reg_num ());
+
+  cse_not_expected = !flag_rerun_cse_after_loop;
+
+  /* If cse altered any jumps, rerun jump opts to clean things up.  */
+  if (tem == 2)
+    {
+      timevar_push (TV_JUMP);
+      rebuild_jump_labels (get_insns ());
+      cleanup_cfg (0);
+      timevar_pop (TV_JUMP);
+    }
+  else if (tem == 1)
+    cleanup_cfg (0);
+
+  flag_cse_follow_jumps = save_cfj;
+  return 0;
+}
+
+struct rtl_opt_pass pass_cse_after_global_opts =
+{
+ {
+  RTL_PASS,
+  "cse_local",                          /* name */
+  gate_handle_cse_after_global_opts,    /* gate */   
+  rest_of_handle_cse_after_global_opts, /* execute */       
+  NULL,                                 /* sub */
+  NULL,                                 /* next */
+  0,                                    /* static_pass_number */
+  TV_CSE,                               /* tv_id */
+  0,                                    /* properties_required */
+  0,                                    /* properties_provided */
+  0,                                    /* properties_destroyed */
+  0,                                    /* todo_flags_start */
+  TODO_df_finish | TODO_verify_rtl_sharing |
+  TODO_dump_func |
+  TODO_ggc_collect |
+  TODO_verify_flow                      /* todo_flags_finish */
+ }
+};

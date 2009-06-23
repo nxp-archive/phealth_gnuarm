@@ -188,7 +188,19 @@ rs6000_macro_to_expand (cpp_reader *pfile, const cpp_token *tok)
 		tok = cpp_peek_token (pfile, idx++);
 	      while (tok->type == CPP_PADDING);
 	      ident = altivec_categorize_keyword (tok);
-	      if (ident)
+	      if (ident == C_CPP_HASHNODE (__pixel_keyword))
+		{
+		  expand_this = C_CPP_HASHNODE (__vector_keyword);
+		  expand_bool_pixel = __pixel_keyword;
+		  rid_code = RID_MAX;
+		}
+	      else if (ident == C_CPP_HASHNODE (__bool_keyword))
+		{
+		  expand_this = C_CPP_HASHNODE (__vector_keyword);
+		  expand_bool_pixel = __bool_keyword;
+		  rid_code = RID_MAX;
+		}
+	      else if (ident)
 		rid_code = (enum rid)(ident->rid_code);
 	    }
 
@@ -335,6 +347,26 @@ rs6000_cpu_cpp_builtins (cpp_reader *pfile)
   /* Let the compiled code know if 'f' class registers will not be available.  */
   if (TARGET_SOFT_FLOAT || !TARGET_FPRS)
     builtin_define ("__NO_FPRS__");
+
+  /* Generate defines for Xilinx FPU. */
+  if (rs6000_xilinx_fpu) 
+    {
+      builtin_define ("_XFPU");
+      if (rs6000_single_float && ! rs6000_double_float)
+	{
+	  if (rs6000_simple_fpu) 
+	    builtin_define ("_XFPU_SP_LITE"); 
+	  else 
+	    builtin_define ("_XFPU_SP_FULL");
+	}
+      if (rs6000_double_float)
+	{
+	  if (rs6000_simple_fpu) 
+	    builtin_define ("_XFPU_DP_LITE");
+	  else
+	    builtin_define ("_XFPU_DP_FULL");
+        }
+    }
 }
 
 

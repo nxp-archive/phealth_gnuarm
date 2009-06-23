@@ -1,6 +1,6 @@
 /* RTL simplification functions for GNU compiler.
    Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -1739,18 +1739,6 @@ simplify_binary_operation_1 (enum rtx_code code, enum machine_mode mode,
       break;
 
     case COMPARE:
-#ifdef HAVE_cc0
-      /* Convert (compare FOO (const_int 0)) to FOO unless we aren't
-	 using cc0, in which case we want to leave it as a COMPARE
-	 so we can distinguish it from a register-register-copy.
-
-	 In IEEE floating point, x-0 is not the same as x.  */
-      if (!(HONOR_SIGNED_ZEROS (mode)
-	    && HONOR_SIGN_DEPENDENT_ROUNDING (mode))
-	  && trueop1 == CONST0_RTX (mode))
-	return op0;
-#endif
-
       /* Convert (compare (gt (flags) 0) (lt (flags) 0)) to (flags).  */
       if (((GET_CODE (op0) == GT && GET_CODE (op1) == LT)
 	   || (GET_CODE (op0) == GTU && GET_CODE (op1) == LTU))
@@ -2304,12 +2292,24 @@ simplify_binary_operation_1 (enum rtx_code code, enum machine_mode mode,
     case AND:
       if (trueop1 == CONST0_RTX (mode) && ! side_effects_p (op0))
 	return trueop1;
-      /* If we are turning off bits already known off in OP0, we need
-	 not do an AND.  */
-      if (GET_CODE (trueop1) == CONST_INT
-	  && GET_MODE_BITSIZE (mode) <= HOST_BITS_PER_WIDE_INT
-	  && (nonzero_bits (trueop0, mode) & ~INTVAL (trueop1)) == 0)
-	return op0;
+      if (GET_MODE_BITSIZE (mode) <= HOST_BITS_PER_WIDE_INT)
+	{
+	  HOST_WIDE_INT nzop0 = nonzero_bits (trueop0, mode);
+	  HOST_WIDE_INT nzop1;
+	  if (GET_CODE (trueop1) == CONST_INT)
+	    {
+	      HOST_WIDE_INT val1 = INTVAL (trueop1);
+	      /* If we are turning off bits already known off in OP0, we need
+		 not do an AND.  */
+	      if ((nzop0 & ~val1) == 0)
+		return op0;
+	    }
+	  nzop1 = nonzero_bits (trueop1, mode);
+	  /* If we are clearing all the nonzero bits, the result is zero.  */
+	  if ((nzop1 & nzop0) == 0
+	      && !side_effects_p (op0) && !side_effects_p (op1))
+	    return CONST0_RTX (mode);
+	}
       if (rtx_equal_p (trueop0, trueop1) && ! side_effects_p (op0)
 	  && GET_MODE_CLASS (mode) != MODE_CC)
 	return op0;
@@ -2391,7 +2391,9 @@ simplify_binary_operation_1 (enum rtx_code code, enum machine_mode mode,
 	 ((A & N) + B) & M -> (A + B) & M
 	 Similarly if (N & M) == 0,
 	 ((A | N) + B) & M -> (A + B) & M
-	 and for - instead of + and/or ^ instead of |.  */
+	 and for - instead of + and/or ^ instead of |.
+         Also, if (N & M) == 0, then
+	 (A +- N) & M -> A & M.  */
       if (GET_CODE (trueop1) == CONST_INT
 	  && GET_MODE_BITSIZE (mode) <= HOST_BITS_PER_WIDE_INT
 	  && ~INTVAL (trueop1)
@@ -2403,6 +2405,10 @@ simplify_binary_operation_1 (enum rtx_code code, enum machine_mode mode,
 
 	  pmop[0] = XEXP (op0, 0);
 	  pmop[1] = XEXP (op0, 1);
+
+	  if (GET_CODE (pmop[1]) == CONST_INT
+	      && (INTVAL (pmop[1]) & INTVAL (trueop1)) == 0)
+	    return simplify_gen_binary (AND, mode, pmop[0], op1);
 
 	  for (which = 0; which < 2; which++)
 	    {
@@ -3591,10 +3597,6 @@ simplify_plus_minus (enum rtx_code code, enum machine_mode mode, rtx op0,
           ops[j + 1] = save;
         }
 
-      /* This is only useful the first time through.  */
-      if (!canonicalized)
-        return NULL_RTX;
-
       changed = 0;
       for (i = n_ops - 1; i > 0; i--)
 	for (j = i - 1; j >= 0; j--)
@@ -3650,9 +3652,14 @@ simplify_plus_minus (enum rtx_code code, enum machine_mode mode, rtx op0,
 		    ops[i].neg = lneg;
 		    ops[j].op = NULL_RTX;
 		    changed = 1;
+		    canonicalized = 1;
 		  }
 	      }
 	  }
+
+      /* If nothing changed, fail.  */
+      if (!canonicalized)
+        return NULL_RTX;
 
       /* Pack all the operands to the lower-numbered entries.  */
       for (i = 0, j = 0; j < n_ops; j++)
@@ -3677,24 +3684,6 @@ simplify_plus_minus (enum rtx_code code, enum machine_mode mode, rtx op0,
      The combination loop should have ensured that there is exactly
      one CONST_INT, and the sort will have ensured that it is last
      in the array and that any other constant will be next-to-last.  */
-
-  if (GET_CODE (ops[n_ops - 1].op) == CONST_INT)
-    i = n_ops - 2;
-  else
-    i = n_ops - 1;
-
-  if (i >= 1
-      && ops[i].neg
-      && !ops[i - 1].neg
-      && CONSTANT_P (ops[i].op)
-      && GET_CODE (ops[i].op) == GET_CODE (ops[i - 1].op))
-    {
-      ops[i - 1].op = gen_rtx_MINUS (mode, ops[i - 1].op, ops[i].op);
-      ops[i - 1].op = gen_rtx_CONST (mode, ops[i - 1].op);
-      if (i < n_ops - 1)
-	ops[i] = ops[i + 1];
-      n_ops--;
-    }
 
   if (n_ops > 1
       && GET_CODE (ops[n_ops - 1].op) == CONST_INT
@@ -3814,8 +3803,8 @@ simplify_relational_operation (enum rtx_code code, enum machine_mode mode,
 
   /* If op0 is a compare, extract the comparison arguments from it.  */
   if (GET_CODE (op0) == COMPARE && op1 == const0_rtx)
-    return simplify_relational_operation (code, mode, VOIDmode,
-				          XEXP (op0, 0), XEXP (op0, 1));
+    return simplify_gen_relational (code, mode, VOIDmode,
+				    XEXP (op0, 0), XEXP (op0, 1));
 
   if (GET_MODE_CLASS (cmp_mode) == MODE_CC
       || CC0_P (op0))
@@ -3858,6 +3847,20 @@ simplify_relational_operation_1 (enum rtx_code code, enum machine_mode mode,
 	    return simplify_gen_relational (new_code, mode, VOIDmode,
 					    XEXP (op0, 0), XEXP (op0, 1));
 	}
+    }
+
+  /* (LTU/GEU (PLUS a C) C), where C is constant, can be simplified to
+     (GEU/LTU a -C).  Likewise for (LTU/GEU (PLUS a C) a).  */
+  if ((code == LTU || code == GEU)
+      && GET_CODE (op0) == PLUS
+      && GET_CODE (XEXP (op0, 1)) == CONST_INT
+      && (rtx_equal_p (op1, XEXP (op0, 0))
+	  || rtx_equal_p (op1, XEXP (op0, 1))))
+    {
+      rtx new_cmp
+	= simplify_gen_unary (NEG, cmp_mode, XEXP (op0, 1), cmp_mode);
+      return simplify_gen_relational ((code == LTU ? GEU : LTU), mode,
+				      cmp_mode, XEXP (op0, 0), new_cmp);
     }
 
   /* Canonicalize (LTU/GEU (PLUS a b) b) as (LTU/GEU (PLUS a b) a).  */

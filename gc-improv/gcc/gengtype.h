@@ -1,5 +1,5 @@
 /* Process source files and output type information.
-   Copyright (C) 2002, 2003, 2004, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -38,8 +38,8 @@ extern int lexer_toplevel_done;
 extern struct fileloc lexer_line;
 
 /* Print an error message.  */
-extern void error_at_line 
-  (struct fileloc *pos, const char *msg, ...) ATTRIBUTE_PRINTF_2;
+extern void error_at_line
+  (const struct fileloc *pos, const char *msg, ...) ATTRIBUTE_PRINTF_2;
 
 /* Like asprintf, but calls fatal() on out of memory.  */
 extern char *xasprintf(const char *, ...) ATTRIBUTE_PRINTF_1;
@@ -64,7 +64,7 @@ extern pair_p nreverse_pairs (pair_p list);
 extern type_p adjust_field_type (type_p, options_p);
 extern void note_variable (const char *s, type_p t, options_p o,
 			   struct fileloc *pos);
-extern void note_def_vec (const char *typename, bool is_scalar,
+extern void note_def_vec (const char *type_name, bool is_scalar,
 			  struct fileloc *pos);
 extern void note_def_vec_alloc (const char *type, const char *astrat,
 				struct fileloc *pos);

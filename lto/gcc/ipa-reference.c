@@ -1,5 +1,5 @@
 /* Callgraph based analysis of static variables.
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
 
 This file is part of GCC.
@@ -57,10 +57,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-pass.h"
 #include "langhooks.h"
 #include "pointer-set.h"
+#include "splay-tree.h"
 #include "ggc.h"
 #include "ipa-utils.h"
 #include "ipa-reference.h"
-#include "c-common.h"
 #include "gimple.h"
 #include "cgraph.h"
 #include "output.h"
@@ -68,8 +68,15 @@ along with GCC; see the file COPYING3.  If not see
 #include "timevar.h"
 #include "diagnostic.h"
 #include "langhooks.h"
-#include "lto-section-in.h"
-#include "lto-section-out.h"
+#include "lto-streamer.h"
+
+static void add_new_function (struct cgraph_node *node,
+			      void *data ATTRIBUTE_UNUSED);
+static void remove_node_data (struct cgraph_node *node,
+			      void *data ATTRIBUTE_UNUSED);
+static void duplicate_node_data (struct cgraph_node *src,
+				 struct cgraph_node *dst,
+				 void *data ATTRIBUTE_UNUSED);
 
 /* The static variables defined within the compilation unit that are
    loaded or stored directly by function that owns this structure.  */ 
@@ -336,23 +343,36 @@ mark_address_taken (tree x)
     bitmap_set_bit (module_statics_escape, DECL_UID (x));
 }
 
+/* Wrapper around mark_address_taken for the stmt walker.  */
+
+static bool
+mark_address (gimple stmt ATTRIBUTE_UNUSED, tree addr,
+	      void *data ATTRIBUTE_UNUSED)
+{
+  while (handled_component_p (addr))
+    addr = TREE_OPERAND (addr, 0);
+  mark_address_taken (addr);
+  return false;
+}
+
 /* Mark load of T.  */
 
-static void
-mark_load (ipa_reference_local_vars_info_t local, 
-	   tree t)
+static bool
+mark_load (gimple stmt ATTRIBUTE_UNUSED, tree t, void *data)
 {
+  ipa_reference_local_vars_info_t local = (ipa_reference_local_vars_info_t)data;
   if (TREE_CODE (t) == VAR_DECL
       && has_proper_scope_for_analysis (t))
     bitmap_set_bit (local->statics_read, DECL_UID (t));
+  return false;
 }
 
 /* Mark store of T.  */
 
-static void
-mark_store (ipa_reference_local_vars_info_t local, 
-	   tree t)
+static bool
+mark_store (gimple stmt ATTRIBUTE_UNUSED, tree t, void *data)
 {
+  ipa_reference_local_vars_info_t local = (ipa_reference_local_vars_info_t)data;
   if (TREE_CODE (t) == VAR_DECL
       && has_proper_scope_for_analysis (t))
     {
@@ -363,6 +383,7 @@ mark_store (ipa_reference_local_vars_info_t local,
       if (module_statics_written)
 	bitmap_set_bit (module_statics_written, DECL_UID (t));
     }
+  return false;
 }
 
 /* Look for memory clobber and set read_all/write_all if present.  */
@@ -429,39 +450,18 @@ scan_stmt_for_static_refs (gimple_stmt_iterator *gsip,
 {
   gimple stmt = gsi_stmt (*gsip);
   ipa_reference_local_vars_info_t local = NULL;
-  unsigned int i;
-  bitmap_iterator bi;
 
   if (fn)
     local = get_reference_vars_info (fn)->local;
 
-  if (gimple_loaded_syms (stmt))
-    EXECUTE_IF_SET_IN_BITMAP (gimple_loaded_syms (stmt), 0, i, bi)
-      mark_load (local, referenced_var_lookup (i));
-  if (gimple_stored_syms (stmt))
-    EXECUTE_IF_SET_IN_BITMAP (gimple_stored_syms (stmt), 0, i, bi)
-      mark_store (local, referenced_var_lookup (i));
-  if (gimple_addresses_taken (stmt))
-    EXECUTE_IF_SET_IN_BITMAP (gimple_addresses_taken (stmt), 0, i, bi)
-      mark_address_taken (referenced_var_lookup (i));
+  /* Look for direct loads and stores.  */
+  walk_stmt_load_store_addr_ops (stmt, local, mark_load, mark_store,
+				 mark_address);
 
-  switch (gimple_code (stmt))
-    {
-    case GIMPLE_CALL:
-      check_call (local, stmt);
-      break;
-      
-    case GIMPLE_ASM:
-      check_asm_memory_clobber (local, stmt);
-      break;
-
-    /* We used to check nonlocal labels here and set them as potentially modifying
-       everything.  This is not needed, since we can get to nonlocal label only
-       from callee and thus we will get info propagated.  */
-
-    default:
-      break;
-    }
+  if (is_gimple_call (stmt))
+    check_call (local, stmt);
+  else if (gimple_code (stmt) == GIMPLE_ASM)
+    check_asm_memory_clobber (local, stmt);
   
   return NULL;
 }
@@ -584,6 +584,13 @@ propagate_bits (ipa_reference_global_vars_info_t x_global, struct cgraph_node *x
 static void 
 ipa_init (void) 
 {
+  static bool init_p = false;
+
+  if (init_p)
+    return;
+
+  init_p = true;
+
   memory_identifier_string = build_string(7, "memory");
 
   reference_vars_to_consider =
@@ -600,6 +607,13 @@ ipa_init (void)
      since all we would be interested in are the addressof
      operations.  */
   visited_nodes = pointer_set_create ();
+
+  function_insertion_hook_holder =
+      cgraph_add_function_insertion_hook (&add_new_function, NULL);
+  node_removal_hook_holder =
+      cgraph_add_node_removal_hook (&remove_node_data, NULL);
+  node_duplication_hook_holder =
+      cgraph_add_node_duplication_hook (&duplicate_node_data, NULL);
 }
 
 /* Check out the rhs of a static or global initialization VNODE to see
@@ -853,12 +867,6 @@ generate_summary (void)
   bitmap module_statics_readonly;
   bitmap bm_temp;
   
-  function_insertion_hook_holder =
-      cgraph_add_function_insertion_hook (&add_new_function, NULL);
-  node_removal_hook_holder =
-      cgraph_add_node_removal_hook (&remove_node_data, NULL);
-  node_duplication_hook_holder =
-      cgraph_add_node_duplication_hook (&duplicate_node_data, NULL);
   ipa_init ();
   module_statics_readonly = BITMAP_ALLOC (&local_info_obstack);
   bm_temp = BITMAP_ALLOC (&local_info_obstack);
@@ -1003,16 +1011,14 @@ write_node_summary_p (struct cgraph_node *node)
 {
   return (node->analyzed 
 	  && node->global.inlined_to == NULL
-	  && (cgraph_is_master_clone (node, true)
-	      || (cgraph_function_body_availability (node) 
-		  == AVAIL_OVERWRITABLE))
+	  && cgraph_function_body_availability (node) == AVAIL_OVERWRITABLE
 	  && get_reference_vars_info (node) != NULL);
 }
 
 /* Serialize the ipa info for lto.  */
 
 static void 
-write_summary (cgraph_node_set set)
+ipa_reference_write_summary (cgraph_node_set set)
 {
   struct cgraph_node *node;
   struct lto_simple_output_block *ob
@@ -1036,9 +1042,12 @@ write_summary (cgraph_node_set set)
 	    = get_reference_vars_info (node)->local;
 	  unsigned int index;
 	  bitmap_iterator bi;
+	  lto_cgraph_encoder_t encoder;
+	  int node_ref;
 
-	  lto_output_fn_decl_index (ob->decl_state, ob->main_stream,
-				    node->decl);
+	  encoder = ob->decl_state->cgraph_node_encoder;
+	  node_ref = lto_cgraph_encoder_encode (encoder, node);
+	  lto_output_uleb128_stream (ob->main_stream, node_ref);
 
 	  /* Stream out the statics read.  */
 	  lto_output_uleb128_stream (ob->main_stream,
@@ -1062,7 +1071,7 @@ write_summary (cgraph_node_set set)
 /* Deserialize the ipa info for lto.  */
 
 static void 
-read_summary (void)
+ipa_reference_read_summary (void)
 {
   struct lto_file_decl_data ** file_data_vec 
     = lto_get_file_decl_data ();
@@ -1086,15 +1095,19 @@ read_summary (void)
 
 	  for (i = 0; i < f_count; i++)
 	    {
-	      unsigned int fn_index = lto_input_uleb128 (ib);
-	      tree fn_decl = lto_file_decl_data_get_fn_decl (file_data,
-							     fn_index);
-	      unsigned int j;
-	      struct cgraph_node *node = cgraph_node (fn_decl);
-	      ipa_reference_local_vars_info_t l = init_function_info (node);
+	      unsigned int j, index;
+	      struct cgraph_node *node;
+	      ipa_reference_local_vars_info_t l;
+	      unsigned int v_count;
+	      lto_cgraph_encoder_t encoder;
+
+	      index = lto_input_uleb128 (ib);
+	      encoder = file_data->cgraph_node_encoder;
+	      node = lto_cgraph_encoder_deref (encoder, index);
+	      l = init_function_info (node);
 
 	      /* Set the statics read.  */
-	      unsigned int v_count = lto_input_uleb128 (ib);
+	      v_count = lto_input_uleb128 (ib);
 	      for (j = 0; j < v_count; j++)
 		{
 		  unsigned int var_index = lto_input_uleb128 (ib);
@@ -1136,7 +1149,7 @@ propagate (void)
   struct cgraph_node *w;
   struct cgraph_node **order =
     XCNEWVEC (struct cgraph_node *, cgraph_n_nodes);
-  int order_pos = ipa_utils_reduced_inorder (order, false, true);
+  int order_pos = ipa_utils_reduced_inorder (order, false, true, NULL);
   int i;
 
   cgraph_remove_function_insertion_hook (function_insertion_hook_holder);
@@ -1147,7 +1160,7 @@ propagate (void)
      the global information.  All the nodes within a cycle will have
      the same info so we collapse cycles first.  Then we can do the
      propagation in one pass from the leaves to the roots.  */
-  order_pos = ipa_utils_reduced_inorder (order, true, true);
+  order_pos = ipa_utils_reduced_inorder (order, true, true, NULL);
   if (dump_file)
     ipa_utils_print_order(dump_file, "reduced", order, order_pos);
 
@@ -1391,7 +1404,7 @@ gate_reference (void)
 	  && !(errorcount || sorrycount));
 }
 
-struct ipa_opt_pass pass_ipa_reference =
+struct ipa_opt_pass_d pass_ipa_reference =
 {
  {
   IPA_PASS,
@@ -1409,8 +1422,8 @@ struct ipa_opt_pass pass_ipa_reference =
   0                                     /* todo_flags_finish */
  },
  generate_summary,		        /* generate_summary */
- write_summary,				/* write_summary */
- read_summary,				/* read_summary */
+ ipa_reference_write_summary,		/* write_summary */
+ ipa_reference_read_summary,		/* read_summary */
  NULL,					/* function_read_summary */
  0,					/* TODOs */
  NULL,			                /* function_transform */

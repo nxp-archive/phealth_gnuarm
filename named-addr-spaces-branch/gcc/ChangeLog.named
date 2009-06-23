@@ -1,3 +1,146 @@
+2009-05-22  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* doc/tm.texi (Named Address Spaces): Update named address space
+	documentation.
+
+2009-05-20  Michael Meissner  <meissner@linux.vnet.ibm.com>
+	    Ulrich Weigand  <uweigand@de.ibm.com>
+
+	Merge up to mainline, branch id 147741.
+
+	* targhooks.c (default_addr_space_nop_convert_p): Delete, no
+	longer used.
+	(default_addr_space_subset_p): Update for change to calling
+	signuatures.
+	(default_addr_space_can_convert_p): Ditto.
+	(default_addr_space_convert): Ditto.
+
+	* targhooks.h (default_addr_space_nop_convert_p): Delete, no
+	longer used.
+	(default_addr_space_subset_p): Update for change to calling
+	signuatures.
+	(default_addr_space_can_convert_p): Ditto.
+	(default_addr_space_convert): Ditto.
+
+	* target.h (struct addr_space): Delete the nop_convert_p hook.
+	Change the subset_p hook to remove the third argument, and make
+	the hook a pure subset test.  Change the convert and can_convert_p
+	hooks to take tree types instead of named address spaces for more
+	flexibility.  Reorder elements so the convert and can_convert_p
+	hooks are next to each other.
+
+	* c-typeck.c (addr_space_superset): New static function to
+	determine if one named address space is a subset of another, and
+	if so, which named address space is the superset.
+	(qualify_type): Change to use addr_space_superset.
+	(common_pointer_type): Ditto.
+	(comp_target_types): Ditto.
+	(build_conditional_expr): Ditto.
+	(build_binary_op): Ditto.
+	(build_c_cast): Change to pass tree types to determine if we can
+	convert between two pointers to different named addresses.
+
+	* target-def.h (TARGET_ADDR_SPACE_NOP_CONVERT_P): Delete, no
+	longer used.
+	(TARGET_ADDR_SPACE_HOOKS): Delete nop_convert_p field.  Reorder
+	initializers to match changes in target.h.
+
+	* config/spu/spu.c (toplevel): Move declarations of named address
+	space target hook functions where the other functions are
+	declared.
+	(spu_addr_space_nop_convert_p): Delete, no longer used.
+	(TARGET_ADDR_SPACE_NOP_CONVERT_P): Ditto.
+	(spu_addr_space_subset_p): Change to make the target hook return
+	only if the first named address space is a subset of the second.
+	(spu_addr_space_can_convert_p): Change to take tree types instead
+	of named address spaces for more flexibility.
+	(spu_addr_space_convert): Ditto.
+
+	* config/spu/spu.h (ADDR_SPACE_BAD): Delete.
+
+	* convert.c (convert_to_pointer): Delete the support for named
+	address space conversion being a NOP.  Change convert target hook
+	calling signature.
+
+2009-05-19  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	Merge to mainline, subversion revision 147681.
+
+	* c-decl.c (grokdeclarator): Merge to mainline, fixup named
+	address space errors.
+
+	* config/spu/spu.h (PTRDIFF_TYPE): Define.
+	(SIZE_TYPE): Ditto.
+
+	* config/spu/spu.c (spu_legitimate_address_space_p): Make static,
+	remove named address space support from the generic version.
+	(spu_legitimize_address_space): Ditto.
+	(spu_addr_space_legitimate_address_p): Named address space version
+	of spu_addr_space_legitimate_address_p.
+	(spu_addr_space_legitimize_address): Named address space version
+	of spu_addr_space_legitimze_address.
+	(TARGET_ADDR_SPACE_LEGITIMATE_ADDRESS_P): Define hook.
+	(TARGET_ADDR_SPACE_LEGITIMIZE_ADDRESS): Ditto.
+	(spu_addr_space_memory_address_p): Delete, no longer used.
+	(spu_addr_space_strict_memory_address_p): Ditto.
+	(TARGET_ADDR_SPACE_MEMORY_ADDRESS_P): Ditto.
+	(TARGET_ADDR_SPACE_STRICT_MEMORY_ADDRESS_P): Ditto.
+
+	* config/spu/spu-protos.h (spu_legitimate_address): Delete
+	declaration.
+	(spu_legitimize_address): Ditto.
+
+	* c-typeck.c (digest_init): Merge to mainline.
+	(build_c_cast): Ditto.
+	(store_init_value): Ditto.
+
+	* explow.c (memory_address_addr_space): Rewrite address space
+	legitimate_address_p hook similar to the non address space
+	version.
+
+	* expr.c (expand_expr_real_1): Merge to mainline.
+
+	* Makefile.in (tree-pretty-print.o): Merge to mainline.
+	(auto-inc-dec.o): Ditto.
+
+	* recog.c (memory_address_addr_space_p): Rename hook.
+
+	* target-def.h (TARGET_ADDR_SPACE_MEMORY_ADDRESS_P): Delete.
+	(TARGET_ADDR_SPACE_STRICT_MEMORY_ADDRESS_P): Ditto.
+	(TARGET_ADDR_SPACE_LEGITIMATE_ADDRESS_P): Combine strict,
+	non-strict named address space versions into one hook.
+	(TARGET_ADDR_SPACE_HOOKS): Ditto.
+
+	* target.h (addr_space structure): Combine strict, non-strict
+	legitimate address hooks.
+
+	* targethooks.c (default_addr_space_memory_address_p): Delete.
+	(default_addr_space_strict_memory_address_p): Ditto.
+	(default_addr_space_legitimate_address_p): Combine strict,
+	non-strict legitimate address hooks.
+	(default_addr_space_legitimize_address): Return the address, not
+	NULL_RTX.
+
+	* targethooks.h (default_addr_space_memory_address_p): Delete.
+	(default_addr_space_strict_memory_address_p): Ditto.
+	(default_addr_space_legitimate_address_p): Combine strict,
+	non-strict legitimate address hooks.
+
+	* tree.h (build_low_bits_mask): Merge to mainline.
+
+	* tree-ssa.c (useless_type_conversion_p_1): Merge to mainline.
+
+2009-04-03  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* c-decl.c (grokdeclarator): Undo clearing the named address space
+	qualifiers when checking whether a function has type qualifiers.
+
+2009-03-31  Ulrich Weigand  <uweigand@de.ibm.com>
+
+	* config/spu/spu-elf.h (DRIVER_SELF_SPECS): Remove.
+	(LIB_SPEC): Handle -mcache-size= and -matomic-updates flags here.
+	* config/spu/spu.opt (-mcache-size=, -matomic-updates): Add flags.
+
 2009-01-13  Michael Meissner  <meissner@linux.vnet.ibm.com>
 
 	* auto-inc-dec.c (toplevel): Include target.h.

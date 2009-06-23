@@ -1788,27 +1788,18 @@ parse_derived (void)
       /* Look for allocatable components.  */
       if (c->allocatable
 	  || (c->ts.type == BT_DERIVED && c->ts.derived->attr.alloc_comp))
-	{
-	  sym->attr.alloc_comp = 1;
-	  break;
-	}
+	sym->attr.alloc_comp = 1;
 
       /* Look for pointer components.  */
       if (c->pointer
 	  || (c->ts.type == BT_DERIVED && c->ts.derived->attr.pointer_comp))
-	{
-	  sym->attr.pointer_comp = 1;
-	  break;
-	}
+	sym->attr.pointer_comp = 1;
 
       /* Look for private components.  */
       if (sym->component_access == ACCESS_PRIVATE
 	  || c->access == ACCESS_PRIVATE
 	  || (c->ts.type == BT_DERIVED && c->ts.derived->attr.private_comp))
-	{
-	  sym->attr.private_comp = 1;
-	  break;
-	}
+	sym->attr.private_comp = 1;
     }
 
   if (!seen_component)
@@ -3038,7 +3029,7 @@ gfc_fixup_sibling_symbols (gfc_symbol *sym, gfc_namespace *siblings)
       gfc_find_sym_tree (sym->name, ns, 0, &st);
 
       if (!st || (st->n.sym->attr.dummy && ns == st->n.sym->ns))
-	continue;
+	goto fixup_contained;
 
       old_sym = st->n.sym;
       if (old_sym->ns == ns
@@ -3072,6 +3063,7 @@ gfc_fixup_sibling_symbols (gfc_symbol *sym, gfc_namespace *siblings)
 	    gfc_free_symbol (old_sym);
 	}
 
+fixup_contained:
       /* Do the same for any contained procedures.  */
       gfc_fixup_sibling_symbols (sym, ns->contained);
     }

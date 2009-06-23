@@ -1,5 +1,6 @@
 /* Chains of recurrences.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
 This file is part of GCC.
@@ -1099,21 +1100,6 @@ nb_vars_in_chrec (tree chrec)
     }
 }
 
-/* Returns true if TYPE is a type in that we cannot directly perform
-   arithmetics, even though it is a scalar type.  */
-
-static bool
-avoid_arithmetics_in_type_p (const_tree type)
-{
-  /* Ada frontend uses subtypes -- an arithmetic cannot be directly performed
-     in the subtype, but a base type must be used, and the result then can
-     be casted to the subtype.  */
-  if (TREE_CODE (type) == INTEGER_TYPE && TREE_TYPE (type) != NULL_TREE)
-    return true;
-
-  return false;
-}
-
 static tree chrec_convert_1 (tree, tree, gimple, bool);
 
 /* Converts BASE and STEP of affine scev to TYPE.  LOOP is the loop whose iv
@@ -1134,10 +1120,6 @@ convert_affine_scev (struct loop *loop, tree type,
   bool must_check_src_overflow, must_check_rslt_overflow;
   tree new_base, new_step;
   tree step_type = POINTER_TYPE_P (type) ? sizetype : type;
-
-  /* If we cannot perform arithmetic in TYPE, avoid creating an scev.  */
-  if (avoid_arithmetics_in_type_p (type))
-    return false;
 
   /* In general,
      (TYPE) (BASE + STEP * i) = (TYPE) BASE + (TYPE -- sign extend) STEP * i,
@@ -1341,10 +1323,6 @@ chrec_convert_aggressive (tree type, tree chrec)
   if (TYPE_PRECISION (type) > TYPE_PRECISION (inner_type))
     return NULL_TREE;
 
-  /* If we cannot perform arithmetic in TYPE, avoid creating an scev.  */
-  if (avoid_arithmetics_in_type_p (type))
-    return NULL_TREE;
-
   rtype = POINTER_TYPE_P (type) ? sizetype : type;
 
   left = CHREC_LEFT (chrec);
@@ -1491,3 +1469,33 @@ scev_is_linear_expression (tree scev)
       return false;
     }
 }
+
+/* Determines whether the expression CHREC contains only interger consts
+   in the right parts.  */
+
+bool
+evolution_function_right_is_integer_cst (const_tree chrec)
+{
+  if (chrec == NULL_TREE)
+    return false;
+
+  switch (TREE_CODE (chrec))
+    {
+    case INTEGER_CST:
+      return true;
+
+    case POLYNOMIAL_CHREC:
+      if (!evolution_function_right_is_integer_cst (CHREC_RIGHT (chrec)))
+	return false;
+
+      if (TREE_CODE (CHREC_LEFT (chrec)) == POLYNOMIAL_CHREC
+	&& !evolution_function_right_is_integer_cst (CHREC_LEFT (chrec)))
+	return false;
+
+      return true;
+
+    default:
+      return false;
+    }
+}
+

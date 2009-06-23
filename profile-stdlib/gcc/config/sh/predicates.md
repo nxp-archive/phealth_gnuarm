@@ -1,5 +1,5 @@
 ;; Predicate definitions for Renesas / SuperH SH.
-;; Copyright (C) 2005, 2006, 2007 Free Software Foundation, Inc.
+;; Copyright (C) 2005, 2006, 2007, 2008, 2009 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -112,6 +112,7 @@
 	  || satisfies_constraint_Css (op))
 	return 1;
       else if (GET_CODE (op) == TRUNCATE
+	       && GET_CODE (XEXP (op, 0)) == REG
 	       && ! system_reg_operand (XEXP (op, 0), VOIDmode)
 	       && (mode == VOIDmode || mode == GET_MODE (op))
 	       && (GET_MODE_SIZE (GET_MODE (op))
@@ -392,12 +393,6 @@
 	return 0;
     }
 
-  if ((mode == QImode || mode == HImode)
-      && (GET_CODE (op) == SUBREG
-	  && GET_CODE (XEXP (op, 0)) == REG
-	  && system_reg_operand (XEXP (op, 0), mode)))
-    return 0;
-
   if (TARGET_SHMEDIA
       && (GET_CODE (op) == PARALLEL || GET_CODE (op) == CONST_VECTOR)
       && sh_rep_vec (op, mode))
@@ -556,6 +551,17 @@
 (define_predicate "noncommutative_float_operator"
   (and (match_code "minus,div")
        (match_test "GET_MODE (op) == mode")))
+
+;; UNORDERED is only supported on SHMEDIA.
+
+(define_predicate "sh_float_comparison_operator"
+  (ior (match_operand 0 "ordered_comparison_operator")
+       (and (match_test "TARGET_SHMEDIA")
+	    (match_code "unordered"))))
+
+(define_predicate "shmedia_cbranch_comparison_operator"
+  (ior (match_operand 0 "equality_comparison_operator")
+       (match_operand 0 "greater_comparison_operator")))
 
 ;; TODO: Add a comment here.
 

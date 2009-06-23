@@ -1,5 +1,6 @@
 /* Default target hook functions.
-   Copyright (C) 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -67,12 +68,48 @@ along with GCC; see the file COPYING3.  If not see
 #include "recog.h"
 
 
+bool
+default_legitimate_address_p (enum machine_mode mode ATTRIBUTE_UNUSED,
+			      rtx addr ATTRIBUTE_UNUSED,
+			      bool strict ATTRIBUTE_UNUSED)
+{
+#ifdef GO_IF_LEGITIMATE_ADDRESS
+  /* Defer to the old implementation using a goto.  */
+  if (strict)
+    return strict_memory_address_p (mode, addr);
+  else
+    return memory_address_p (mode, addr);
+#else
+  gcc_unreachable ();
+#endif
+}
+
 void
 default_external_libcall (rtx fun ATTRIBUTE_UNUSED)
 {
 #ifdef ASM_OUTPUT_EXTERNAL_LIBCALL
   ASM_OUTPUT_EXTERNAL_LIBCALL(asm_out_file, fun);
 #endif
+}
+
+int
+default_unspec_may_trap_p (const_rtx x, unsigned flags)
+{
+  int i;
+
+  if (GET_CODE (x) == UNSPEC_VOLATILE
+      /* Any floating arithmetic may trap.  */
+      || (SCALAR_FLOAT_MODE_P (GET_MODE (x))
+	  && flag_trapping_math))
+    return 1;
+
+  for (i = 0; i < XVECLEN (x, 0); ++i)
+    {
+      if (may_trap_p_1 (XVECEXP (x, 0, i), flags))
+	return 1;
+    }
+
+  return 0;
 }
 
 enum machine_mode
@@ -87,11 +124,14 @@ bool
 default_return_in_memory (const_tree type,
 			  const_tree fntype ATTRIBUTE_UNUSED)
 {
-#ifndef RETURN_IN_MEMORY
   return (TYPE_MODE (type) == BLKmode);
-#else
-  return RETURN_IN_MEMORY (type);
-#endif
+}
+
+rtx
+default_legitimize_address (rtx x, rtx orig_x ATTRIBUTE_UNUSED,
+			    enum machine_mode mode ATTRIBUTE_UNUSED)
+{
+  return x;
 }
 
 rtx
@@ -136,7 +176,7 @@ default_pretend_outgoing_varargs_named (CUMULATIVE_ARGS *ca ATTRIBUTE_UNUSED)
 enum machine_mode
 default_eh_return_filter_mode (void)
 {
-  return word_mode;
+  return targetm.unwind_word_mode ();
 }
 
 enum machine_mode
@@ -147,6 +187,12 @@ default_libgcc_cmp_return_mode (void)
 
 enum machine_mode
 default_libgcc_shift_count_mode (void)
+{
+  return word_mode;
+}
+
+enum machine_mode
+default_unwind_word_mode (void)
 {
   return word_mode;
 }
@@ -352,7 +398,7 @@ default_invalid_within_doloop (const_rtx insn)
 /* Mapping of builtin functions to vectorized variants.  */
 
 tree
-default_builtin_vectorized_function (enum built_in_function fn ATTRIBUTE_UNUSED,
+default_builtin_vectorized_function (unsigned int fn ATTRIBUTE_UNUSED,
 				     tree type_out ATTRIBUTE_UNUSED,
 				     tree type_in ATTRIBUTE_UNUSED)
 {
@@ -362,7 +408,7 @@ default_builtin_vectorized_function (enum built_in_function fn ATTRIBUTE_UNUSED,
 /* Vectorized conversion.  */
 
 tree
-default_builtin_vectorized_conversion (enum tree_code code ATTRIBUTE_UNUSED,
+default_builtin_vectorized_conversion (unsigned int code ATTRIBUTE_UNUSED,
 				       tree type ATTRIBUTE_UNUSED)
 {
   return NULL_TREE;
@@ -371,7 +417,7 @@ default_builtin_vectorized_conversion (enum tree_code code ATTRIBUTE_UNUSED,
 /* Reciprocal.  */
 
 tree
-default_builtin_reciprocal (enum built_in_function fn ATTRIBUTE_UNUSED,
+default_builtin_reciprocal (unsigned int fn ATTRIBUTE_UNUSED,
 			    bool md_fn ATTRIBUTE_UNUSED,
 			    bool sqrt ATTRIBUTE_UNUSED)
 {
@@ -431,7 +477,8 @@ default_stack_protect_guard (void)
 
   if (t == NULL)
     {
-      t = build_decl (VAR_DECL, get_identifier ("__stack_chk_guard"),
+      t = build_decl (UNKNOWN_LOCATION,
+		      VAR_DECL, get_identifier ("__stack_chk_guard"),
 		      ptr_type_node);
       TREE_STATIC (t) = 1;
       TREE_PUBLIC (t) = 1;
@@ -457,7 +504,8 @@ default_external_stack_protect_fail (void)
   if (t == NULL_TREE)
     {
       t = build_function_type_list (void_type_node, NULL_TREE);
-      t = build_decl (FUNCTION_DECL, get_identifier ("__stack_chk_fail"), t);
+      t = build_decl (UNKNOWN_LOCATION,
+		      FUNCTION_DECL, get_identifier ("__stack_chk_fail"), t);
       TREE_STATIC (t) = 1;
       TREE_PUBLIC (t) = 1;
       DECL_EXTERNAL (t) = 1;
@@ -489,7 +537,7 @@ default_hidden_stack_protect_fail (void)
   if (t == NULL_TREE)
     {
       t = build_function_type_list (void_type_node, NULL_TREE);
-      t = build_decl (FUNCTION_DECL,
+      t = build_decl (UNKNOWN_LOCATION, FUNCTION_DECL,
 		      get_identifier ("__stack_chk_fail_local"), t);
       TREE_STATIC (t) = 1;
       TREE_PUBLIC (t) = 1;
@@ -554,12 +602,27 @@ default_internal_arg_pointer (void)
 }
 
 enum reg_class
+default_branch_target_register_class (void)
+{
+  return NO_REGS;
+}
+
+#ifdef IRA_COVER_CLASSES
+const enum reg_class *
+default_ira_cover_classes (void)
+{
+  static enum reg_class classes[] = IRA_COVER_CLASSES;
+  return classes;
+}
+#endif
+
+enum reg_class
 default_secondary_reload (bool in_p ATTRIBUTE_UNUSED, rtx x ATTRIBUTE_UNUSED,
 			  enum reg_class reload_class ATTRIBUTE_UNUSED,
 			  enum machine_mode reload_mode ATTRIBUTE_UNUSED,
 			  secondary_reload_info *sri)
 {
-  enum reg_class class = NO_REGS;
+  enum reg_class rclass = NO_REGS;
 
   if (sri->prev_sri && sri->prev_sri->t_icode != CODE_FOR_nothing)
     {
@@ -568,13 +631,13 @@ default_secondary_reload (bool in_p ATTRIBUTE_UNUSED, rtx x ATTRIBUTE_UNUSED,
     }
 #ifdef SECONDARY_INPUT_RELOAD_CLASS
   if (in_p)
-    class = SECONDARY_INPUT_RELOAD_CLASS (reload_class, reload_mode, x);
+    rclass = SECONDARY_INPUT_RELOAD_CLASS (reload_class, reload_mode, x);
 #endif
 #ifdef SECONDARY_OUTPUT_RELOAD_CLASS
   if (! in_p)
-    class = SECONDARY_OUTPUT_RELOAD_CLASS (reload_class, reload_mode, x);
+    rclass = SECONDARY_OUTPUT_RELOAD_CLASS (reload_class, reload_mode, x);
 #endif
-  if (class != NO_REGS)
+  if (rclass != NO_REGS)
     {
       enum insn_code icode = (in_p ? reload_in_optab[(int) reload_mode]
 			      : reload_out_optab[(int) reload_mode]);
@@ -626,19 +689,19 @@ default_secondary_reload (bool in_p ATTRIBUTE_UNUSED, rtx x ATTRIBUTE_UNUSED,
 
 	  if (reg_class_subset_p (reload_class, insn_class))
 	    {
-	      gcc_assert (scratch_class == class);
-	      class = NO_REGS;
+	      gcc_assert (scratch_class == rclass);
+	      rclass = NO_REGS;
 	    }
 	  else
-	    class = insn_class;
+	    rclass = insn_class;
 
         }
-      if (class == NO_REGS)
+      if (rclass == NO_REGS)
 	sri->icode = icode;
       else
 	sri->t_icode = icode;
     }
-  return class;
+  return rclass;
 }
 
 bool
@@ -679,6 +742,72 @@ default_builtin_vector_alignment_reachable (const_tree type, bool is_packed)
   /* Assuming that types whose size is <= pointer-size
      are naturally aligned.  */
   return true;
+}
+
+bool
+default_hard_regno_scratch_ok (unsigned int regno ATTRIBUTE_UNUSED)
+{
+  return true;
+}
+
+bool
+default_target_option_valid_attribute_p (tree ARG_UNUSED (fndecl),
+					 tree ARG_UNUSED (name),
+					 tree ARG_UNUSED (args),
+					 int ARG_UNUSED (flags))
+{
+  warning (OPT_Wattributes,
+	   "target attribute is not supported on this machine");
+
+  return false;
+}
+
+bool
+default_target_option_pragma_parse (tree ARG_UNUSED (args),
+				    tree ARG_UNUSED (pop_target))
+{
+  warning (OPT_Wpragmas,
+	   "#pragma GCC target is not supported for this machine");
+
+  return false;
+}
+
+bool
+default_target_option_can_inline_p (tree caller, tree callee)
+{
+  bool ret = false;
+  tree callee_opts = DECL_FUNCTION_SPECIFIC_TARGET (callee);
+  tree caller_opts = DECL_FUNCTION_SPECIFIC_TARGET (caller);
+
+  /* If callee has no option attributes, then it is ok to inline */
+  if (!callee_opts)
+    ret = true;
+
+  /* If caller has no option attributes, but callee does then it is not ok to
+     inline */
+  else if (!caller_opts)
+    ret = false;
+
+  /* If both caller and callee have attributes, assume that if the pointer is
+     different, the the two functions have different target options since
+     build_target_option_node uses a hash table for the options.  */
+  else
+    ret = (callee_opts == caller_opts);
+
+  return ret;
+}
+
+#ifndef HAVE_casesi
+# define HAVE_casesi 0
+#endif
+
+/* If the machine does not have a case insn that compares the bounds,
+   this means extra overhead for dispatch tables, which raises the
+   threshold for using them.  */
+
+unsigned int default_case_values_threshold (void)
+{
+  return (HAVE_casesi ? 4 : 5);
 }
 
 #include "gt-targhooks.h"

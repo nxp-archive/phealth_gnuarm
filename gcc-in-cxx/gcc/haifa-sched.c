@@ -1,6 +1,6 @@
 /* Instruction scheduling pass.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com) Enhanced by,
    and currently maintained by, Jim Wilson (wilson@cygnus.com)
@@ -601,7 +601,7 @@ static rtx last_scheduled_insn;
 /* Compute cost of executing INSN.
    This is the number of cycles between instruction issue and
    instruction results.  */
-HAIFA_INLINE int
+int
 insn_cost (rtx insn)
 {
   int cost;
@@ -2131,8 +2131,7 @@ max_issue (struct ready_list *ready, int privileged_n, state_t state,
 		{
 		  n = privileged_n;
 		  /* Try to find issued privileged insn.  */
-		  while (n && !ready_try[--n])
-		    ;
+		  while (n && !ready_try[--n]);
 		}
 
 	      if (/* If all insns are equally good...  */

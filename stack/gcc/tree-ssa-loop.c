@@ -1,5 +1,5 @@
 /* Loop optimizations over tree-ssa.
-   Copyright (C) 2003, 2005, 2006, 2007 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
    
 This file is part of GCC.
    
@@ -284,6 +284,50 @@ struct gimple_opt_pass pass_linear_transform =
   TODO_dump_func | TODO_verify_loops
     | TODO_update_ssa_only_virtuals
     | TODO_ggc_collect			/* todo_flags_finish */
+ }
+};
+
+/* GRAPHITE optimizations.  */
+
+static unsigned int
+graphite_transforms (void)
+{
+  if (!current_loops)
+    return 0;
+
+  graphite_transform_loops ();
+
+  return 0;
+}
+
+static bool
+gate_graphite_transforms (void)
+{
+  /* Enable -fgraphite pass if any one of the graphite optimization flags 
+     is turned on.  */
+  if (flag_loop_block || flag_loop_interchange || flag_loop_strip_mine
+      || flag_graphite_identity)
+    flag_graphite = 1;
+
+  return flag_graphite != 0;
+}
+
+struct gimple_opt_pass pass_graphite_transforms =
+{
+ {
+  GIMPLE_PASS,
+  "graphite",				/* name */
+  gate_graphite_transforms,		/* gate */
+  graphite_transforms,       		/* execute */
+  NULL,					/* sub */
+  NULL,					/* next */
+  0,					/* static_pass_number */
+  TV_GRAPHITE_TRANSFORMS,  		/* tv_id */
+  PROP_cfg | PROP_ssa,			/* properties_required */
+  0,					/* properties_provided */
+  0,					/* properties_destroyed */
+  0,					/* todo_flags_start */
+  TODO_verify_loops			/* todo_flags_finish */
  }
 };
 

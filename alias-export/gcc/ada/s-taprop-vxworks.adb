@@ -6,25 +6,23 @@
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---         Copyright (C) 1992-2006, Free Software Foundation, Inc.          --
+--         Copyright (C) 1992-2009, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
--- sion. GNARL is distributed in the hope that it will be useful, but WITH- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
+-- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNARL; see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNARL was developed by the GNARL team at Florida State University.       --
 -- Extensive contributions were provided by Ada Core Technologies, Inc.     --
@@ -33,34 +31,28 @@
 
 --  This is the VxWorks version of this package
 
---  This package contains all the GNULL primitives that interface directly
---  with the underlying OS.
+--  This package contains all the GNULL primitives that interface directly with
+--  the underlying OS.
 
 pragma Polling (Off);
---  Turn off polling, we do not want ATC polling to take place during
---  tasking operations. It causes infinite loops and other problems.
+--  Turn off polling, we do not want ATC polling to take place during tasking
+--  operations. It causes infinite loops and other problems.
 
-with System.Tasking.Debug;
---  used for Known_Tasks
-
-with System.Interrupt_Management;
---  used for Keep_Unmasked
---           Abort_Task_Signal
---           Signal_ID
---           Initialize_Interrupts
+with Ada.Unchecked_Conversion;
+with Ada.Unchecked_Deallocation;
 
 with Interfaces.C;
 
-with System.Soft_Links;
---  used for Abort_Defer/Undefer
+with System.Tasking.Debug;
+with System.Interrupt_Management;
 
+with System.Soft_Links;
 --  We use System.Soft_Links instead of System.Tasking.Initialization
---  because the later is a higher level package that we shouldn't depend on.
---  For example when using the restricted run time, it is replaced by
+--  because the later is a higher level package that we shouldn't depend
+--  on. For example when using the restricted run time, it is replaced by
 --  System.Tasking.Restricted.Stages.
 
-with Unchecked_Conversion;
-with Unchecked_Deallocation;
+with System.VxWorks.Ext;
 
 package body System.Task_Primitives.Operations is
 
@@ -70,6 +62,7 @@ package body System.Task_Primitives.Operations is
    use System.Tasking;
    use System.OS_Interface;
    use System.Parameters;
+   use type System.VxWorks.Ext.t_id;
    use type Interfaces.C.int;
 
    subtype int is System.OS_Interface.int;
@@ -113,6 +106,14 @@ package body System.Task_Primitives.Operations is
 
    Foreign_Task_Elaborated : aliased Boolean := True;
    --  Used to identified fake tasks (i.e., non-Ada Threads)
+
+   type Set_Stack_Limit_Proc_Acc is access procedure;
+   pragma Convention (C, Set_Stack_Limit_Proc_Acc);
+
+   Set_Stack_Limit_Hook : Set_Stack_Limit_Proc_Acc;
+   pragma Import (C, Set_Stack_Limit_Hook, "__gnat_set_stack_limit_hook");
+   --  Procedure to be called when a task is created to set stack
+   --  limit.
 
    --------------------
    -- Local Packages --
@@ -165,7 +166,8 @@ package body System.Task_Primitives.Operations is
    procedure Install_Signal_Handlers;
    --  Install the default signal handlers for the current task
 
-   function To_Address is new Unchecked_Conversion (Task_Id, System.Address);
+   function To_Address is
+     new Ada.Unchecked_Conversion (Task_Id, System.Address);
 
    -------------------
    -- Abort_Handler --
@@ -175,8 +177,10 @@ package body System.Task_Primitives.Operations is
       pragma Unreferenced (signo);
 
       Self_ID : constant Task_Id := Self;
-      Result  : int;
       Old_Set : aliased sigset_t;
+
+      Result : int;
+      pragma Warnings (Off, Result);
 
    begin
       --  It is not safe to raise an exception when using ZCX and the GCC
@@ -194,8 +198,11 @@ package body System.Task_Primitives.Operations is
 
          --  Make sure signals used for RTS internal purpose are unmasked
 
-         Result := pthread_sigmask (SIG_UNBLOCK,
-           Unblocked_Signal_Mask'Unchecked_Access, Old_Set'Unchecked_Access);
+         Result :=
+           pthread_sigmask
+             (SIG_UNBLOCK,
+              Unblocked_Signal_Mask'Access,
+              Old_Set'Access);
          pragma Assert (Result = 0);
 
          raise Standard'Abort_Signal;
@@ -251,7 +258,7 @@ package body System.Task_Primitives.Operations is
 
       Result :=
         sigaction
-          (Signal (Interrupt_Management.Abort_Task_Signal),
+          (Signal (Interrupt_Management.Abort_Task_Interrupt),
            act'Unchecked_Access,
            old_act'Unchecked_Access);
       pragma Assert (Result = 0);
@@ -264,7 +271,9 @@ package body System.Task_Primitives.Operations is
    ---------------------
 
    procedure Initialize_Lock
-     (Prio : System.Any_Priority; L : not null access Lock) is
+     (Prio : System.Any_Priority;
+      L    : not null access Lock)
+   is
    begin
       L.Mutex := semMCreate (SEM_Q_PRIORITY + SEM_INVERSION_SAFE);
       L.Prio_Ceiling := int (Prio);
@@ -273,10 +282,10 @@ package body System.Task_Primitives.Operations is
    end Initialize_Lock;
 
    procedure Initialize_Lock
-     (L : not null access RTS_Lock; Level : Lock_Level)
+     (L     : not null access RTS_Lock;
+      Level : Lock_Level)
    is
       pragma Unreferenced (Level);
-
    begin
       L.Mutex := semMCreate (SEM_Q_PRIORITY + SEM_INVERSION_SAFE);
       L.Prio_Ceiling := int (System.Any_Priority'Last);
@@ -307,9 +316,11 @@ package body System.Task_Primitives.Operations is
    ----------------
 
    procedure Write_Lock
-     (L : not null access Lock; Ceiling_Violation : out Boolean)
+     (L                 : not null access Lock;
+      Ceiling_Violation : out Boolean)
    is
       Result : int;
+
    begin
       if L.Protocol = Prio_Protect
         and then int (Self.Common.Current_Priority) > L.Prio_Ceiling
@@ -350,7 +361,9 @@ package body System.Task_Primitives.Operations is
    ---------------
 
    procedure Read_Lock
-     (L : not null access Lock; Ceiling_Violation : out Boolean) is
+     (L                 : not null access Lock;
+      Ceiling_Violation : out Boolean)
+   is
    begin
       Write_Lock (L, Ceiling_Violation);
    end Read_Lock;
@@ -367,7 +380,8 @@ package body System.Task_Primitives.Operations is
    end Unlock;
 
    procedure Unlock
-     (L : not null access RTS_Lock; Global_Lock : Boolean := False)
+     (L           : not null access RTS_Lock;
+      Global_Lock : Boolean := False)
    is
       Result : int;
    begin
@@ -385,6 +399,21 @@ package body System.Task_Primitives.Operations is
          pragma Assert (Result = 0);
       end if;
    end Unlock;
+
+   -----------------
+   -- Set_Ceiling --
+   -----------------
+
+   --  Dynamic priority ceilings are not supported by the underlying system
+
+   procedure Set_Ceiling
+     (L    : not null access Lock;
+      Prio : System.Any_Priority)
+   is
+      pragma Unreferenced (L, Prio);
+   begin
+      null;
+   end Set_Ceiling;
 
    -----------
    -- Sleep --
@@ -504,10 +533,11 @@ package body System.Task_Primitives.Operations is
                else
                   --  If Ticks = int'last, it was most probably truncated so
                   --  let's make another round after recomputing Ticks from
-                  --  the the absolute time.
+                  --  the absolute time.
 
                   if Ticks /= int'Last then
                      Timedout := True;
+
                   else
                      Ticks := To_Clock_Ticks (Absolute - Monotonic_Clock);
 
@@ -590,7 +620,7 @@ package body System.Task_Primitives.Operations is
 
       if Ticks > 0 then
 
-         --  Modifying State and Pending_Priority_Change, locking the TCB
+         --  Modifying State, locking the TCB
 
          if Single_Lock then
             Result := semTake (Single_RTS_Lock.Mutex, WAIT_FOREVER);
@@ -604,12 +634,6 @@ package body System.Task_Primitives.Operations is
          Timedout := False;
 
          loop
-            if Self_ID.Pending_Priority_Change then
-               Self_ID.Pending_Priority_Change := False;
-               Self_ID.Common.Base_Priority    := Self_ID.New_Base_Priority;
-               Set_Priority (Self_ID, Self_ID.Common.Base_Priority);
-            end if;
-
             Aborted := Self_ID.Pending_ATC_Level < Self_ID.ATC_Nesting_Level;
 
             --  Release the TCB before sleeping
@@ -629,7 +653,7 @@ package body System.Task_Primitives.Operations is
 
                --  If Ticks = int'last, it was most probably truncated
                --  so let's make another round after recomputing Ticks
-               --  from the the absolute time.
+               --  from the absolute time.
 
                if errno = S_objLib_OBJ_TIMEOUT and then Ticks /= int'Last then
                   Timedout := True;
@@ -723,9 +747,9 @@ package body System.Task_Primitives.Operations is
    pragma Atomic_Components (Prio_Array_Type);
 
    Prio_Array : Prio_Array_Type;
-   --  Global array containing the id of the currently running task for
-   --  each priority. Note that we assume that we are on a single processor
-   --  with run-till-blocked scheduling.
+   --  Global array containing the id of the currently running task for each
+   --  priority. Note that we assume that we are on a single processor with
+   --  run-till-blocked scheduling.
 
    procedure Set_Priority
      (T                   : Task_Id;
@@ -745,7 +769,7 @@ package body System.Task_Primitives.Operations is
         and then Loss_Of_Inheritance
         and then Prio < T.Common.Current_Priority
       then
-         --  Annex D requirement [RM D.2.2 par. 9]:
+         --  Annex D requirement (RM D.2.2(9)):
 
          --    If the task drops its priority due to the loss of inherited
          --    priority, it is added at the head of the ready queue for its
@@ -809,17 +833,11 @@ package body System.Task_Primitives.Operations is
 
       Install_Signal_Handlers;
 
-      Lock_RTS;
+      --  If stack checking is enabled, set the stack limit for this task
 
-      for J in Known_Tasks'Range loop
-         if Known_Tasks (J) = null then
-            Known_Tasks (J) := Self_ID;
-            Self_ID.Known_Tasks_Index := J;
-            exit;
-         end if;
-      end loop;
-
-      Unlock_RTS;
+      if Set_Stack_Limit_Hook /= null then
+         Set_Stack_Limit_Hook.all;
+      end if;
    end Enter_Task;
 
    --------------
@@ -861,6 +879,7 @@ package body System.Task_Primitives.Operations is
 
       if Self_ID.Common.LL.CV = 0 then
          Succeeded := False;
+
       else
          Succeeded := True;
 
@@ -934,23 +953,23 @@ package body System.Task_Primitives.Operations is
 
          --  Now spawn the VxWorks task for real
 
-         T.Common.LL.Thread := taskSpawn
-           (Name_Address,
-            To_VxWorks_Priority (int (Priority)),
-            Get_Task_Options,
-            Adjusted_Stack_Size,
-            Wrapper,
-            To_Address (T));
+         T.Common.LL.Thread :=
+           taskSpawn
+             (Name_Address,
+              To_VxWorks_Priority (int (Priority)),
+              Get_Task_Options,
+              Adjusted_Stack_Size,
+              Wrapper,
+              To_Address (T));
       end;
 
       if T.Common.LL.Thread = -1 then
          Succeeded := False;
       else
          Succeeded := True;
+         Task_Creation_Hook (T.Common.LL.Thread);
+         Set_Priority (T, Priority);
       end if;
-
-      Task_Creation_Hook (T.Common.LL.Thread);
-      Set_Priority (T, Priority);
    end Create_Task;
 
    ------------------
@@ -963,7 +982,7 @@ package body System.Task_Primitives.Operations is
       Is_Self : constant Boolean := (T = Self);
 
       procedure Free is new
-        Unchecked_Deallocation (Ada_Task_Control_Block, Task_Id);
+        Ada.Unchecked_Deallocation (Ada_Task_Control_Block, Task_Id);
 
    begin
       if not Single_Lock then
@@ -1003,8 +1022,10 @@ package body System.Task_Primitives.Operations is
    procedure Abort_Task (T : Task_Id) is
       Result : int;
    begin
-      Result := kill (T.Common.LL.Thread,
-                      Signal (Interrupt_Management.Abort_Task_Signal));
+      Result :=
+        kill
+          (T.Common.LL.Thread,
+           Signal (Interrupt_Management.Abort_Task_Interrupt));
       pragma Assert (Result = 0);
    end Abort_Task;
 
@@ -1014,8 +1035,7 @@ package body System.Task_Primitives.Operations is
 
    procedure Initialize (S : in out Suspension_Object) is
    begin
-      --  Initialize internal state. It is always initialized to False (ARM
-      --  D.10 par. 6).
+      --  Initialize internal state (always to False (RM D.10(6)))
 
       S.State := False;
       S.Waiting := False;
@@ -1038,7 +1058,11 @@ package body System.Task_Primitives.Operations is
    --------------
 
    procedure Finalize (S : in out Suspension_Object) is
+      pragma Unmodified (S);
+      --  S may be modified on other targets, but not on VxWorks
+
       Result : STATUS;
+
    begin
       --  Destroy internal mutex
 
@@ -1068,7 +1092,8 @@ package body System.Task_Primitives.Operations is
    ---------------
 
    procedure Set_False (S : in out Suspension_Object) is
-      Result  : STATUS;
+      Result : STATUS;
+
    begin
       SSL.Abort_Defer.all;
 
@@ -1089,6 +1114,7 @@ package body System.Task_Primitives.Operations is
 
    procedure Set_True (S : in out Suspension_Object) is
       Result : STATUS;
+
    begin
       SSL.Abort_Defer.all;
 
@@ -1122,12 +1148,14 @@ package body System.Task_Primitives.Operations is
 
    procedure Suspend_Until_True (S : in out Suspension_Object) is
       Result : STATUS;
+
    begin
       SSL.Abort_Defer.all;
 
       Result := semTake (S.L, WAIT_FOREVER);
 
       if S.Waiting then
+
          --  Program_Error must be raised upon calling Suspend_Until_True
          --  if another task is already waiting on that suspension object
          --  (ARM D.10 par. 10).
@@ -1138,6 +1166,7 @@ package body System.Task_Primitives.Operations is
          SSL.Abort_Undefer.all;
 
          raise Program_Error;
+
       else
          --  Suspend the task if the state is False. Otherwise, the task
          --  continues its execution, and the state of the suspension object
@@ -1150,6 +1179,7 @@ package body System.Task_Primitives.Operations is
             pragma Assert (Result = 0);
 
             SSL.Abort_Undefer.all;
+
          else
             S.Waiting := True;
 
@@ -1251,12 +1281,69 @@ package body System.Task_Primitives.Operations is
       end if;
    end Resume_Task;
 
+   --------------------
+   -- Stop_All_Tasks --
+   --------------------
+
+   procedure Stop_All_Tasks
+   is
+      Thread_Self : constant Thread_Id := taskIdSelf;
+      C           : Task_Id;
+
+      Dummy : int;
+      pragma Unreferenced (Dummy);
+
+   begin
+      Dummy := Int_Lock;
+
+      C := All_Tasks_List;
+      while C /= null loop
+         if C.Common.LL.Thread /= 0
+           and then C.Common.LL.Thread /= Thread_Self
+         then
+            Dummy := Task_Stop (C.Common.LL.Thread);
+         end if;
+
+         C := C.Common.All_Tasks_Link;
+      end loop;
+
+      Dummy := Int_Unlock;
+   end Stop_All_Tasks;
+
+   ---------------
+   -- Stop_Task --
+   ---------------
+
+   function Stop_Task (T : ST.Task_Id) return Boolean is
+   begin
+      if T.Common.LL.Thread /= 0 then
+         return Task_Stop (T.Common.LL.Thread) = 0;
+      else
+         return True;
+      end if;
+   end Stop_Task;
+
+   -------------------
+   -- Continue_Task --
+   -------------------
+
+   function Continue_Task (T : ST.Task_Id) return Boolean
+   is
+   begin
+      if T.Common.LL.Thread /= 0 then
+         return Task_Cont (T.Common.LL.Thread) = 0;
+      else
+         return True;
+      end if;
+   end Continue_Task;
+
    ----------------
    -- Initialize --
    ----------------
 
    procedure Initialize (Environment_Task : Task_Id) is
       Result : int;
+
    begin
       Environment_Task_Id := Environment_Task;
 
@@ -1272,9 +1359,10 @@ package body System.Task_Primitives.Operations is
       end if;
 
       if Time_Slice_Val > 0 then
-         Result := Set_Time_Slice
-           (To_Clock_Ticks
-              (Duration (Time_Slice_Val) / Duration (1_000_000.0)));
+         Result :=
+           Set_Time_Slice
+             (To_Clock_Ticks
+                (Duration (Time_Slice_Val) / Duration (1_000_000.0)));
 
       elsif Dispatching_Policy = 'R' then
          Result := Set_Time_Slice (To_Clock_Ticks (0.01));
@@ -1294,6 +1382,12 @@ package body System.Task_Primitives.Operations is
       --  Initialize the lock used to synchronize chain of all ATCBs
 
       Initialize_Lock (Single_RTS_Lock'Access, RTS_Lock_Level);
+
+      --  Make environment task known here because it doesn't go through
+      --  Activate_Tasks, which does it for all other tasks.
+
+      Known_Tasks (Known_Tasks'First) := Environment_Task;
+      Environment_Task.Known_Tasks_Index := Known_Tasks'First;
 
       Enter_Task (Environment_Task);
    end Initialize;

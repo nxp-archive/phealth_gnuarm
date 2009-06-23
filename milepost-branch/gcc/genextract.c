@@ -1,6 +1,6 @@
 /* Generate code from machine description to extract operands from insn as rtl.
    Copyright (C) 1987, 1991, 1992, 1993, 1997, 1998, 1999, 2000, 2003,
-   2004, 2005, 2007
+   2004, 2005, 2007, 2008
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -152,7 +152,7 @@ gen_insn (rtx insn, int insn_code_number)
   /* Otherwise, make a new extraction method.  We stash the arrays
      after the extraction structure in memory.  */
 
-  p = xmalloc (sizeof (struct extraction)
+  p = XNEWVAR (struct extraction, sizeof (struct extraction)
 	       + op_count*sizeof (char *)
 	       + dup_count*sizeof (char *)
 	       + dup_count*sizeof (int));
@@ -358,6 +358,9 @@ print_header (void)
 #include \"insn-config.h\"\n\
 #include \"recog.h\"\n\
 #include \"toplev.h\"\n\
+#include \"multi-target.h\"\n\
+\n\
+START_TARGET_SPECIFIC\n\
 \n\
 /* This variable is used as the \"location\" of any missing operand\n\
    whose numbers are skipped by a given pattern.  */\n\
@@ -481,7 +484,7 @@ main (int argc, char **argv)
       puts ("      break;\n");
     }
 
-  puts ("    }\n}");
+  puts ("    }\n}\nEND_TARGET_SPECIFIC");
   fflush (stdout);
   return (ferror (stdout) != 0 ? FATAL_EXIT_CODE : SUCCESS_EXIT_CODE);
 }

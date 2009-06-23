@@ -450,14 +450,10 @@ extern int vsnprintf(char *, size_t, const char *, va_list);
 #endif
 
 /* 1 if we have C99 designated initializers.  */
-#ifdef __cplusplus
-#undef HAVE_DESIGNATED_INITIALIZERS
-#define HAVE_DESIGNATED_INITIALIZERS 0
-#else
 #if !defined(HAVE_DESIGNATED_INITIALIZERS)
 #define HAVE_DESIGNATED_INITIALIZERS \
-  ((GCC_VERSION >= 2007) || (__STDC_VERSION__ >= 199901L))
-#endif
+  (((GCC_VERSION >= 2007) || (__STDC_VERSION__ >= 199901L)) \
+   && !defined(__cplusplus))
 #endif
 
 #if HAVE_SYS_STAT_H
@@ -686,7 +682,7 @@ extern void fancy_abort (const char *, int, const char *) ATTRIBUTE_NORETURN;
 	MUST_PASS_IN_STACK FUNCTION_ARG_PASS_BY_REFERENCE               \
         VECTOR_MODE_SUPPORTED_P TARGET_SUPPORTS_HIDDEN 			\
 	FUNCTION_ARG_PARTIAL_NREGS ASM_OUTPUT_DWARF_DTPREL		\
-	ALLOCATE_INITIAL_VALUE
+	ALLOCATE_INITIAL_VALUE LEGITIMIZE_ADDRESS
 
 /* Other obsolete target macros, or macros that used to be in target
    headers and were not used, and may be obsolete or may never have

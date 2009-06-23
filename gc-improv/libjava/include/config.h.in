@@ -3,9 +3,6 @@
 /* Name of default AWT toolkit */
 #undef AWT_TOOLKIT
 
-/* Define this if you want runtime debugging enabled. */
-#undef DEBUG
-
 /* Define if system properties shouldn't be read from
    getenv("GCJ_PROPERTIES"). */
 #undef DISABLE_GETENV_PROPERTIES
@@ -213,9 +210,6 @@
 
 /* Define to 1 if you have the <pwd.h> header file. */
 #undef HAVE_PWD_H
-
-/* Define to 1 if you have the `readdir_r' function. */
-#undef HAVE_READDIR_R
 
 /* Define to 1 if you have the `readlink' function. */
 #undef HAVE_READLINK
@@ -459,6 +453,9 @@
 
 /* Required define if using POSIX threads */
 #undef _REENTRANT
+
+/* Define this if you want runtime debugging enabled. */
+#undef __GCJ_DEBUG
 
 /* Define to `int' if <sys/types.h> does not define. */
 #undef ssize_t

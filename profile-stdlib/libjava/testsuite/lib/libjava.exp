@@ -202,6 +202,8 @@ proc libjava_init { args } {
 
     if { [istarget "*-*-darwin*"] } {
 	set so_extension "dylib"
+    } elseif { [istarget "*-*-cygwin*"] || [istarget "*-*-mingw*"] } {
+	set so_extension "dll"
     } else {
 	set so_extension "so"
     }
@@ -430,7 +432,7 @@ proc libjava_arguments {{mode compile}} {
 	    lappend args "additional_flags=-bind_at_load"
 	    lappend args "additional_flags=-multiply_defined suppress"
 	}
-	if { [istarget "*-*-darwin9*"] } {
+	if { [istarget "*-*-darwin9*"] || [istarget "*-*-darwin1*"] || [istarget "*-*-darwin2*"] } {
 	    lappend args "additional_flags=-Wl,-allow_stack_execute"
 	}
 

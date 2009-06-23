@@ -1,6 +1,7 @@
 ;; Machine description for SPARC chip for GCC
 ;;  Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-;;  1999, 2000, 2001, 2002, 2003, 2004, 2005,2006, 2007 Free Software Foundation, Inc.
+;;  1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
+;;  Free Software Foundation, Inc.
 ;;  Contributed by Michael Tiemann (tiemann@cygnus.com)
 ;;  64-bit SPARC-V9 support by Michael Tiemann, Jim Wilson, and Doug Evans,
 ;;  at Cygnus Support.
@@ -7081,10 +7082,10 @@
   [(unspec_volatile [(const_int 0)] UNSPECV_SETJMP)]
   ""
 {
-  if (! cfun->calls_alloca)
+  if (!cfun->calls_alloca)
     return "";
-  if (! TARGET_V9)
-    return "\tta\t3\n";
+  if (!TARGET_V9)
+    return "ta\t3";
   fputs ("\tflushw\n", asm_out_file);
   if (flag_pic)
     fprintf (asm_out_file, "\tst%c\t%%l7, [%%sp+%d]\n",

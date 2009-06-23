@@ -1,5 +1,5 @@
 /* Expression translation
-   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
    Contributed by Paul Brook <paul@nowt.org>
    and Steven Bosscher <s.bosscher@student.tudelft.nl>
@@ -398,7 +398,7 @@ gfc_conv_substring (gfc_se * se, gfc_ref * ref, int kind,
   if (!CONSTANT_CLASS_P (end.expr) && !DECL_P (end.expr))
     end.expr = gfc_evaluate_now (end.expr, &se->pre);
 
-  if (flag_bounds_check)
+  if (gfc_option.rtcheck & GFC_RTCHECK_BOUNDS)
     {
       tree nonempty = fold_build2 (LE_EXPR, boolean_type_node,
 				   start.expr, end.expr);
@@ -1505,9 +1505,17 @@ gfc_conv_function_val (gfc_se * se, gfc_symbol * sym)
 	sym->backend_decl = gfc_get_extern_function_decl (sym);
 
       tmp = sym->backend_decl;
+
       if (sym->attr.cray_pointee)
-	tmp = convert (build_pointer_type (TREE_TYPE (tmp)),
-		       gfc_get_symbol_decl (sym->cp_pointer));
+	{
+	  /* TODO - make the cray pointee a pointer to a procedure,
+	     assign the pointer to it and use it for the call.  This
+	     will do for now!  */
+	  tmp = convert (build_pointer_type (TREE_TYPE (tmp)),
+			 gfc_get_symbol_decl (sym->cp_pointer));
+	  tmp = gfc_evaluate_now (tmp, &se->pre);
+	}
+
       if (!POINTER_TYPE_P (TREE_TYPE (tmp)))
 	{
 	  gcc_assert (TREE_CODE (tmp) == FUNCTION_DECL);
@@ -2623,7 +2631,18 @@ gfc_conv_function_call (gfc_se * se, gfc_symbol * sym,
 
 	  if (argss == gfc_ss_terminator)
             {
-	      if (fsym && fsym->attr.value)
+	      if (e->expr_type == EXPR_VARIABLE
+		    && e->symtree->n.sym->attr.cray_pointee
+		    && fsym && fsym->attr.flavor == FL_PROCEDURE)
+		{
+		    /* The Cray pointer needs to be converted to a pointer to
+		       a type given by the expression.  */
+		    gfc_conv_expr (&parmse, e);
+		    type = build_pointer_type (TREE_TYPE (parmse.expr));
+		    tmp = gfc_get_symbol_decl (e->symtree->n.sym->cp_pointer);
+		    parmse.expr = convert (type, tmp);
+		}
+ 	      else if (fsym && fsym->attr.value)
 		{
 		  if (fsym->ts.type == BT_CHARACTER
 		      && fsym->ts.is_c_interop
@@ -2969,7 +2988,7 @@ gfc_conv_function_call (gfc_se * se, gfc_symbol * sym,
 	{
 	  if (sym->attr.dimension)
 	    {
-	      if (flag_bounds_check)
+	      if (gfc_option.rtcheck & GFC_RTCHECK_BOUNDS)
 		{
 		  /* Check the data pointer hasn't been modified.  This would
 		     happen in a function returning a pointer.  */
@@ -4566,6 +4585,7 @@ gfc_trans_assignment_1 (gfc_expr * expr1, gfc_expr * expr2, bool init_flag)
   stmtblock_t body;
   bool l_is_temp;
   bool scalar_to_array;
+  tree string_length;
 
   /* Assignment of the form lhs = rhs.  */
   gfc_start_block (&block);
@@ -4641,10 +4661,18 @@ gfc_trans_assignment_1 (gfc_expr * expr1, gfc_expr * expr2, bool init_flag)
   /* Translate the expression.  */
   gfc_conv_expr (&rse, expr2);
 
+  /* Stabilize a string length for temporaries.  */
+  if (expr2->ts.type == BT_CHARACTER)
+    string_length = gfc_evaluate_now (rse.string_length, &rse.pre);
+  else
+    string_length = NULL_TREE;
+
   if (l_is_temp)
     {
       gfc_conv_tmp_array_ref (&lse);
       gfc_advance_se_ss_chain (&lse);
+      if (expr2->ts.type == BT_CHARACTER)
+	lse.string_length = string_length;
     }
   else
     gfc_conv_expr (&lse, expr1);
@@ -4698,6 +4726,9 @@ gfc_trans_assignment_1 (gfc_expr * expr1, gfc_expr * expr2, bool init_flag)
 
 	  gcc_assert (lse.ss == gfc_ss_terminator
 		      && rse.ss == gfc_ss_terminator);
+
+	  if (expr2->ts.type == BT_CHARACTER)
+	    rse.string_length = string_length;
 
 	  tmp = gfc_trans_scalar_assign (&lse, &rse, expr1->ts,
 					 false, false);

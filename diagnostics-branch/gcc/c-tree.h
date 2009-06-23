@@ -329,7 +329,7 @@ struct c_declarator {
   enum c_declarator_kind kind;
   /* Except for cdk_id, the contained declarator.  For cdk_id, NULL.  */
   struct c_declarator *declarator;
-  location_t id_loc; /* Currently only set for cdk_id. */
+  location_t id_loc; /* Currently only set for cdk_id, cdk_array. */
   union {
     /* For identifiers, an IDENTIFIER_NODE or NULL_TREE if an abstract
        declarator.  */
@@ -461,7 +461,8 @@ extern void c_init_decl_processing (void);
 extern void c_dup_lang_specific_decl (tree);
 extern void c_print_identifier (FILE *, tree, int);
 extern int quals_from_declspecs (const struct c_declspecs *);
-extern struct c_declarator *build_array_declarator (tree, struct c_declspecs *,
+extern struct c_declarator *build_array_declarator (location_t, tree,
+    						    struct c_declspecs *,
 						    bool, bool);
 extern tree build_enumerator (location_t, struct c_enum_contents *, tree, tree);
 extern tree check_for_loop_decls (location_t);
@@ -471,7 +472,7 @@ extern void undeclared_variable (location_t, tree);
 extern tree declare_label (tree);
 extern tree define_label (location_t, tree);
 extern void c_maybe_initialize_eh (void);
-extern void finish_decl (tree, tree, tree);
+extern void finish_decl (tree, location_t, tree, tree);
 extern tree finish_enum (tree, tree, tree);
 extern void finish_function (void);
 extern tree finish_struct (location_t, tree, tree, tree);
@@ -548,7 +549,8 @@ extern bool c_vla_type_p (const_tree);
 extern bool c_mark_addressable (tree);
 extern void c_incomplete_type_error (const_tree, const_tree);
 extern tree c_type_promotes_to (tree);
-extern struct c_expr default_function_array_conversion (struct c_expr);
+extern struct c_expr default_function_array_conversion (location_t,
+    							struct c_expr);
 extern tree composite_type (tree, tree);
 extern tree build_component_ref (location_t, tree, tree);
 extern tree build_array_ref (location_t, tree, tree);
@@ -565,7 +567,7 @@ extern tree build_conditional_expr (location_t, tree, tree, tree);
 extern tree build_compound_expr (location_t, tree, tree);
 extern tree c_cast_expr (location_t, struct c_type_name *, tree);
 extern tree build_c_cast (location_t, tree, tree);
-extern void store_init_value (tree, tree);
+extern void store_init_value (location_t, tree, tree);
 extern void error_init (const char *);
 extern void pedwarn_init (location_t, int opt, const char *);
 extern void maybe_warn_string_init (tree, struct c_expr);

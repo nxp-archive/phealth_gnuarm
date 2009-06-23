@@ -1,11 +1,12 @@
 /* Message translation utilities.
-   Copyright (C) 2001, 2003, 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2003, 2004, 2005, 2007, 2008, 2009
+   Free Software Foundation, Inc.
 
 This file is part of GCC.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
-Software Foundation; either version 2, or (at your option) any later
+Software Foundation; either version 3, or (at your option) any later
 version.
 
 GCC is distributed in the hope that it will be useful, but WITHOUT ANY
@@ -14,9 +15,8 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 for more details.
 
 You should have received a copy of the GNU General Public License
-along with GCC; see the file COPYING.  If not, write to the Free
-Software Foundation, 51 Franklin Street, Fifth Floor, Boston, MA
-02110-1301, USA.  */
+along with GCC; see the file COPYING3.  If not see
+<http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
 #include "system.h"
@@ -33,6 +33,12 @@ const char *open_quote = "'";
 
 /* Closing quotation mark for diagnostics.  */
 const char *close_quote = "'";
+
+/* The name of the locale encoding.  */
+const char *locale_encoding = NULL;
+
+/* Whether the locale is using UTF-8.  */
+bool locale_utf8 = false;
 
 #ifdef ENABLE_NLS
 
@@ -60,20 +66,22 @@ gcc_init_libintl (void)
   /* Closing quotation mark.  */
   close_quote = _("'");
 
+#if defined HAVE_LANGINFO_CODESET
+  locale_encoding = nl_langinfo (CODESET);
+  if (locale_encoding != NULL
+      && (!strcasecmp (locale_encoding, "utf-8")
+	  || !strcasecmp (locale_encoding, "utf8")))
+    locale_utf8 = true;
+#endif
+
   if (!strcmp (open_quote, "`") && !strcmp (close_quote, "'"))
     {
-#if defined HAVE_LANGINFO_CODESET
-      const char *encoding;
-#endif
       /* Untranslated quotes that it may be possible to replace with
 	 U+2018 and U+2019; but otherwise use "'" instead of "`" as
 	 opening quote.  */
       open_quote = "'";
 #if defined HAVE_LANGINFO_CODESET
-      encoding = nl_langinfo (CODESET);
-      if (encoding != NULL
-	  && (!strcasecmp (encoding, "utf-8")
-	      || !strcasecmp (encoding, "utf8")))
+      if (locale_utf8)
 	{
 	  open_quote = "\xe2\x80\x98";
 	  close_quote = "\xe2\x80\x99";
@@ -92,7 +100,7 @@ size_t
 gcc_gettext_width (const char *msgstr)
 {
   size_t nwcs = mbstowcs (0, msgstr, 0);
-  wchar_t *wmsgstr = alloca ((nwcs + 1) * sizeof (wchar_t));
+  wchar_t *wmsgstr = XALLOCAVEC (wchar_t, nwcs + 1);
 
   mbstowcs (wmsgstr, msgstr, nwcs + 1);
   return wcswidth (wmsgstr, nwcs);

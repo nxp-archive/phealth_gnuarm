@@ -1,11 +1,11 @@
 ;; Predicate definitions for DEC Alpha.
-;; Copyright (C) 2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+;; Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
 ;; GCC is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation; either version 2, or (at your option)
+;; the Free Software Foundation; either version 3, or (at your option)
 ;; any later version.
 ;;
 ;; GCC is distributed in the hope that it will be useful,
@@ -14,9 +14,8 @@
 ;; GNU General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with GCC; see the file COPYING.  If not, write to
-;; the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-;; Boston, MA 02110-1301, USA.
+;; along with GCC; see the file COPYING3.  If not see
+;; <http://www.gnu.org/licenses/>.
 
 ;; Return 1 if OP is the zero constant for MODE.
 (define_predicate "const0_operand"
@@ -113,7 +112,7 @@
 (define_predicate "mode_mask_operand"
   (match_code "const_int,const_double")
 {
-  if (GET_CODE (op) == CONST_INT)
+  if (CONST_INT_P (op))
     {
       HOST_WIDE_INT value = INTVAL (op);
 
@@ -269,7 +268,7 @@
   tree op_decl, cfun_sec, op_sec;
 
   /* If profiling is implemented via linker tricks, we can't jump
-     to the nogp alternate entry point.  Note that current_function_profile
+     to the nogp alternate entry point.  Note that crtl->profile
      would not be correct, since that doesn't indicate if the target
      function uses profiling.  */
   /* ??? TARGET_PROFILING_NEEDS_GP isn't really the right test,
@@ -325,13 +324,13 @@
 (define_predicate "local_symbolic_operand"
   (match_code "label_ref,const,symbol_ref")
 {
-  if (GET_CODE (op) == LABEL_REF)
-    return 1;
-
   if (GET_CODE (op) == CONST
       && GET_CODE (XEXP (op, 0)) == PLUS
-      && GET_CODE (XEXP (XEXP (op, 0), 1)) == CONST_INT)
+      && CONST_INT_P (XEXP (XEXP (op, 0), 1)))
     op = XEXP (XEXP (op, 0), 0);
+
+  if (GET_CODE (op) == LABEL_REF)
+    return 1;
 
   if (GET_CODE (op) != SYMBOL_REF)
     return 0;
@@ -351,7 +350,7 @@
 
   if (GET_CODE (op) == CONST
       && GET_CODE (XEXP (op, 0)) == PLUS
-      && GET_CODE (XEXP (XEXP (op, 0), 1)) == CONST_INT)
+      && CONST_INT_P (XEXP (XEXP (op, 0), 1)))
     op = XEXP (XEXP (op, 0), 0);
 
   if (GET_CODE (op) != SYMBOL_REF)
@@ -375,7 +374,7 @@
 {
   if (GET_CODE (op) == CONST
       && GET_CODE (XEXP (op, 0)) == PLUS
-      && GET_CODE (XEXP (XEXP (op, 0), 1)) == CONST_INT)
+      && CONST_INT_P (XEXP (XEXP (op, 0), 1)))
     op = XEXP (XEXP (op, 0), 0);
 
   if (GET_CODE (op) != SYMBOL_REF)
@@ -391,8 +390,9 @@
   (ior (match_code "symbol_ref,label_ref")
        (and (match_code "const")
 	    (match_test "GET_CODE (XEXP (op,0)) == PLUS
-			 && GET_CODE (XEXP (XEXP (op,0), 0)) == SYMBOL_REF
-			 && GET_CODE (XEXP (XEXP (op,0), 1)) == CONST_INT"))))
+			 && (GET_CODE (XEXP (XEXP (op,0), 0)) == SYMBOL_REF
+			     || GET_CODE (XEXP (XEXP (op,0), 0)) == LABEL_REF)
+			 && CONST_INT_P (XEXP (XEXP (op,0), 1))"))))
 
 ;; Return true if OP is valid for 16-bit DTP relative relocations.
 (define_predicate "dtp16_symbolic_operand"
@@ -457,7 +457,7 @@
       base = (GET_CODE (op) == PLUS ? XEXP (op, 0) : op);
     }
 
-  return (GET_CODE (base) == REG && REGNO_POINTER_ALIGN (REGNO (base)) >= 32);
+  return (REG_P (base) && REGNO_POINTER_ALIGN (REGNO (base)) >= 32);
 })
 
 ;; Similar, but return 1 if OP is a MEM which is not alignable.
@@ -485,7 +485,7 @@
       base = (GET_CODE (op) == PLUS ? XEXP (op, 0) : op);
     }
 
-  return (GET_CODE (base) == REG && REGNO_POINTER_ALIGN (REGNO (base)) < 32);
+  return (REG_P (base) && REGNO_POINTER_ALIGN (REGNO (base)) < 32);
 })
 
 ;; Return 1 if OP is any memory location.  During reload a pseudo matches.
@@ -542,6 +542,12 @@
 (define_predicate "reg_no_subreg_operand"
   (and (match_code "reg")
        (match_operand 0 "register_operand")))
+
+;; Return 1 if OP is a valid Alpha comparison operator for "cbranch"
+;; instructions.
+(define_predicate "alpha_cbranch_operator"
+  (ior (match_operand 0 "ordered_comparison_operator")
+       (match_code "ordered,unordered")))
 
 ;; Return 1 if OP is a valid Alpha comparison operator for "cmp" style
 ;; instructions.

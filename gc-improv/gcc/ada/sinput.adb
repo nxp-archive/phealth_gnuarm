@@ -6,25 +6,23 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2007, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2009, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
--- ware  Foundation;  either version 2,  or (at your option) any later ver- --
+-- ware  Foundation;  either version 3,  or (at your option) any later ver- --
 -- sion.  GNAT is distributed in the hope that it will be useful, but WITH- --
 -- OUT ANY WARRANTY;  without even the  implied warranty of MERCHANTABILITY --
--- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License --
--- for  more details.  You should have  received  a copy of the GNU General --
--- Public License  distributed with GNAT;  see file COPYING.  If not, write --
--- to  the  Free Software Foundation,  51  Franklin  Street,  Fifth  Floor, --
--- Boston, MA 02110-1301, USA.                                              --
+-- or FITNESS FOR A PARTICULAR PURPOSE.                                     --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
+-- As a special exception under Section 7 of GPL version 3, you are granted --
+-- additional permissions described in the GCC Runtime Library Exception,   --
+-- version 3.1, as published by the Free Software Foundation.               --
+--                                                                          --
+-- You should have received a copy of the GNU General Public License and    --
+-- a copy of the GCC Runtime Library Exception along with this program;     --
+-- see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see    --
+-- <http://www.gnu.org/licenses/>.                                          --
 --                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
@@ -34,10 +32,12 @@
 pragma Style_Checks (All_Checks);
 --  Subprograms not all in alpha order
 
+with Atree;    use Atree;
 with Debug;    use Debug;
 with Opt;      use Opt;
 with Output;   use Output;
 with Tree_IO;  use Tree_IO;
+with Sinfo;    use Sinfo;
 with System;   use System;
 with Widechar; use Widechar;
 
@@ -221,8 +221,6 @@ package body Sinput is
       Ptr : Source_Ptr;
 
    begin
-      Name_Len := 0;
-
       --  Loop through instantiations
 
       Ptr := Loc;
@@ -241,6 +239,246 @@ package body Sinput is
       Name_Buffer (Name_Len + 1) := NUL;
       return;
    end Build_Location_String;
+
+   ---------------------
+   -- Expr_First_Char --
+   ---------------------
+
+   function Expr_First_Char (Expr : Node_Id) return Source_Ptr is
+
+      function First_Char (Expr : Node_Id; PC : Nat) return Source_Ptr;
+      --  Internal recursive function used to traverse the expression tree.
+      --  Returns the source pointer corresponding to the first location of
+      --  the subexpression N, followed by backing up the given (PC) number of
+      --  preceding left parentheses.
+
+      ----------------
+      -- First_Char --
+      ----------------
+
+      function First_Char (Expr : Node_Id; PC : Nat) return Source_Ptr is
+         N     : constant Node_Id   := Original_Node (Expr);
+         Count : constant Nat       := PC + Paren_Count (N);
+         Kind  : constant N_Subexpr := Nkind (N);
+         Loc   : Source_Ptr;
+
+      begin
+         case Kind is
+            when N_And_Then  |
+                 N_In        |
+                 N_Not_In    |
+                 N_Or_Else   |
+                 N_Binary_Op  =>
+               return First_Char (Left_Opnd (N), Count);
+
+            when N_Attribute_Reference  |
+                 N_Expanded_Name        |
+                 N_Explicit_Dereference |
+                 N_Indexed_Component    |
+                 N_Reference            |
+                 N_Selected_Component   |
+                 N_Slice                =>
+               return First_Char (Prefix (N), Count);
+
+            when N_Function_Call =>
+               return First_Char (Sinfo.Name (N), Count);
+
+            when N_Qualified_Expression |
+                 N_Type_Conversion      =>
+               return First_Char (Subtype_Mark (N), Count);
+
+            when N_Range =>
+               return First_Char (Low_Bound (N), Count);
+
+            --  Nodes that should not appear in original expression trees
+
+            when N_Procedure_Call_Statement  |
+                 N_Raise_xxx_Error           |
+                 N_Subprogram_Info           |
+                 N_Unchecked_Expression      |
+                 N_Unchecked_Type_Conversion |
+                 N_Conditional_Expression    =>
+               raise Program_Error;
+
+            --  Cases where the Sloc points to the start of the tokem, but we
+            --  still need to handle the sequence of left parentheses.
+
+            when N_Identifier          |
+                 N_Operator_Symbol     |
+                 N_Character_Literal   |
+                 N_Integer_Literal     |
+                 N_Null                |
+                 N_Unary_Op            |
+                 N_Aggregate           |
+                 N_Allocator           |
+                 N_Extension_Aggregate |
+                 N_Real_Literal        |
+                 N_String_Literal      =>
+
+               Loc := Sloc (N);
+
+               --  Skip past parens
+
+               --  This is not right, it does not deal with skipping comments
+               --  and probably also has wide character problems ???
+
+               if Count > 0 then
+                  declare
+                     SFI : constant Source_File_Index :=
+                             Get_Source_File_Index (Loc);
+                     Src : constant Source_Buffer_Ptr := Source_Text (SFI);
+                     Fst : constant Source_Ptr        := Source_First (SFI);
+
+                  begin
+                     for J in 1 .. Count loop
+                        loop
+                           exit when Loc = Fst;
+                           Loc := Loc - 1;
+                           exit when Src (Loc) >= ' ';
+                        end loop;
+
+                        exit when Src (Loc) /= '(';
+                     end loop;
+                  end;
+               end if;
+
+               return Loc;
+         end case;
+      end First_Char;
+
+   --  Start of processing for Expr_First_Char
+
+   begin
+      pragma Assert (Nkind (Expr) in N_Subexpr);
+      return First_Char (Expr, 0);
+   end Expr_First_Char;
+
+   --------------------
+   -- Expr_Last_Char --
+   --------------------
+
+   function Expr_Last_Char (Expr : Node_Id) return Source_Ptr is
+
+      function Last_Char (Expr : Node_Id; PC : Nat) return Source_Ptr;
+      --  Internal recursive function used to traverse the expression tree.
+      --  Returns the source pointer corresponding to the last location of
+      --  the subexpression N, followed by ztepping to the last of the given
+      --  number of right parentheses.
+
+      ---------------
+      -- Last_Char --
+      ---------------
+
+      function Last_Char (Expr : Node_Id; PC : Nat) return Source_Ptr is
+         N     : constant Node_Id   := Original_Node (Expr);
+         Count : constant Nat       := PC + Paren_Count (N);
+         Kind  : constant N_Subexpr := Nkind (N);
+         Loc   : Source_Ptr;
+
+      begin
+         case Kind is
+            when N_And_Then  |
+                 N_In        |
+                 N_Not_In    |
+                 N_Or_Else   |
+                 N_Binary_Op  =>
+               return Last_Char (Right_Opnd (N), Count);
+
+            when N_Attribute_Reference  |
+                 N_Expanded_Name        |
+                 N_Explicit_Dereference |
+                 N_Indexed_Component    |
+                 N_Reference            |
+                 N_Selected_Component   |
+                 N_Slice                =>
+               return Last_Char (Prefix (N), Count);
+
+            when N_Function_Call =>
+               return Last_Char (Sinfo.Name (N), Count);
+
+            when N_Qualified_Expression |
+                 N_Type_Conversion      =>
+               return Last_Char (Subtype_Mark (N), Count);
+
+            when N_Range =>
+               return Last_Char (Low_Bound (N), Count);
+
+            --  Nodes that should not appear in original expression trees
+
+            when N_Procedure_Call_Statement  |
+                 N_Raise_xxx_Error           |
+                 N_Subprogram_Info           |
+                 N_Unchecked_Expression      |
+                 N_Unchecked_Type_Conversion |
+                 N_Conditional_Expression    =>
+               raise Program_Error;
+
+            --  Cases where the Sloc points to the start of the token, but we
+            --  still need to handle the sequence of left parentheses.
+
+            when N_Identifier          |
+                 N_Operator_Symbol     |
+                 N_Character_Literal   |
+                 N_Integer_Literal     |
+                 N_Null                |
+                 N_Unary_Op            |
+                 N_Aggregate           |
+                 N_Allocator           |
+                 N_Extension_Aggregate |
+                 N_Real_Literal        |
+                 N_String_Literal      =>
+
+               Loc := Sloc (N);
+
+               --  Now we have two tasks, first we are pointing to the start
+               --  of the token below, second, we need to skip parentheses.
+
+               --  Skipping to the end of a token is not easy, we can't just
+               --  skip to a space, since we may have e.g. X*YAR+Z, and if we
+               --  are finding the end of the subexpression X*YAR, we don't
+               --  want to skip past the +Z. Also we have to worry about
+               --  skipping comments, and about wide characters ???
+
+               declare
+                  SFI : constant Source_File_Index :=
+                          Get_Source_File_Index (Loc);
+                  Src : constant Source_Buffer_Ptr := Source_Text (SFI);
+                  Lst : constant Source_Ptr        := Source_Last (SFI);
+
+               begin
+                  --  Scan through first blank character, to get to the end
+                  --  of this token. As noted above that's not really right???
+
+                  loop
+                     exit when Loc = Lst or else Src (Loc + 1) <= ' ';
+                     Loc := Loc + 1;
+                  end loop;
+
+                  --  Skip past parens, but this also ignores comments ???
+
+                  if Count > 0 then
+                     for J in 1 .. Count loop
+                        loop
+                           exit when Loc = Lst;
+                           Loc := Loc + 1;
+                           exit when Src (Loc) >= ' ';
+                        end loop;
+
+                        exit when Src (Loc) /= ')';
+                     end loop;
+                  end if;
+               end;
+
+               return Loc;
+         end case;
+      end Last_Char;
+
+   --  Start of processing for Expr_Last_Char
+
+   begin
+      pragma Assert (Nkind (Expr) in N_Subexpr);
+      return Last_Char (Expr, 0);
+   end Expr_Last_Char;
 
    -----------------------
    -- Get_Column_Number --
@@ -366,22 +604,22 @@ package body Sinput is
    Source_Cache_First : Source_Ptr := 1;
    Source_Cache_Last  : Source_Ptr := 0;
    --  Records the First and Last subscript values for the most recently
-   --  referenced entry in the source table, to optimize the common case
-   --  of repeated references to the same entry. The initial values force
-   --  an initial search to set the cache value.
+   --  referenced entry in the source table, to optimize the common case of
+   --  repeated references to the same entry. The initial values force an
+   --  initial search to set the cache value.
 
    Source_Cache_Index : Source_File_Index := No_Source_File;
    --  Contains the index of the entry corresponding to Source_Cache
 
-   function Get_Source_File_Index
-     (S    : Source_Ptr)
-      return Source_File_Index
-   is
+   function Get_Source_File_Index (S : Source_Ptr) return Source_File_Index is
    begin
       if S in Source_Cache_First .. Source_Cache_Last then
          return Source_Cache_Index;
 
       else
+         pragma Assert (Source_File_Index_Table (Int (S) / Chunk_Size)
+                          /=
+                        No_Source_File);
          for J in Source_File_Index_Table (Int (S) / Chunk_Size)
                                                     .. Source_File.Last
          loop
@@ -651,7 +889,7 @@ package body Sinput is
       Chr : constant Character := Source (P);
 
    begin
-      if  Chr = CR then
+      if Chr = CR then
          if Source (P + 1) = LF then
             P := P + 2;
          else
@@ -659,11 +897,7 @@ package body Sinput is
          end if;
 
       elsif Chr = LF then
-         if Source (P) = CR then
-            P := P + 2;
-         else
-            P := P + 1;
-         end if;
+         P := P + 1;
 
       elsif Chr = FF or else Chr = VT then
          P := P + 1;
@@ -765,17 +999,20 @@ package body Sinput is
                   null;
 
                else
+                  --  Free the buffer, we use Free here, because we used malloc
+                  --  or realloc directly to allocate the tables. That is
+                  --  because we were playing the big array trick. We need to
+                  --  suppress the warning for freeing from an empty pool!
+
                   --  We have to recreate a proper pointer to the actual array
                   --  from the zero origin pointer stored in the source table.
 
                   Tmp1 :=
                     To_Source_Buffer_Ptr
                       (S.Source_Text (S.Source_First)'Address);
+                  pragma Warnings (Off);
                   Free_Ptr (Tmp1);
-
-                  --  Note: we are using free here, because we used malloc
-                  --  or realloc directly to allocate the tables. That is
-                  --  because we were playing the big array trick.
+                  pragma Warnings (On);
 
                   if S.Lines_Table /= null then
                      Memory.Free (To_Address (S.Lines_Table));
@@ -811,7 +1048,7 @@ package body Sinput is
          begin
             --  For the instantiation case, we do not read in any data. Instead
             --  we share the data for the generic template entry. Since the
-            --  template always occurs first, we can safetly refer to its data.
+            --  template always occurs first, we can safely refer to its data.
 
             if S.Instantiation /= No_Location then
                declare

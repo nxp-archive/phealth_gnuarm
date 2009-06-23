@@ -1,6 +1,6 @@
 /* Reload pseudo regs into hard regs for insns that require hard regs.
    Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -2686,7 +2686,7 @@ eliminate_regs_1 (rtx x, enum machine_mode mem_mode, rtx insn,
 			? eliminate_regs_1 (XEXP (x, 1), mem_mode, insn, true)
 			: NULL_RTX);
 
-	      x = gen_rtx_EXPR_LIST (REG_NOTE_KIND (x), new_rtx, XEXP (x, 1));
+	      x = alloc_reg_note (REG_NOTE_KIND (x), new_rtx, XEXP (x, 1));
 	    }
 	}
 
@@ -4086,26 +4086,17 @@ static void
 fixup_eh_region_note (rtx insn, rtx prev, rtx next)
 {
   rtx note = find_reg_note (insn, REG_EH_REGION, NULL_RTX);
-  unsigned int trap_count;
   rtx i;
 
   if (note == NULL)
     return;
 
-  if (may_trap_p (PATTERN (insn)))
-    trap_count = 1;
-  else
-    {
-      remove_note (insn, note);
-      trap_count = 0;
-    }
+  if (! may_trap_p (PATTERN (insn)))
+    remove_note (insn, note);
 
   for (i = NEXT_INSN (prev); i != next; i = NEXT_INSN (i))
     if (INSN_P (i) && i != insn && may_trap_p (PATTERN (i)))
-      {
-	trap_count++;
-	add_reg_note (i, REG_EH_REGION, XEXP (note, 0));
-      }
+      add_reg_note (i, REG_EH_REGION, XEXP (note, 0));
 }
 
 /* Reload pseudo-registers into hard regs around each insn as needed.
@@ -4367,29 +4358,39 @@ reload_as_needed (int live_known)
 		      SET_REGNO_REG_SET (&reg_has_output_reload,
 					 REGNO (XEXP (in_reg, 0)));
 		    }
-		  else if ((code == PRE_INC || code == PRE_DEC
-			    || code == POST_INC || code == POST_DEC))
+		  else if (code == PRE_INC || code == PRE_DEC
+			   || code == POST_INC || code == POST_DEC)
 		    {
-		      int in_hard_regno;
 		      int in_regno = REGNO (XEXP (in_reg, 0));
 
 		      if (reg_last_reload_reg[in_regno] != NULL_RTX)
 			{
+			  int in_hard_regno;
+			  bool forget_p = true;
+
 			  in_hard_regno = REGNO (reg_last_reload_reg[in_regno]);
-			  gcc_assert (TEST_HARD_REG_BIT (reg_reloaded_valid,
-							 in_hard_regno));
-			  for (x = old_prev ? NEXT_INSN (old_prev) : insn;
-			       x != old_next;
-			       x = NEXT_INSN (x))
-			    if (x == reg_reloaded_insn[in_hard_regno])
-			      break;
+			  if (TEST_HARD_REG_BIT (reg_reloaded_valid,
+						 in_hard_regno))
+			    {
+			      for (x = old_prev ? NEXT_INSN (old_prev) : insn;
+				   x != old_next;
+				   x = NEXT_INSN (x))
+				if (x == reg_reloaded_insn[in_hard_regno])
+				  {
+				    forget_p = false;
+				    break;
+				  }
+			    }
 			  /* If for some reasons, we didn't set up
 			     reg_last_reload_reg in this insn,
 			     invalidate inheritance from previous
 			     insns for the incremented/decremented
 			     register.  Such registers will be not in
-			     reg_has_output_reload.  */
-			  if (x == old_next)
+			     reg_has_output_reload.  Invalidate it
+			     also if the corresponding element in
+			     reg_reloaded_insn is also
+			     invalidated.  */
+			  if (forget_p)
 			    forget_old_reloads_1 (XEXP (in_reg, 0),
 						  NULL_RTX, NULL);
 			}

@@ -1,5 +1,5 @@
 /* Virtual array support.
-   Copyright (C) 1998, 1999, 2000, 2002, 2003, 2004
+   Copyright (C) 1998, 1999, 2000, 2002, 2003, 2004, 2007
    Free Software Foundation, Inc.
    Contributed by Cygnus Solutions.
 
@@ -7,7 +7,7 @@
 
    GCC is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
+   the Free Software Foundation; either version 3, or (at your option)
    any later version.
 
    GCC is distributed in the hope that it will be useful, but WITHOUT
@@ -16,9 +16,8 @@
    License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with GCC; see the file COPYING.  If not, write to the Free
-   the Free Software Foundation, 51 Franklin Street, Fifth Floor, Boston,
-   MA 02110-1301, USA.  */
+   along with GCC; see the file COPYING3.  If not see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifndef GCC_VARRAY_H
 #define GCC_VARRAY_H
@@ -63,7 +62,7 @@ enum varray_data_enum {
 };
 
 /* Union of various array types that are used.  */
-typedef union varray_data_tag GTY (()) {
+typedef union GTY (()) varray_data_tag {
   char			  GTY ((length ("%0.num_elements"),
 				tag ("VARRAY_DATA_C")))		vdt_c[1];
   unsigned char		  GTY ((length ("%0.num_elements"),
@@ -111,7 +110,7 @@ typedef union varray_data_tag GTY (()) {
 } varray_data;
 
 /* Virtual array of pointers header.  */
-struct varray_head_tag GTY(()) {
+struct GTY(()) varray_head_tag {
   size_t	num_elements;	/* Maximum element number allocated.  */
   size_t        elements_used;  /* The number of elements used, if
 				   using VARRAY_PUSH/VARRAY_POP.  */

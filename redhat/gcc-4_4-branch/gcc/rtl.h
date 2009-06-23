@@ -1,6 +1,6 @@
 /* Register Transfer Language (RTL) definitions for GCC
    Copyright (C) 1987, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -141,10 +141,10 @@ typedef struct
    stricter alignment; OFFSET is the offset of the MEM within that object.  */
 typedef struct mem_attrs GTY(())
 {
-  alias_set_type alias;		/* Memory alias set.  */
   tree expr;			/* expr corresponding to MEM.  */
   rtx offset;			/* Offset from start of DECL, as CONST_INT.  */
   rtx size;			/* Size in bytes, as a CONST_INT.  */
+  alias_set_type alias;		/* Memory alias set.  */
   unsigned int align;		/* Alignment of MEM in bits.  */
 } mem_attrs;
 
@@ -1696,7 +1696,7 @@ extern rtx simplify_rtx (const_rtx);
 extern rtx avoid_constant_pool_reference (rtx);
 extern bool mode_signbit_p (enum machine_mode, const_rtx);
 
-/* In regclass.c  */
+/* In reginfo.c  */
 extern enum machine_mode choose_hard_reg_mode (unsigned int, unsigned int,
 					       bool);
 
@@ -1731,6 +1731,8 @@ extern rtx get_related_value (const_rtx);
 extern bool offset_within_block_p (const_rtx, HOST_WIDE_INT);
 extern void split_const (rtx, rtx *, rtx *);
 extern int reg_mentioned_p (const_rtx, const_rtx);
+extern bool reg_mentioned_by_mem_p (const_rtx, const_rtx);
+extern bool reg_dep_by_addr_p (const_rtx, const_rtx);
 extern int count_occurrences (const_rtx, const_rtx, int);
 extern int reg_referenced_p (const_rtx, const_rtx);
 extern int reg_used_between_p (const_rtx, const_rtx, const_rtx);
@@ -1820,7 +1822,7 @@ extern rtx remove_free_INSN_LIST_node (rtx *);
 extern rtx remove_free_EXPR_LIST_node (rtx *);
 
 
-/* regclass.c */
+/* reginfo.c */
 
 /* Initialize may_move_cost and friends for mode M.  */
 extern void init_move_cost (enum machine_mode);
@@ -2072,6 +2074,7 @@ extern rtx pc_set (const_rtx);
 extern rtx condjump_label (const_rtx);
 extern int simplejump_p (const_rtx);
 extern int returnjump_p (rtx);
+extern int eh_returnjump_p (rtx);
 extern int onlyjump_p (const_rtx);
 extern int only_sets_cc0_p (const_rtx);
 extern int sets_cc0_p (const_rtx);
@@ -2185,6 +2188,7 @@ extern int prologue_epilogue_contains (const_rtx);
 extern int sibcall_epilogue_contains (const_rtx);
 extern void mark_temp_addr_taken (rtx);
 extern void update_temp_slot_address (rtx, rtx);
+extern void maybe_copy_epilogue_insn (rtx, rtx);
 
 /* In stmt.c */
 extern void expand_null_return (void);
@@ -2217,7 +2221,7 @@ extern HARD_REG_SET eliminable_regset;
 #endif
 extern void mark_elimination (int, int);
 
-/* In regclass.c */
+/* In reginfo.c */
 extern int reg_classes_intersect_p (enum reg_class, enum reg_class);
 extern int reg_class_subset_p (enum reg_class, enum reg_class);
 extern void globalize_reg (int);
@@ -2282,7 +2286,7 @@ extern rtx canon_rtx (rtx);
 extern int true_dependence (const_rtx, enum machine_mode, const_rtx, bool (*)(const_rtx, bool));
 extern rtx get_addr (rtx);
 extern int canon_true_dependence (const_rtx, enum machine_mode, rtx, const_rtx,
-				  bool (*)(const_rtx, bool));
+				  rtx, bool (*)(const_rtx, bool));
 extern int read_dependence (const_rtx, const_rtx);
 extern int anti_dependence (const_rtx, const_rtx);
 extern int output_dependence (const_rtx, const_rtx);

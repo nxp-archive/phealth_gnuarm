@@ -1,6 +1,8 @@
 /* This test fails on HC11/HC12 when it is compiled without -mshort because 
    the 'r0' array is too large.  Force to use 16-bit ints for it.  */
-/* { dg-do assemble { xfail m6811-*-* m6812-*-* } } */
+/* { dg-do assemble } */
+/* { dg-xfail-if "" { m6811-*-* m6812-*-* } { "*" } { "-mshort" } } */
+/* { dg-skip-if "total size of local objects too large" { "mxp-*-*" } { "*" } { "" } } */
 
 foo ()
 {

@@ -1,6 +1,6 @@
 /* Register Transfer Language (RTL) definitions for GCC
    Copyright (C) 1987, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -141,10 +141,10 @@ typedef struct
    stricter alignment; OFFSET is the offset of the MEM within that object.  */
 typedef struct mem_attrs GTY(())
 {
-  alias_set_type alias;		/* Memory alias set.  */
   tree expr;			/* expr corresponding to MEM.  */
   rtx offset;			/* Offset from start of DECL, as CONST_INT.  */
   rtx size;			/* Size in bytes, as a CONST_INT.  */
+  alias_set_type alias;		/* Memory alias set.  */
   unsigned int align;		/* Alignment of MEM in bits.  */
 } mem_attrs;
 
@@ -1696,7 +1696,7 @@ extern rtx simplify_rtx (const_rtx);
 extern rtx avoid_constant_pool_reference (rtx);
 extern bool mode_signbit_p (enum machine_mode, const_rtx);
 
-/* In regclass.c  */
+/* In reginfo.c  */
 extern enum machine_mode choose_hard_reg_mode (unsigned int, unsigned int,
 					       bool);
 
@@ -1767,7 +1767,6 @@ extern int volatile_refs_p (const_rtx);
 extern int volatile_insn_p (const_rtx);
 extern int may_trap_p_1 (const_rtx, unsigned);
 extern int may_trap_p (const_rtx);
-extern int may_trap_after_code_motion_p (const_rtx);
 extern int may_trap_or_fault_p (const_rtx);
 extern int inequality_comparisons_p (const_rtx);
 extern rtx replace_rtx (rtx, rtx, rtx);
@@ -1821,7 +1820,7 @@ extern rtx remove_free_INSN_LIST_node (rtx *);
 extern rtx remove_free_EXPR_LIST_node (rtx *);
 
 
-/* regclass.c */
+/* reginfo.c */
 
 /* Initialize may_move_cost and friends for mode M.  */
 extern void init_move_cost (enum machine_mode);
@@ -2218,7 +2217,7 @@ extern HARD_REG_SET eliminable_regset;
 #endif
 extern void mark_elimination (int, int);
 
-/* In regclass.c */
+/* In reginfo.c */
 extern int reg_classes_intersect_p (enum reg_class, enum reg_class);
 extern int reg_class_subset_p (enum reg_class, enum reg_class);
 extern void globalize_reg (int);
@@ -2283,7 +2282,7 @@ extern rtx canon_rtx (rtx);
 extern int true_dependence (const_rtx, enum machine_mode, const_rtx, bool (*)(const_rtx, bool));
 extern rtx get_addr (rtx);
 extern int canon_true_dependence (const_rtx, enum machine_mode, rtx, const_rtx,
-				  bool (*)(const_rtx, bool));
+				  rtx, bool (*)(const_rtx, bool));
 extern int read_dependence (const_rtx, const_rtx);
 extern int anti_dependence (const_rtx, const_rtx);
 extern int output_dependence (const_rtx, const_rtx);

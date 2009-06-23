@@ -1,30 +1,26 @@
 /* ARM EABI compliant unwinding routines.
-   Copyright (C) 2004, 2005 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2009 Free Software Foundation, Inc.
    Contributed by Paul Brook
 
    This file is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the
-   Free Software Foundation; either version 2, or (at your option) any
+   Free Software Foundation; either version 3, or (at your option) any
    later version.
-
-   In addition to the permissions in the GNU General Public License, the
-   Free Software Foundation gives you unlimited permission to link the
-   compiled version of this file into combinations with other programs,
-   and to distribute those combinations without any restriction coming
-   from the use of this file.  (The General Public License restrictions
-   do apply in other respects; for example, they cover modification of
-   the file, and distribution when not linked into a combine
-   executable.)
 
    This file is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    General Public License for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with this program; see the file COPYING.  If not, write to
-   the Free Software Foundation, 51 Franklin Street, Fifth Floor,
-   Boston, MA 02110-1301, USA.  */
+   Under Section 7 of GPL version 3, you are granted additional
+   permissions described in the GCC Runtime Library Exception, version
+   3.1, as published by the Free Software Foundation.
+
+   You should have received a copy of the GNU General Public License and
+   a copy of the GCC Runtime Library Exception along with this program;
+   see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
+   <http://www.gnu.org/licenses/>.  */
+
 #include "unwind.h"
 
 /* We add a prototype for abort here to avoid creating a dependency on
@@ -947,6 +943,66 @@ _Unwind_DeleteException (_Unwind_Exception * exc)
 {
   if (exc->exception_cleanup)
     (*exc->exception_cleanup) (_URC_FOREIGN_EXCEPTION_CAUGHT, exc);
+}
+
+
+/* Perform stack backtrace through unwind data.  */
+_Unwind_Reason_Code
+__gnu_Unwind_Backtrace(_Unwind_Trace_Fn trace, void * trace_argument,
+		       phase2_vrs * entry_vrs);
+_Unwind_Reason_Code
+__gnu_Unwind_Backtrace(_Unwind_Trace_Fn trace, void * trace_argument,
+		       phase2_vrs * entry_vrs)
+{
+  phase1_vrs saved_vrs;
+  _Unwind_Reason_Code code;
+
+  _Unwind_Control_Block ucb;
+  _Unwind_Control_Block *ucbp = &ucb;
+
+  /* Set the pc to the call site.  */
+  entry_vrs->core.r[R_PC] = entry_vrs->core.r[R_LR];
+
+  /* Save the core registers.  */
+  saved_vrs.core = entry_vrs->core;
+  /* Set demand-save flags.  */
+  saved_vrs.demand_save_flags = ~(_uw) 0;
+  
+  do
+    {
+      /* Find the entry for this routine.  */
+      if (get_eit_entry (ucbp, saved_vrs.core.r[R_PC]) != _URC_OK)
+	{
+	  code = _URC_FAILURE;
+	  break;
+	}
+
+      /* The dwarf unwinder assumes the context structure holds things
+	 like the function and LSDA pointers.  The ARM implementation
+	 caches these in the exception header (UCB).  To avoid
+	 rewriting everything we make the virtual IP register point at
+	 the UCB.  */
+      _Unwind_SetGR((_Unwind_Context *)&saved_vrs, 12, (_Unwind_Ptr) ucbp);
+
+      /* Call trace function.  */
+      if ((*trace) ((_Unwind_Context *) &saved_vrs, trace_argument) 
+	  != _URC_NO_REASON)
+	{
+	  code = _URC_FAILURE;
+	  break;
+	}
+
+      /* Call the pr to decide what to do.  */
+      code = ((personality_routine) UCB_PR_ADDR (ucbp))
+	(_US_VIRTUAL_UNWIND_FRAME | _US_FORCE_UNWIND, 
+	 ucbp, (void *) &saved_vrs);
+    }
+  while (code != _URC_END_OF_STACK
+	 && code != _URC_FAILURE);
+
+ finish:
+  restore_non_core_regs (&saved_vrs);
+  return code;
 }
 
 
